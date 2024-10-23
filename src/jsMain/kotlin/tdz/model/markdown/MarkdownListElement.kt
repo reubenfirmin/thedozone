@@ -13,18 +13,17 @@ internal object MarkdownListElement {
     fun consumeListElement(line: String, state: ParseState): Boolean {
         val step = listElement(line)
         return if (step != null) {
-            if (step is IgnoreMe) {
-                state.prevNewline = true
-            } else {
-                state.segmentsBuffer.add(step)
+            if (!state.inList()) {
+                state.startList()
             }
+            state.appendToList(step)
             true
         } else {
             false
         }
     }
 
-    private fun listElement(line: String): CardSegment? {
+    private fun listElement(line: String): CardListItem? {
         val levelTabs = numTabsAtStart(line)
         val levelSpaces = numSpacesAtStart(line)
         val level = when {
@@ -75,14 +74,9 @@ internal object MarkdownListElement {
                 } else {
                     trimmed
                 }
-                // TODO dubious split. merge??
-                if (type == BULLET || type == NUMBERED) {
-                    CardListItem(MarkdownLine(cleaned).elements(), level, type, weight, done)
-                } else {
-                    Callout(MarkdownLine(cleaned).elements(), level, type, weight)
-                }
+                CardListItem(MarkdownLine(cleaned).elements(), level, type, weight, done)
             } else {
-                IgnoreMe(trimmed)
+                null
             }
         }
         return null

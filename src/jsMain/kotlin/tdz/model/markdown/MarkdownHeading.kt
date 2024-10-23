@@ -7,7 +7,7 @@ internal object MarkdownHeading {
     fun consumeHeading(trimmed: String, state: ParseState): Boolean {
         val heading = cardHeading(trimmed)
         return if (heading != null) {
-            state.segmentsBuffer.add(heading)
+            state.appendGenericSegment(heading)
             true
         } else {
             false

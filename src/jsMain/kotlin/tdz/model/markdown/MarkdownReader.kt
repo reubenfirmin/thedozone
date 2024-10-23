@@ -68,7 +68,7 @@ internal object MarkdownReader {
                 consumeHeading(trimmed, state) -> {}
                 else -> {
                     // just rich text
-                    state.segmentsBuffer.add(CardText(MarkdownLine(trimmed).elements()))
+                    state.appendGenericSegment(CardText(MarkdownLine(trimmed).elements()))
                 }
             }
         }

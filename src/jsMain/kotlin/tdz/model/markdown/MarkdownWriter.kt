@@ -26,7 +26,6 @@ internal object MarkdownWriter {
                         result
                     }
                     is CardHeading -> "${"#".repeat(segment.level)}${segment.text}"
-                    is Callout -> "${"  ".repeat(segment.level)}${"-".repeat(segment.weight)} ${renderRichText(segment.text)}"
                     is CardCodeBlock -> segment.toMarkdown()
                     is CardText -> renderRichText(segment.text)
                     is CardDiagram -> "---\n${segment.text}\n---"
@@ -63,7 +62,6 @@ internal object MarkdownWriter {
 
             "$count."
         }
-        // TODO not actually used (rendered above)
         ListMemberType.ARROW -> {
             count = 1
             "-"
