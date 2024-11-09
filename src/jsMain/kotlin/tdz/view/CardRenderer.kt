@@ -29,14 +29,11 @@ object CardRenderer {
     }
 
     private fun FlowContent.render(card: Card) {
-//        val view = CardView(card, canvasName, cardStyle, eventBus)
-
-        for (segment in card.segments) {
-            renderSegment(segment, card)
+        div("border-solid border-2 border-sky-500 rounded-md my-4 p-2") {
+            for (segment in card.segments) {
+                renderSegment(segment, card)
+            }
         }
-
-        //cardStyle.styleCard(card, checker, view)
-//        return view
     }
 
     private fun FlowContent.renderSegment(segment: CardSegment, card: Card) {
@@ -80,40 +77,36 @@ object CardRenderer {
 
     fun FlowContent.renderSegment(segment: CardListItem, card: Card, index: Int) {
         div {
-            input {
-                type = InputType.checkBox
-                value = segment.done.toString()
-                label {
-                    span {
-                        if (segment.done) {
-                            +"\u2713&nbsp;&nbsp;"
-                        } else {
-                            if (segment.type == ListMemberType.NUMBERED) {
-                                +(circledNumbers[index] + "&nbsp;&nbsp;")
-                            } else if (segment.type == ListMemberType.BULLET) {
-                                +"\u2610&nbsp;&nbsp;"
-                            } else if (segment.type == ListMemberType.ARROW) {
-                                +when (segment.weight) {
-                                    1 -> "\u25B7"
-                                    2 -> "\u25B6"
-                                    3 -> "\u279C"
-                                    else -> "\u261B"
-                                }
+
+            label("relative cursor-pointer") {
+                input(classes="absolute opacity-0 cursor-pointer") {
+                    type = InputType.checkBox
+                    value = segment.done.toString()
+                }
+
+                span("inline-block cursor-pointer peer-checked:text-blue-600 pr-2") {
+                    if (segment.done) {
+                        +"\u2713"
+                    } else {
+                        if (segment.type == ListMemberType.NUMBERED) {
+                            +(circledNumbers[index])
+                        } else if (segment.type == ListMemberType.BULLET) {
+                            +"\u2610"
+                        } else if (segment.type == ListMemberType.ARROW) {
+                            +when (segment.weight) {
+                                1 -> "\u25B7"
+                                2 -> "\u25B6"
+                                3 -> "\u279C"
+                                else -> "\u261B"
                             }
                         }
                     }
-
-                    segment.text.forEach {
-                        renderRichText(it, card.metadata.columnId)
-                    }
                 }
 
-                // move checkbox input out of list
-//                input.addCssClass(CLASS_TASK_CHECKBOX)
+                segment.text.forEach {
+                    renderRichText(it, card.metadata.columnId)
+                }
             }
-
-//            // unindent list
-//            addCssClass(CLASS_TASK_ITEM)
 
             onClick { event ->
 //                if (!segment.done) { // becoming done
@@ -128,19 +121,19 @@ object CardRenderer {
 
     private fun FlowContent.renderSegment(segment: CardHeading) {
         when (segment.level) {
-            1 -> h1 {
+            1 -> h1("text-2xl py-4") {
                 +segment.text
             }
 
-            2 -> h2 {
+            2 -> h2("text-xl pb-2") {
                 +segment.text
             }
 
-            3 -> h3 {
+            3 -> h3("text-lg bold pb-2") {
                 +segment.text
             }
 
-            4 -> h4 {
+            4 -> h4("text-lg pb-2") {
                 +segment.text
             }
 

@@ -1,11 +1,12 @@
 package tdz.model
 
-import org.example.zoned.framework.Debugger.debug
 import tdz.model.LayoutTemplate.SINGLE_PANE
 import tdz.model.LayoutTemplates.canvasFromTemplate
 import tdz.model.card.CardListItem
 import tdz.model.localstorage.*
 import tdz.model.markdown.MarkdownService
+import tdz.rootCanvas
+import zoned.framework.Debugger.debug
 
 val version = VersionDoc(0, 8, 0)
 
@@ -18,15 +19,11 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker {
 
     private var currentCanvas: Canvas? = null
 
-    companion object {
-        val main = CanvasName("_")
-    }
-
     fun currentCanvas(): Canvas = if (currentCanvas == null) {
         val currentCanvasName = initialCanvasName
-        if (currentCanvasName == main && !exists(currentCanvasName)) {
+        if (currentCanvasName == rootCanvas && !exists(currentCanvasName)) {
             // if we're creating from scratch, main is a canvas with one column
-            addCanvas(canvasFromTemplate(main, null, SINGLE_PANE))
+            addCanvas(canvasFromTemplate(rootCanvas, null, SINGLE_PANE))
         }
         currentCanvas = getCanvas(currentCanvasName)
         currentCanvas!!
@@ -39,8 +36,8 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker {
      */
     fun path(canvasName: CanvasName): List<CanvasName> {
 
-        if (canvasName.normalized().isEmpty() || canvasName == main) {
-            return listOf(main)
+        if (canvasName.normalized().isEmpty() || canvasName == rootCanvas) {
+            return listOf(rootCanvas)
         }
         val canvas = getCanvas(canvasName) ?: throw Exception("ERROR - null canvas when navigating for $canvasName")
 

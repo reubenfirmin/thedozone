@@ -8,7 +8,7 @@ data class Card(val segments: List<CardSegment>, val metadata: CardMetadata, val
 
     fun headingOnly() = segments.filterNot { it is CardHeading }.isEmpty()
 
-    fun infoOnly() = segments.filterNot { it is CardText || it is CardHeading || it is Callout }.isEmpty()
+    fun infoOnly() = segments.filterNot { it is CardText || it is CardHeading }.isEmpty()
 
     fun isCanvasLink() = link()?.isCanvasLink() ?: false
 

@@ -8,3 +8,11 @@ if (config.devServer) {
 } else {
     config.devtool = undefined;
 }
+
+config.resolve = {
+    ...config.resolve,
+    fallback: {
+        "fs": false,
+        "path": false
+    }
+}

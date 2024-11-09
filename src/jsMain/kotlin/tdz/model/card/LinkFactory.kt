@@ -1,9 +1,8 @@
 package tdz.model.card
 
-import org.example.zoned.framework.Debugger.debug
-import tdz.App
 import tdz.mapLog
 import tdz.model.CanvasName
+import zoned.framework.Debugger.debug
 
 val imageSuffices = setOf(".jpg", ".JPG", ".png", ".PNG", ".gif", ".GIF", ".svg", ".SVG", "jpeg", "JPEG", "webp", "WEBP")
 

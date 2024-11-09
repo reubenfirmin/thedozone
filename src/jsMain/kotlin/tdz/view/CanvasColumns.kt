@@ -1,11 +1,15 @@
 package tdz.view
 
 import kotlinx.browser.window
-import kotlinx.css.Color
+import kotlinx.css.*
 import kotlinx.html.FlowContent
+import kotlinx.html.div
 import tdz.model.*
 import tdz.model.Direction.*
+import tdz.model.Split.HORIZONTAL
+import tdz.model.Split.VERTICAL
 import tdz.view.Boundary.Companion.calculateBoundary
+import zoned.framework.interop.css
 
 
 /** Encapsulated model/view of current columns */
@@ -36,28 +40,42 @@ class CanvasColumns(val canvas: Canvas,
     fun rootBoundary() = Boundary(0, 0, window.innerWidth, window.innerHeight)
 
     // resolve a particular column layout, adding dom elements to it
-    private fun FlowContent.renderLayoutTree(parentIndex: ColumnId, parentBoundary: Boundary,
-                                 regenerateColumns: List<Int>) {
+    private fun FlowContent.renderLayoutTree(
+        parentIndex: ColumnId, parentBoundary: Boundary, regenerateColumns: List<Int>) {
 
         val layoutSpec = canvas.layoutMap[parentIndex] ?: throw Exception("Layout $parentIndex not found in ${canvas.layoutMap}")
-        // TODO this previously generated "ColumnLayout" which got returned
-        // instead that should be inlined here
-        layoutSpec.contains.mapIndexed { idx, columnId ->
-            val boundary = calculateBoundary(layoutSpec.split, parentBoundary, idx, layoutSpec.contains.size)
-            if (canvas.layoutMap.containsKey(columnId)) {
-                // recursive
-                renderLayoutTree(columnId, boundary, regenerateColumns)
-            } else {
-                if (columnId in regenerateColumns) {
-                    val colCards = cards(columnId)
-                    val color = color(columnId)
-                    with(ColumnContainer(color, canvas, Mode.CARD, colCards, boundary, columnId)) {
-                        render()
+        div {
+            css {
+                display = Display.flex
+                flexGrow = 1
+                if (layoutSpec.split == HORIZONTAL) {
+                    flexDirection = FlexDirection.column
+                } else if (layoutSpec.split == VERTICAL) {
+                    flexDirection = FlexDirection.row
+                }
+                justifyContent = JustifyContent.start
+                width = 100.pct
+                height = 100.pct
+            }
+
+            layoutSpec.contains.mapIndexed { idx, columnId ->
+                val boundary = calculateBoundary(layoutSpec.split, parentBoundary, idx, layoutSpec.contains.size)
+                if (canvas.layoutMap.containsKey(columnId)) {
+                    // recursive
+                    renderLayoutTree(columnId, boundary, regenerateColumns)
+                } else {
+                    if (columnId in regenerateColumns) {
+                        val colCards = cards(columnId)
+                        val color = color(columnId)
+                        with(ColumnContainer(color, canvas, Mode.CARD, colCards, boundary, columnId)) {
+                            render()
+                        }
                     }
                 }
+                boundaries[columnId] = boundary
             }
-            boundaries[columnId] = boundary
         }
+
     }
 
     fun findColumnSurrounding(x: Int, y: Int, recurse: Boolean = false): Int {

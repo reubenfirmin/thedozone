@@ -26,11 +26,7 @@ class ColumnContainer(headingColor: Color,
     private var focused = false
 
     fun FlowContent.render() {
-        div {
-            css {
-                width = 100.pct
-                height = 100.pct
-            }
+        div("w-full h-full mx-4") {
             paint()
         }
     }
