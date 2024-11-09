@@ -4,6 +4,7 @@ import kotlinx.browser.window
 import kotlinx.css.*
 import kotlinx.html.FlowContent
 import kotlinx.html.div
+import kotlinx.html.id
 import tdz.model.*
 import tdz.model.Direction.*
 import tdz.model.Split.HORIZONTAL
@@ -44,7 +45,8 @@ class CanvasColumns(val canvas: Canvas,
         parentIndex: ColumnId, parentBoundary: Boundary, regenerateColumns: List<Int>) {
 
         val layoutSpec = canvas.layoutMap[parentIndex] ?: throw Exception("Layout $parentIndex not found in ${canvas.layoutMap}")
-        div {
+        div("border border-blue-300") {
+            id = "column-${layoutSpec.columnId}"
             css {
                 display = Display.flex
                 flexGrow = 1

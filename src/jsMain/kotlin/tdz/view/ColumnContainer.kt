@@ -3,6 +3,7 @@ package tdz.view
 import kotlinx.css.*
 import kotlinx.html.FlowContent
 import kotlinx.html.div
+import kotlinx.html.id
 import tdz.model.Canvas
 import tdz.model.Card
 import tdz.view.Mode.*
@@ -26,7 +27,8 @@ class ColumnContainer(headingColor: Color,
     private var focused = false
 
     fun FlowContent.render() {
-        div("w-full h-full mx-4") {
+        div("w-full h-full mx-4 border border-red-300") {
+            id = "column-${columnId}"
             paint()
         }
     }
