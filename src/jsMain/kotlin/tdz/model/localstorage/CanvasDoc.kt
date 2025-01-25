@@ -28,7 +28,7 @@ data class CanvasDoc (
             "parentId" to parentName?.normalized(),
             "columns" to columns.joinToString(","),
             "layouts" to layouts.joinToString("||") {
-                ColumnLayoutSpecDoc(name, it.columnId, it.split, it.contains).toJson()
+                ColumnLayoutSpecDoc(name, it.columnId, it.split, it.columns).toJson()
             })
     }
 

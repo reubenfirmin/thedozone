@@ -67,7 +67,7 @@ tasks.register<Copy>("copyResources") {
 // TODO this should go in plugin
 tasks.register<NpxTask>("buildStyle") {
     println("Rerunning tailwind!")
-    command.set("@tailwindcss/cli")
+    command.set("build/js/node_modules/tailwindcss")
     args.set(listOf("-i", "src/jsMain/resources/template.css", "-o", "src/jsMain/resources/style.css"))
     // this is needed for build -t
     inputs.files(fileTree("src/jsMain/kotlin"))

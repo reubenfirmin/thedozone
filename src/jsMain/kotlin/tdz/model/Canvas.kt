@@ -37,7 +37,7 @@ data class ColumnLayoutSpec(
     /**
      * What columns are laid out inside this column
      */
-    val contains: List<ColumnId>
+    val columns: List<ColumnId>
 )
 
 enum class Split {

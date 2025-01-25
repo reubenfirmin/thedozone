@@ -2,7 +2,7 @@
 module.exports = {
     darkMode: "class",
     content: [
-        "./src/**/*.kt"
+        "/home/rfirmin/code/thedozone2/src/**/*.kt"
     ],
     theme: {
         extend: {

@@ -43,26 +43,26 @@ class EventBus {
      * Automatically prunes the event subscription when the component is removed. Also does
      * not add duplicates, so can be called repeatedly for the same component.
      */
-    fun HTMLElement.on(eventType: EventType, action: (Event) -> Unit) {
-        componentRegistry.getOrPut(eventType) { mutableMapOf() }[this] = action
+    fun on(el: HTMLElement, eventType: EventType, action: (Event) -> Unit) {
+        componentRegistry.getOrPut(eventType) { mutableMapOf() }[el] = action
 
         val observer = MutationObserver { mutations, observer ->
             for (mutation in mutations) {
                 if (mutation.type == MutationRecordType.childList) {
                     mutation.removedNodes.asList().find { it == this }?.let {
                         // Element was removed from the DOM
-                        componentRegistry[eventType]?.remove(this)
+                        componentRegistry[eventType]?.remove(el)
                         observer.disconnect()
-                        observers.remove(this)
+                        observers.remove(el)
                     }
                 }
             }
         }
 
-        observers[this] = observer
+        observers[el] = observer
 
         // Start observing the parent node for child removals
-        this.parentNode?.let { parentNode ->
+        el.parentNode?.let { parentNode ->
             observer.observe(parentNode, MutationObserverInit(childList = true))
         }
     }

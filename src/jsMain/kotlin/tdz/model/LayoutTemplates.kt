@@ -5,7 +5,6 @@ object LayoutTemplates {
     fun canvasFromTemplate(name: CanvasName, parent: CanvasName?, template: LayoutTemplate): Canvas {
         return Canvas(name, parent, template.columns, template.layoutSpecs)
     }
-
 }
 
 enum class LayoutTemplate(val columns: List<ColumnId>, val layoutSpecs: List<ColumnLayoutSpec>) {
