@@ -50,7 +50,7 @@ class App {
     init {
         // turn off for production builds
         Debugger.debugOn()
-        // hacky. init
+        // hacky. init (/prevent dce?)
         listOf(index).forEach { _ ->
             console
         }

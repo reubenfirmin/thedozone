@@ -16,18 +16,10 @@ import zoned.framework.dom.onKeyDown
  *
  */
 class ColumnContainer(
-    headingColor: Color,
     val canvas: Canvas,
     val mode: Mode,
     val cards: List<Card>,
-    val boundary: Boundary,
-    private val columnId: Int,
-    private val events: CanvasEventHandlers) {
-
-    private val darkHeader = Border(2.px, BorderStyle.solid, color = Color.black)
-    private val highlightHeader = Border(2.px, BorderStyle.solid, color = headingColor)
-
-    private var focused = false
+    private val columnId: Int) {
 
     fun FlowContent.render() {
         div("w-full h-full mx-4 border-2") {

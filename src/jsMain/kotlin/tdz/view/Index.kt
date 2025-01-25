@@ -20,7 +20,7 @@ class Index(val model: Model, val events: CanvasEventHandlers, val eventBus: Eve
         document.body.classes("bg-[#1a2b3c] bg-[radial-gradient(circle,_#243b55_0%,_#141e30_100%)] min-h-screen) text-white")
         div {
             ensureId()
-            val columns = CanvasColumns(canvas, events, eventBus) {
+            val columns = CanvasColumns(canvas) {
                 id -> model.cards(canvas.name, id)
             }
             onMouseOver { e ->
@@ -28,7 +28,7 @@ class Index(val model: Model, val events: CanvasEventHandlers, val eventBus: Eve
             }
             onKeyDown { e ->
                 //console.log("Key ${e.code}")
-                events.handleEvent(e, canvas, columns.focused())
+                events.handleEvent(e, canvas, columns)
             }
             onMount {
                 el(this)?.let {

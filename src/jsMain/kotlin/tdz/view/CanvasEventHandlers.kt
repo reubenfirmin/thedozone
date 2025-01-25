@@ -19,27 +19,24 @@ import web.uievents.KeyboardEvent
 class CanvasEventHandlers(
     val eventBus: EventBus) {
 
-    fun handleEvent(event: KeyboardEvent, canvas: Canvas, columnId: ColumnId? = null) {
+    fun handleEvent(event: KeyboardEvent, canvas: Canvas, canvasColumns: CanvasColumns) {
         var handled = true
         // TODO column mode
-        if (columnId != null && (event.ctrlKey && event.code == KeyCode.Quote) || (event.code == KeyCode.KeyI /* && columnModel.mode() == CARD */)) { // ctrl ' or i
-            eventBus.fire(ToggleColumn(columnId!!))
-        // XXX arrows are not being picked up as keypress??
+        if ((event.ctrlKey && event.code == KeyCode.Quote) || (event.code == KeyCode.KeyI /* && columnModel.mode() == CARD */)) { // ctrl ' or i
+            eventBus.fire(ToggleColumn(canvasColumns.focused()))
         } else if (!event.ctrlKey && event.code in setOf(KeyCode.ArrowUp, KeyCode.ArrowDown, KeyCode.ArrowLeft, KeyCode.ArrowRight)) {
-            console.log("arrow")
-            eventBus.fire(NavColumn(event.code))
+            eventBus.fire(NavColumn(event.code, canvasColumns))
 //            if (event.altKey) {
 //                columnModel.moveSelected(direction)
 //            }
         } else if (event.code in setOf(KeyH, KeyJ, KeyK, KeyL)) {
-            console.log("fake arrow")
             eventBus.fire(NavColumn(
                 when(event.code) {
                     KeyH -> ArrowLeft
                     KeyJ -> ArrowUp
                     KeyK -> ArrowDown
                     KeyL -> ArrowRight
-                }))
+                }, canvasColumns))
         }
         //else if (event.ctrlKey && event.keyCode == 186) { // ctrl ;
 //            eventBus.fire(ClearDone(canvas.name))
