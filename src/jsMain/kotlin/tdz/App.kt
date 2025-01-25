@@ -1,4 +1,4 @@
-    package tdz
+package tdz
 
 import kotlinx.css.Color
 import tdz.model.CanvasName
@@ -12,14 +12,16 @@ val tdzModel = Model(rootCanvas)
 
 class App {
 
-        object index: Routes<Index>(Index(tdzModel), "/") {
-            val home = route { "/" to {
-                index(tdzModel.getCanvas(rootCanvas)!!)
-            }
+    object index : Routes<Index>(Index(tdzModel), "/") {
+        val home = route {
+            "/" to
+                    {
+                        index(tdzModel.getCanvas(rootCanvas)!!)
+                    }
         }
         val canvas = route {
-            "/{canvas}" to {
-                params -> {
+            "/{canvas}" to { params ->
+                {
                     val canvas = tdzModel.getCanvas(CanvasName(params["canvas"]!!))
                     if (canvas == null) {
                         Router.navigate("/")
