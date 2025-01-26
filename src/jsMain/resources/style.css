@@ -634,8 +634,16 @@ video {
   width: 100%;
 }
 
+.flex-grow {
+  flex-grow: 1;
+}
+
 .cursor-pointer {
   cursor: pointer;
+}
+
+.resize {
+  resize: both;
 }
 
 .rounded-md {
@@ -673,6 +681,11 @@ video {
 .bg-\[\#1a2b3c\] {
   --tw-bg-opacity: 1;
   background-color: rgb(26 43 60 / var(--tw-bg-opacity));
+}
+
+.bg-red-400 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(248 113 113 / var(--tw-bg-opacity));
 }
 
 .bg-\[radial-gradient\(circle\2c _\#243b55_0\%\2c _\#141e30_100\%\)\] {

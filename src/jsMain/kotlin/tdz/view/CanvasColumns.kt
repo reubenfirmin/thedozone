@@ -19,11 +19,10 @@ class CanvasColumns(val canvas: Canvas,
                     val cards: (columnId: Int) -> List<Card>) {
 
     private val boundaries = mutableMapOf<ColumnId, Boundary>()
+    private val columnContainers = mutableMapOf<ColumnId, ColumnContainer>()
 
     // TODO element attribute?
     private var focused = -1
-
-    fun focused() = focused
 
     /**
      * @param container - container to render into
@@ -47,6 +46,12 @@ class CanvasColumns(val canvas: Canvas,
     fun rootBoundary() = Boundary(0, 0, window.innerWidth, window.innerHeight)
 
     fun boundaries() = boundaries.toMap()
+
+    fun container(columnId: ColumnId) = columnContainers[columnId]
+
+    fun focusedColumn() = columnContainers[focused]
+
+    fun focusedBoundary() = boundaries[focused]
 
     // TODO This should go into ColumnLayout?
     // resolve a particular column layout, adding dom elements to it
@@ -79,8 +84,9 @@ class CanvasColumns(val canvas: Canvas,
                         focused = columnId
                     }
                     val colCards = cards(columnId)
-                    with(ColumnContainer(canvas, Mode.CARD, colCards, columnId)) {
+                    with(ColumnContainer(canvas, Mode.CARD, colCards, columnId, boundary)) {
                         render()
+                        columnContainers[columnId] = this
                     }
                 }
                 boundaries[columnId] = boundary

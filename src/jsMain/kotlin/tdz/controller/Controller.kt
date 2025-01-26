@@ -22,16 +22,8 @@ class Controller(
 
     init {
         eventBus.on(TOGGLE_COLUMN) { e ->
-            val columnId = (e as ToggleColumn).columnId
-            val containerId = ColumnContainer.containerId(columnId)
-            val div = document.getElementById(containerId)!! as HTMLElement
-            val mode = div.getAttribute("mode")
-            if (mode == "card") {
-                // TODO get handle on ColumnContainer
-                div.repaint {
-                    // column container function
-                }
-            }
+            val column = (e as ToggleColumn).columnContainer
+            column.toggleMode();
         }.on(NAV_COLUMN) { e ->
             val evt = e as NavColumn
             focus(evt.direction, evt.canvasColumns)
@@ -50,22 +42,22 @@ class Controller(
     }
 
     private fun columnRight(canvasColumns: CanvasColumns): ColumnId {
-        val boundary = canvasColumns.boundaries()[canvasColumns.focused()]!!
+        val boundary = canvasColumns.focusedBoundary()!!
         return findColumnSurrounding(canvasColumns, boundary.leftX + boundary.width + 1, boundary.topY)
     }
 
     private fun columnLeft(canvasColumns: CanvasColumns): ColumnId {
-        val boundary = canvasColumns.boundaries()[canvasColumns.focused()]!!
+        val boundary = canvasColumns.focusedBoundary()!!
         return findColumnSurrounding(canvasColumns, boundary.leftX - 1, boundary.topY)
     }
 
     private fun columnUp(canvasColumns: CanvasColumns): ColumnId {
-        val boundary = canvasColumns.boundaries()[canvasColumns.focused()]!!
+        val boundary = canvasColumns.focusedBoundary()!!
         return findColumnSurrounding(canvasColumns, boundary.leftX, boundary.topY - 1)
     }
 
     private fun columnDown(canvasColumns: CanvasColumns): ColumnId {
-        val boundary = canvasColumns.boundaries()[canvasColumns.focused()]!!
+        val boundary = canvasColumns.focusedBoundary()!!
         return findColumnSurrounding(canvasColumns, boundary.leftX, boundary.topY + boundary.height + 1)
     }
 

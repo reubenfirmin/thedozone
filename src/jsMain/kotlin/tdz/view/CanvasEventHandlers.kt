@@ -23,7 +23,7 @@ class CanvasEventHandlers(
         var handled = true
         // TODO column mode
         if ((event.ctrlKey && event.code == KeyCode.Quote) || (event.code == KeyCode.KeyI /* && columnModel.mode() == CARD */)) { // ctrl ' or i
-            eventBus.fire(ToggleColumn(canvasColumns.focused()))
+            eventBus.fire(ToggleColumn(canvasColumns.focusedColumn()!!))
         } else if (!event.ctrlKey && event.code in setOf(KeyCode.ArrowUp, KeyCode.ArrowDown, KeyCode.ArrowLeft, KeyCode.ArrowRight)) {
             eventBus.fire(NavColumn(event.code, canvasColumns))
 //            if (event.altKey) {
