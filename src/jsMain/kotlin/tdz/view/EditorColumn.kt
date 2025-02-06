@@ -12,31 +12,27 @@ import tdz.model.markdown.MarkdownService
 import zoned.framework.dom.ensureId
 import zoned.framework.dom.onMount
 import zoned.framework.interop.css
-import zoned.framework.interop.el
 import zoned.framework.libs.AceHelper.Companion.range
 import zoned.framework.libs.AceWrapper
 
 const val ACE_TAB_SIZE = 2
 
 class EditorColumn(val canvasName: CanvasName,
-                   private val columnWidth: Int,
+                   val width: Int,
+                   val height: Int,
                    val columnId: ColumnId,
-//                   val eventBus: EventBus,
-//                   dragDrop: DragDrop,
-                   val cursorPosition: AceWrapper.AceCursorPosition?,
-//                   afterRender: (Column) -> Unit
-) {
+                   val cursorPosition: AceWrapper.AceCursorPosition?) {
 
     private var aceEditor: AceWrapper.AceEditor? = null
 
     fun cursorPos() = aceEditor?.getCursorPosition()
 
     fun FlowContent.render(cards: List<Card>) {
-        div("h-full bg-red-400 flex-grow") {
+        div {
             val divId = ensureId()
             css {
-                width = this@EditorColumn.columnWidth.px
-//                height = 100.pct
+                width = this@EditorColumn.width.px
+                height = this@EditorColumn.height.px
             }
 
             onMount {
@@ -158,7 +154,6 @@ class EditorColumn(val canvasName: CanvasName,
                         aceEdit.moveCursorTo(cursorPosition.row, cursorPosition.column)
                     }
 
-//                    el(this)!!.style.height = "50%";
                     aceEdit.resize()
                 }
             }

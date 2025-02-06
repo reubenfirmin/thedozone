@@ -1,5 +1,6 @@
 package tdz.view
 
+import kotlinx.html.CommonAttributeGroupFacade
 import tdz.model.*
 import org.w3c.dom.events.MouseEvent
 import tdz.controller.events.EventBus
@@ -15,15 +16,18 @@ import web.keyboard.KeyCode.Companion.KeyJ
 import web.keyboard.KeyCode.Companion.KeyK
 import web.keyboard.KeyCode.Companion.KeyL
 import web.uievents.KeyboardEvent
+import zoned.framework.interop.el
 
 class CanvasEventHandlers(
     val eventBus: EventBus) {
 
-    fun handleEvent(event: KeyboardEvent, canvas: Canvas, canvasColumns: CanvasColumns) {
+    fun handleEvent(event: KeyboardEvent, canvasColumns: CanvasColumns, root: CommonAttributeGroupFacade) {
         var handled = true
         // TODO column mode
         if ((event.ctrlKey && event.code == KeyCode.Quote) || (event.code == KeyCode.KeyI /* && columnModel.mode() == CARD */)) { // ctrl ' or i
             eventBus.fire(ToggleColumn(canvasColumns.focusedColumn()!!))
+            canvasColumns.focus(canvasColumns.focusedColumn()!!.columnId)
+            el(root)!!.focus()
         } else if (!event.ctrlKey && event.code in setOf(KeyCode.ArrowUp, KeyCode.ArrowDown, KeyCode.ArrowLeft, KeyCode.ArrowRight)) {
             eventBus.fire(NavColumn(event.code, canvasColumns))
 //            if (event.altKey) {

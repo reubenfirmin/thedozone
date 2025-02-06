@@ -8,7 +8,6 @@ import tdz.model.Model
 import web.dom.document
 import zoned.framework.dom.ensureId
 import zoned.framework.dom.onKeyDown
-import zoned.framework.dom.onKeyPress
 import zoned.framework.dom.onMount
 import zoned.framework.dom.onMouseOver
 import zoned.framework.interop.classes
@@ -28,7 +27,7 @@ class Index(val model: Model, val events: CanvasEventHandlers, val eventBus: Eve
             }
             onKeyDown { e ->
                 //console.log("Key ${e.code}")
-                events.handleEvent(e, canvas, columns)
+                events.handleEvent(e, columns, this)
             }
             onMount {
                 el(this)?.let {
