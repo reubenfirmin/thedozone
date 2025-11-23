@@ -5,6 +5,7 @@ import kotlinx.css.*
 import kotlinx.html.FlowContent
 import kotlinx.html.div
 import kotlinx.html.id
+import tdz.controller.events.EventBus
 import tdz.model.*
 import tdz.model.Direction.*
 import tdz.model.Split.HORIZONTAL
@@ -15,6 +16,7 @@ import zoned.framework.interop.css
 
 /** Encapsulated model/view of current columns */
 class CanvasColumns(val canvas: Canvas,
+                    val eventBus: EventBus,
                     val cards: (columnId: Int) -> List<Card>) {
 
     private val boundaries = mutableMapOf<ColumnId, Boundary>()
@@ -33,7 +35,7 @@ class CanvasColumns(val canvas: Canvas,
         val rootBoundary = rootBoundary()
         val rootColumnId = canvas.root().columnId
         boundaries[rootColumnId] = rootBoundary
-        renderLayoutTree(rootColumnId, rootBoundary, regenerateColumns)
+        renderLayoutTree(true, rootColumnId, rootBoundary, regenerateColumns)
     }
 
     // TODO check container dimensions rather than window's
@@ -41,35 +43,32 @@ class CanvasColumns(val canvas: Canvas,
     fun rootBoundary() = Boundary(0, 0, window.innerWidth, window.innerHeight)
 
     // resolve a particular column layout, adding dom elements to it
-    private fun FlowContent.renderLayoutTree(
-        parentIndex: ColumnId, parentBoundary: Boundary, regenerateColumns: List<Int>) {
+    private fun FlowContent.renderLayoutTree(root: Boolean, parentIndex: ColumnId, parentBoundary: Boundary, regenerateColumns: List<Int>) {
 
         val layoutSpec = canvas.layoutMap[parentIndex] ?: throw Exception("Layout $parentIndex not found in ${canvas.layoutMap}")
-        div("border border-blue-300") {
-            id = "column-${layoutSpec.columnId}"
-            css {
-                display = Display.flex
-                flexGrow = 1
-                if (layoutSpec.split == HORIZONTAL) {
-                    flexDirection = FlexDirection.column
-                } else if (layoutSpec.split == VERTICAL) {
-                    flexDirection = FlexDirection.row
-                }
-                justifyContent = JustifyContent.start
-                width = 100.pct
-                height = 100.pct
+
+        val dir = when (layoutSpec.split) {
+            HORIZONTAL -> {
+                "grid-rows-${layoutSpec.contains.size}"
             }
+            VERTICAL -> {
+                "grid-cols-${layoutSpec.contains.size}"
+            }
+        }
+
+        div("border border-blue-300 w-full h-full justify-start $dir grid") {
+            id = "column-${layoutSpec.columnId}"
 
             layoutSpec.contains.mapIndexed { idx, columnId ->
                 val boundary = calculateBoundary(layoutSpec.split, parentBoundary, idx, layoutSpec.contains.size)
                 if (canvas.layoutMap.containsKey(columnId)) {
                     // recursive
-                    renderLayoutTree(columnId, boundary, regenerateColumns)
+                    renderLayoutTree(false, columnId, boundary, regenerateColumns)
                 } else {
                     if (columnId in regenerateColumns) {
                         val colCards = cards(columnId)
                         val color = color(columnId)
-                        with(ColumnContainer(color, canvas, Mode.CARD, colCards, boundary, columnId)) {
+                        with(ColumnContainer(color, canvas, Mode.CARD, colCards, boundary, columnId, eventBus)) {
                             render()
                         }
                     }

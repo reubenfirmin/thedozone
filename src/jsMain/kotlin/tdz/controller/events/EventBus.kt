@@ -7,6 +7,7 @@ import web.dom.observers.MutationObserverInit
 import web.dom.observers.MutationRecordType
 import web.html.HTMLElement
 import zoned.framework.Debugger.debug
+import kotlin.reflect.KClass
 
 
 class EventBus {
@@ -15,15 +16,16 @@ class EventBus {
     private val executionQueue = mutableListOf<Event>()
 
     // actions that should run whenever an event of a given type happens
-    private val eventRegistry = mutableMapOf<EventType, MutableList<(Event) -> Any?>>()
+    val eventRegistry = mutableMapOf<KClass<out Event>, MutableList<(Event) -> Unit>>()
+
 
     // actions associated with components that should run whenever event of a type happens
-    private val componentRegistry = mutableMapOf<EventType, MutableMap<HTMLElement, (Event) -> Unit>>()
+    val componentRegistry = mutableMapOf<KClass<out Event>, MutableMap<HTMLElement, (@UnsafeVariance Event) -> Unit>>()
 
     // event that's currently executing, if any
     private var currentlyExecuting: Event? = null
 
-    private val observers = mutableMapOf<HTMLElement, MutationObserver>()
+    val observers = mutableMapOf<HTMLElement, MutationObserver>()
 
     /**
      * A global event. Use this to subscribe to events if the subscriber is in global state,
@@ -34,8 +36,11 @@ class EventBus {
      *
      * Do not rely on matches firing in any particular order.
      */
-    fun on(eventType: EventType, action: (Event) -> Unit): EventBus {
-        eventRegistry.getOrPut(eventType) { mutableListOf() }.add(action)
+    inline fun <reified T : Event> on(noinline action: (T) -> Unit): EventBus {
+        val eventType = T::class
+
+        @Suppress("UNCHECKED_CAST")
+        eventRegistry.getOrPut(eventType) { mutableListOf() }.add(action as (Event) -> Unit)
         return this
     }
 
@@ -43,8 +48,11 @@ class EventBus {
      * Automatically prunes the event subscription when the component is removed. Also does
      * not add duplicates, so can be called repeatedly for the same component.
      */
-    fun HTMLElement.on(eventType: EventType, action: (Event) -> Unit) {
-        componentRegistry.getOrPut(eventType) { mutableMapOf() }[this] = action
+    inline fun <reified T : Event> HTMLElement.on(noinline action: (T) -> Unit) {
+        val eventType = T::class
+
+        @Suppress("UNCHECKED_CAST")
+        componentRegistry.getOrPut(eventType) { mutableMapOf() }[this] = action as (Event) -> Unit
 
         val observer = MutationObserver { mutations, observer ->
             for (mutation in mutations) {
@@ -103,7 +111,7 @@ class EventBus {
 
     private fun doEvent(event: Event) {
         currentlyExecuting = event
-        val actions = eventRegistry[event.type].orEmpty() + componentRegistry[event.type]?.values.orEmpty()
+        val actions = eventRegistry[event::class].orEmpty() + componentRegistry[event::class]?.values.orEmpty()
 
         debug("Event $event started", eventLog)
 

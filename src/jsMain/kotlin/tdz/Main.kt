@@ -1,6 +1,8 @@
     package tdz
 
 import kotlinx.css.Color
+import tdz.controller.Controller
+import tdz.controller.events.EventBus
 import tdz.model.CanvasName
 import tdz.model.Model
 import zoned.framework.*
@@ -9,10 +11,12 @@ import zoned.framework.routing.Routes
 
 val rootCanvas = CanvasName("_")
 val tdzModel = Model(rootCanvas)
+val eventBus = EventBus()
+val tdzController = Controller(eventBus, tdzModel)
 
 class App {
 
-        object index: Routes<Index>(Index(tdzModel), "/") {
+        object index: Routes<Index>(Index(tdzModel, eventBus), "/") {
             val home = route { "/" to {
                 index(tdzModel.getCanvas(rootCanvas)!!)
             }

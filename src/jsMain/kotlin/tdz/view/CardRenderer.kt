@@ -3,6 +3,8 @@ package tdz.view
 import kotlinx.css.Color
 import kotlinx.html.*
 import tdz.App
+import tdz.controller.events.EventBus
+import tdz.controller.events.TaskToggleDone
 import tdz.model.*
 import tdz.model.card.*
 import web.dom.document
@@ -22,23 +24,24 @@ object CardRenderer {
                                         "㉝", "㉞", "㉟", "㊱", "㊲", "㊳", "㊴", "㊵", "㊶", "㊷", "㊸",
                                         "㊹", "㊺", "㊻", "㊼", "㊽", "㊾", "㊿")
 
-    fun FlowContent.render(cards: List<Card>) {
+    fun FlowContent.render(canvasName: CanvasName, cards: List<Card>, eventBus: EventBus) {
         for (card in cards) {
-            render(card)
+            render(canvasName, card, eventBus)
         }
     }
 
-    private fun FlowContent.render(card: Card) {
+    private fun FlowContent.render(canvasName: CanvasName, card: Card, eventBus: EventBus) {
         div("border-solid border-2 border-sky-500 rounded-md my-4 p-2") {
+            id = "card-${card.metadata.columnId}-${card.index}"
             for (segment in card.segments) {
-                renderSegment(segment, card)
+                renderSegment(canvasName, segment, card, eventBus)
             }
         }
     }
 
-    private fun FlowContent.renderSegment(segment: CardSegment, card: Card) {
+    private fun FlowContent.renderSegment(canvasName: CanvasName, segment: CardSegment, card: Card, eventBus: EventBus) {
         when (segment) {
-            is ListGroup -> renderSegment(segment, card)
+            is ListGroup -> renderSegment(canvasName, segment, card, eventBus)
             is CardListItem -> throw Exception("Didn't expect ungrouped list item")
             is CardHeading -> renderSegment(segment)
             is CardText -> renderSegment(segment, card)
@@ -49,17 +52,17 @@ object CardRenderer {
         }
     }
 
-    fun FlowContent.renderSegment(segment: ListGroup, card: Card) {
+    fun FlowContent.renderSegment(canvasName: CanvasName, segment: ListGroup, card: Card, eventBus: EventBus) {
 
         var index = 0
 
         fun renderListItems(group: ListGroup) {
             for (listMember in group.members) {
                 if (listMember is CardListItem) {
-                    renderSegment(listMember, card, index++)
+                    renderSegment(canvasName, listMember, card, index++, eventBus)
                 } else if (listMember is ListGroup) {
                     // recursive
-                    renderSegment(listMember, card)
+                    renderSegment(canvasName, listMember, card, eventBus)
                 }
             }
         }
@@ -75,7 +78,7 @@ object CardRenderer {
         }
     }
 
-    fun FlowContent.renderSegment(segment: CardListItem, card: Card, index: Int) {
+    fun FlowContent.renderSegment(canvasName: CanvasName, segment: CardListItem, card: Card, index: Int, eventBus: EventBus) {
         div {
 
             label("relative cursor-pointer") {
@@ -109,10 +112,7 @@ object CardRenderer {
             }
 
             onClick { event ->
-//                if (!segment.done) { // becoming done
-//                    addCssClass(CLASS_DONE)
-//                }
-//                eventBus.fire(TaskToggleDone(canvasName, card, segment))
+                eventBus.fire(TaskToggleDone(event, canvasName, card, segment))
                 event.stopPropagation()
                 event.preventDefault()
             }

@@ -177,6 +177,7 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker {
     fun toggleDone(canvasName: CanvasName, card: Card, taskStep: CardListItem) {
         val segments = card.segments.toMutableList()
         val stepIndex = segments.indexOf(taskStep)
+        console.dir(segments)
         segments[stepIndex] = taskStep.copy(done = !taskStep.done)
         replace(canvasName, card, card.copy(segments = segments))
     }
