@@ -1,6 +1,6 @@
 package tdz.model.card
 
-interface LinkText: RichText {
+sealed interface LinkText: RichText {
 
     fun isImage(): Boolean
 

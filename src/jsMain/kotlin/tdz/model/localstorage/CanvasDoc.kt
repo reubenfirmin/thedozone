@@ -67,7 +67,7 @@ data class ColumnLayoutSpecDoc(
             }
             return ColumnLayoutSpecDoc(
                 CanvasName(parts[0]),
-                parts[1].toInt() as ColumnId,
+                parts[1].toInt(),
                 Split.valueOf(parts[2]),
                 (parts[3]).split(",").map { it.toInt() }
             )

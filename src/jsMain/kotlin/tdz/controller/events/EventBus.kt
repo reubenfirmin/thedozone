@@ -2,13 +2,18 @@ package tdz.controller.events
 
 import js.array.asList
 import tdz.eventLog
-import web.dom.observers.MutationObserver
-import web.dom.observers.MutationObserverInit
-import web.dom.observers.MutationRecordType
 import web.html.HTMLElement
+import web.mutation.MutationObserver
+import web.mutation.MutationObserverInit
+import web.mutation.MutationRecordType
 import zoned.framework.Debugger.debug
 import kotlin.reflect.KClass
 
+// Helper to access MutationRecordType.childList - works around Kotlin/JS type inference issues
+// with kotlin-wrappers string-enum companion constants.
+@PublishedApi
+internal val CHILD_LIST: MutationRecordType
+    get() = "childList".asDynamic().unsafeCast<MutationRecordType>()
 
 class EventBus {
 
@@ -56,7 +61,7 @@ class EventBus {
 
         val observer = MutationObserver { mutations, observer ->
             for (mutation in mutations) {
-                if (mutation.type == MutationRecordType.childList) {
+                if (mutation.type == CHILD_LIST) {
                     mutation.removedNodes.asList().find { it == this }?.let {
                         // Element was removed from the DOM
                         componentRegistry[eventType]?.remove(this)

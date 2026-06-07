@@ -83,12 +83,13 @@ data class ParseState(val column: Int,
     fun getCurrentColumn() = currentColumn
 
     fun createCardFromSegments() {
-        if (segmentsBuffer.size > 0) {
-            // lists have no terminator
-            if (inListBlock) {
-                finishList()
-            }
+        // Lists have no terminator: flush any pending list into the segments FIRST, so a
+        // list-only card (whose segmentsBuffer is otherwise empty) isn't dropped.
+        if (inListBlock) {
+            finishList()
+        }
 
+        if (segmentsBuffer.size > 0) {
             val newCard = Card(segmentsBuffer.toList(), CardMetadata(currentColumn), index++)
             cards.add(newCard)
             segmentsBuffer.clear()
@@ -106,10 +107,14 @@ data class ParseState(val column: Int,
 
     fun finalize(): List<Card> {
 
-        // TODO worth testing further what combination of these is reasonable. maybe segments + code || segments + diagram. seems
-        // impossible to have code + diagram
+        // A trailing list has no terminator; flush it into the current card's segments FIRST
+        // so it's included below (previously it was finished AFTER the card was created and lost).
+        if (inListBlock || listBuffer.size > 0) {
+            finishList()
+        }
+
         if (segmentsBuffer.size > 0) {
-            cards.add(Card(segmentsBuffer.toList(), CardMetadata(currentColumn), index))
+            cards.add(Card(segmentsBuffer.toList(), CardMetadata(currentColumn), index++))
         }
 
         // unfinished code is just text
@@ -120,11 +125,6 @@ data class ParseState(val column: Int,
         // unfinished diagram is just text
         if (diagramBuffer.size > 0) {
             cards.add(Card(diagramBuffer.map { CardText(MarkdownLine(it).elements()) }, CardMetadata(currentColumn), index++))
-        }
-
-        // unfinished list is actually list
-        if (listBuffer.size > 0) {
-            finishList()
         }
 
         return cards.toList()

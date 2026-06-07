@@ -1,10 +1,14 @@
 package tdz.model.card
 
+import org.w3c.dom.url.URL
 import tdz.mapLog
 import tdz.model.CanvasName
 import zoned.framework.Debugger.debug
 
 val imageSuffices = setOf(".jpg", ".JPG", ".png", ".PNG", ".gif", ".GIF", ".svg", ".SVG", "jpeg", "JPEG", "webp", "WEBP")
+
+/** Schemes we treat as openable web links when a token parses as an absolute URL in the browser. */
+private val webSchemes = setOf("http:", "https:", "mailto:", "tel:", "ftp:", "ftps:")
 
 /**
  * @param link - the link to something
@@ -40,20 +44,41 @@ class LinkFactory(val link: String, val label: String) {
      */
     fun resolve(): LinkText {
 
-        val label = label.trim().ifEmpty { link.trim() }
-        return if (link.contains("/")) {
-            if (link.length > 4 && link.substring(link.length - 4, link.length) in imageSuffices) {
-                ImageLink(link, label.shorten())
+        val trimmed = link.trim()
+        val label = label.trim().ifEmpty { trimmed }
+        return if (isWebLink(trimmed)) {
+            if (trimmed.length > 4 && trimmed.substring(trimmed.length - 4, trimmed.length) in imageSuffices) {
+                ImageLink(trimmed, label.shorten())
             } else {
-                ExternalLink(link, label.shorten())
+                ExternalLink(trimmed, label.shorten())
             }
         } else {
-            val trimmed = link.trim()
             val mapLink = parseMapString("$trimmed($label)")
 
             mapLink ?: CanvasLink(CanvasName(trimmed), label.shorten())
         }
     }
+
+    /**
+     * A bracketed token is a web link when the browser parses it as an absolute URL with a known web
+     * scheme (`https:`, `mailto:`, ...), or it names a host explicitly (`www.`), or it is a path /
+     * resource (`/`). A bare name with none of these markers (e.g. `google.com` or `My Canvas`) is a
+     * link to another canvas. Using the platform `URL` parser rather than string matching means we
+     * also accept `mailto:`/`tel:` and reject malformed inputs such as `https://` with no host.
+     */
+    private fun isWebLink(candidate: String): Boolean {
+        if (parseAbsoluteWebUrl(candidate) != null) return true
+        if (candidate.startsWith("www.")) return true
+        if (candidate.contains("/")) return true
+        return false
+    }
+
+    private fun parseAbsoluteWebUrl(candidate: String): URL? =
+        try {
+            URL(candidate).takeIf { it.protocol.lowercase() in webSchemes }
+        } catch (e: Throwable) {
+            null
+        }
 }
 
 private fun String.shorten() =

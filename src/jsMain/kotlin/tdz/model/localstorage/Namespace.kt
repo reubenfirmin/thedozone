@@ -4,5 +4,9 @@ package tdz.model.localstorage
 enum class Namespace {
     NEWCANVAS,
     COLUMN,
-    VERSION
+    COLUMN_MODE,
+    VERSION,
+    DROPBOX_CONFIG,
+    SYNC_STATE,
+    THEME
 }
