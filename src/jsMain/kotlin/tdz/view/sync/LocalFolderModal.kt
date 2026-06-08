@@ -29,6 +29,7 @@ class LocalFolderModal(
     private val model: Model,
     private val eventBus: EventBus,
     private val controller: SyncController,
+    private val onDismiss: (() -> Unit)? = null,
 ) {
     private var rootEl: HTMLElement? = null
 
@@ -60,7 +61,7 @@ class LocalFolderModal(
                     justifyContent = JustifyContent.center
                     backgroundColor = SyncColors.modalOverlay
                 }
-                onClick { e -> if (e.target == r.element) hide() }
+                onClick { e -> if (e.target == r.element) (onDismiss ?: { hide() })() }
                 div {   // dialog
                     css {
                         minWidth = 360.px

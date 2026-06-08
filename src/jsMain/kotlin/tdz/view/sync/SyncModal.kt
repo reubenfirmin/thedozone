@@ -42,6 +42,7 @@ class SyncModal(
     private val model: Model,
     private val eventBus: EventBus,
     private val controller: SyncController,
+    private val onDismiss: (() -> Unit)? = null,
 ) {
     private var rootEl: HTMLElement? = null
     private var shownConnected = false
@@ -84,7 +85,7 @@ class SyncModal(
                     justifyContent = JustifyContent.center
                     backgroundColor = SyncColors.modalOverlay
                 }
-                onClick { e -> if (e.target == r.element) hide() }
+                onClick { e -> if (e.target == r.element) (onDismiss ?: { hide() })() }
                 div {   // dialog
                     css {
                         minWidth = 360.px
