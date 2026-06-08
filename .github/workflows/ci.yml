@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Ref of reubenfirmin/zoned to build the private 1.0-SNAPSHOT artifacts from.
+  # Pin to a commit SHA here if master drift ever breaks the build.
+  ZONED_REF: master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout thedozone2
+        uses: actions/checkout@v4
+        with:
+          path: thedozone2
+
+      - name: Checkout zoned
+        uses: actions/checkout@v4
+        with:
+          repository: reubenfirmin/zoned
+          ref: ${{ env.ZONED_REF }}
+          path: zoned
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Chrome (for Karma headless tests)
+        uses: browser-actions/setup-chrome@v1
+        id: setup-chrome
+
+      - name: Export CHROME_BIN
+        run: echo "CHROME_BIN=${{ steps.setup-chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
+
+      # zoned's root build applies its own Gradle plugin, so it can't configure
+      # until that plugin exists in a repo. Bootstrap by publishing :gradle-plugin
+      # with self-application temporarily disabled, restore, then publish the rest.
+      - name: Publish zoned artifacts to Maven Local
+        working-directory: zoned
+        run: |
+          chmod +x ./gradlew
+          sed -i 's#id("io.4rc.zoned.plugin")#// id("io.4rc.zoned.plugin")#' build.gradle.kts
+          ./gradlew --no-daemon :gradle-plugin:publishToMavenLocal
+          git checkout -- build.gradle.kts
+          ./gradlew --no-daemon publishToMavenLocal
+
+      - name: Build, test, and assemble site
+        working-directory: thedozone2
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon build-style build jsBrowserDistribution
+
+      - name: Upload site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: thedozone2/build/dist/js/productionExecutable
+          if-no-files-found: error
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            thedozone2/build/test-results/**/*.xml
+            thedozone2/build/reports/tests/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout thedozone2 (for wrangler.jsonc)
+        uses: actions/checkout@v4
+
+      - name: Download site artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: build/dist/js/productionExecutable
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Deploy to beta.do.zone
+        run: npx --yes wrangler@latest deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

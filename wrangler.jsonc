@@ -1,0 +1,18 @@
+{
+  // Cloudflare Worker serving thedozone2 as static assets on beta.do.zone.
+  // Deployed by .github/workflows/ci.yml via `npx wrangler deploy`.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "thedozone2-beta",
+  "compatibility_date": "2026-06-07",
+  "assets": {
+    // The full site assembled by `./gradlew jsBrowserDistribution`.
+    "directory": "build/dist/js/productionExecutable",
+    // SPA: serve index.html for unmatched routes instead of 404.
+    "not_found_handling": "single-page-application"
+  },
+  // Attach the custom domain. Wrangler creates the DNS record on deploy,
+  // provided do.zone is an active zone in the target Cloudflare account.
+  "routes": [
+    { "pattern": "beta.do.zone", "custom_domain": true }
+  ]
+}

@@ -46,3 +46,9 @@ bin/
 
 # Zoned generated files
 watch.sh
+
+# Wrangler / Cloudflare local state
+.wrangler/
+.dev.vars
+
+docs
