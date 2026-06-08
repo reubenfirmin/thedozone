@@ -38,4 +38,10 @@ object SyncBootstrap {
 
         controller.start()   // no-ops when not configured
     }
+
+    /** Hide any open sync modal — used by the canvas route when returning from a /settings route. */
+    fun dismissModals() {
+        if (::modal.isInitialized) modal.hide()
+        if (::localFolderModal.isInitialized) localFolderModal.hide()
+    }
 }

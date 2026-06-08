@@ -159,6 +159,14 @@ class Index(val model: Model, val eventBus: EventBus) {
                 kotlinx.browser.window.open("/docs/card-formatting.html", "_blank")
                 handled = true
             }
+            // Escape closes an open overlay route (help/settings) by navigating back to the canvas.
+            else if (keyEvent.key == "Escape") {
+                val p = kotlinx.browser.window.location.pathname
+                if (p.startsWith("/help") || p.startsWith("/settings")) {
+                    Router.navigate(currentCanvasUrl())
+                    handled = true
+                }
+            }
 
             if (handled) {
                 event.preventDefault()
