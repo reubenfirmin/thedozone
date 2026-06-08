@@ -60,8 +60,15 @@ class Index(val model: Model, val eventBus: EventBus) {
      * use bare canvas-link syntax outside code fences — CardRenderer's canvas-link onMount registers
      * a drop zone against the LIVE canvas regardless of the bus, so such links would be a latent trap.
      */
+    /** Dismiss any overlay/modal layered on the canvas (the #overlay layer and the sync modals). */
+    private fun closeOverlays() {
+        tdz.view.Overlay.clear()
+        tdz.sync.SyncBootstrap.dismissModals()
+    }
+
     fun openHelp(topic: tdz.view.help.HelpTopic) {
         ensureCanvasMounted()
+        closeOverlays()
         tdz.view.Overlay.show(topic.title) {
             with(tdz.view.CardRenderer) {
                 render(CanvasName("_help"), tdz.model.markdown.MarkdownService.fromMd(topic.markdown).flatten(), helpEventBus)
@@ -76,13 +83,13 @@ class Index(val model: Model, val eventBus: EventBus) {
 
     fun openSyncSettings() {
         ensureCanvasMounted()
-        tdz.sync.SyncBootstrap.dismissModals()
+        closeOverlays()
         tdz.sync.SyncBootstrap.modal.show()
     }
 
     fun openFolderSettings() {
         ensureCanvasMounted()
-        tdz.sync.SyncBootstrap.dismissModals()
+        closeOverlays()
         tdz.sync.SyncBootstrap.localFolderModal.show()
     }
 
@@ -228,8 +235,7 @@ class Index(val model: Model, val eventBus: EventBus) {
             }
         }
         // Returning to a canvas route always dismisses any open overlay/modal layered on top.
-        tdz.view.Overlay.clear()
-        tdz.sync.SyncBootstrap.dismissModals()
+        closeOverlays()
 
         // Idempotent: if this exact canvas is already mounted, don't tear down and rebuild the
         // board (that would lose scroll/focus). Opening/closing an overlay reuses the live board.

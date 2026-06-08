@@ -26,7 +26,7 @@ class App {
             val home = route { "/" to {
                 index(tdzModel.currentCanvas())
             }
-        }
+        }.title { "The Do Zone" }
         val canvas = route(mode = RenderMode.PARTIAL) {
             "/{canvas...}" to { params ->
                 val segments = params.segments("canvas")
@@ -39,10 +39,16 @@ class App {
                     index(canvas)
                 }
             }
+        }.title { params ->
+            params.segments("canvas").lastOrNull()?.let { "$it — The Do Zone" } ?: "The Do Zone"
         }
 
         val help = route(mode = RenderMode.PARTIAL) {
             "/help" to { Router.navigate("/help/shortcuts") }
+        }
+
+        val settings = route(mode = RenderMode.PARTIAL) {
+            "/settings" to { Router.navigate("/settings/sync") }
         }
 
         val helpShortcuts = route(mode = RenderMode.PARTIAL) {
