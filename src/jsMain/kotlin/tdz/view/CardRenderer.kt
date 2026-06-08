@@ -132,6 +132,7 @@ object CardRenderer {
             is CardText -> renderSegment(segment, card, eventBus)
             is Callout -> renderSegment(segment, card, eventBus)
             is CardCodeBlock -> renderRichText(segment)
+            is Blockquote -> renderRichText(segment)
             is CardDiagram -> renderSegment(segment, card)
             is IgnoreMe -> renderSegment() to {}
             else -> throw Exception("No handler for $segment")
@@ -453,6 +454,7 @@ object CardRenderer {
         // TODO this is silly
         when (value) {
             is CardCodeBlock -> renderRichText(value)
+            is Blockquote -> renderRichText(value)
             is LinkText -> renderRichText(value, eventBus)
             is Text -> renderRichText(value)
         }
@@ -464,6 +466,42 @@ object CardRenderer {
             code {
                 +codeBlock.text
             }
+        }
+    }
+
+    /** A quote box (`> ...` lines) with a built-in copy button that copies the raw text. */
+    private fun FlowContent.renderRichText(blockquote: Blockquote) {
+        val theme = ThemeManager.current
+        blockQuote {
+            css {
+                position = Position.relative
+                margin = Margin(8.px, 0.px)
+                padding = Padding(8.px, 40.px, 8.px, 12.px)   // right padding leaves room for the button
+                borderLeft = Border(3.px, BorderStyle.solid, theme.menuBorder)
+                backgroundColor = Color("rgba(127,127,127,0.08)")
+                borderRadius = 3.px
+                whiteSpace = WhiteSpace.preWrap
+                fontFamily = "monospace"
+            }
+            button {
+                +"⧉"
+                attributes["title"] = "Copy"
+                css {
+                    position = Position.absolute
+                    top = 4.px
+                    right = 4.px
+                    backgroundColor = Color.transparent
+                    borderStyle = BorderStyle.none
+                    cursor = Cursor.pointer
+                    color = theme.fg
+                    fontSize = 15.px
+                }
+                onClick {
+                    kotlinx.browser.window.navigator.asDynamic().clipboard.writeText(blockquote.text)
+                    Unit
+                }
+            }
+            +blockquote.text
         }
     }
 
