@@ -64,7 +64,7 @@ object Overlay {
                         backgroundColor = theme.appBg
                         color = theme.fg
                         fontFamily = theme.fontFamily
-                        border = Border(1.px, BorderStyle.solid, theme.fg)
+                        border = Border(1.px, BorderStyle.solid, theme.menuBorder)
                         borderRadius = 8.px
                         overflow = Overflow.hidden
                     }
@@ -74,7 +74,7 @@ object Overlay {
                             alignItems = Align.center
                             justifyContent = JustifyContent.spaceBetween
                             padding = Padding(12.px, 16.px)
-                            borderBottom = Border(1.px, BorderStyle.solid, theme.fg)
+                            borderBottom = Border(1.px, BorderStyle.solid, theme.menuBorder)
                         }
                         div { +title }
                         button {

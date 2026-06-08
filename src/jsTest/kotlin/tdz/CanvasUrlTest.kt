@@ -15,4 +15,10 @@ class CanvasUrlTest {
         // "a" and "b" are already normalized, so they pass through unchanged.
         assertEquals("/a/b", canvasUrlFromPath(listOf(CanvasName("a"), CanvasName("b"))))
     }
+
+    @Test
+    fun `segments are normalized in the url`() {
+        // "My Board" normalizes to "My-Board" (spaces become hyphens), proving normalization is applied.
+        assertEquals("/My-Board", canvasUrlFromPath(listOf(CanvasName("My Board"))))
+    }
 }
