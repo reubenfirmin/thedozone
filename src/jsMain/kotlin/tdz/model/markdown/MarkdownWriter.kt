@@ -25,9 +25,13 @@ internal object MarkdownWriter {
                         lastSegment = segment
                         result
                     }
+                    // The parser groups list items into a ListGroup; render each member as a line
+                    // (recursively for nested groups). Without this, writing a list card threw.
+                    is ListGroup -> renderListGroup(segment)
                     is CardHeading -> "${"#".repeat(segment.level)}${segment.text}"
                     is CardCodeBlock -> segment.toMarkdown()
                     is CardText -> renderRichText(segment.text)
+                    is Callout -> "${"  ".repeat(segment.level)}${"-".repeat(segment.weight)} ${renderRichText(segment.text)}"
                     is CardDiagram -> "---\n${segment.text}\n---"
                     is IgnoreMe -> ""
                     else -> throw Exception("Not supported: $segment")
@@ -39,6 +43,26 @@ internal object MarkdownWriter {
             }
         }
         return output.toString()
+    }
+
+    /** Render a list group to markdown lines, mirroring the parser's grouping (recurses into subgroups). */
+    private fun renderListGroup(group: ListGroup): String {
+        val lines = mutableListOf<String>()
+        var lastItem: CardListItem? = null
+        fun walk(g: ListGroup) {
+            for (member in g.members) {
+                when (member) {
+                    is CardListItem -> {
+                        lines.add("${"  ".repeat(member.level)}${bulletText(member, lastItem)} ${doneText(member)}${renderRichText(member.text)}")
+                        lastItem = member
+                    }
+                    is ListGroup -> walk(member)
+                    else -> {}
+                }
+            }
+        }
+        walk(group)
+        return lines.joinToString("\n")
     }
 
     private fun renderRichText(values: List<RichText>): String {

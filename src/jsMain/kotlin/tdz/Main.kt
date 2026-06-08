@@ -1,39 +1,50 @@
     package tdz
 
 import kotlinx.css.Color
+import tdz.controller.Controller
+import tdz.controller.DragDrop
+import tdz.controller.events.EventBus
 import tdz.model.CanvasName
 import tdz.model.Model
+import tdz.view.theme.ThemeManager
+import tdz.view.theme.themes
 import zoned.framework.*
+import zoned.framework.libs.initLeaflet
+import zoned.framework.routing.RenderMode
 import zoned.framework.routing.Router
 import zoned.framework.routing.Routes
 
 val rootCanvas = CanvasName("_")
 val tdzModel = Model(rootCanvas)
+val eventBus = EventBus()
+val tdzController = Controller(eventBus, tdzModel)
+val tdzDragDrop = DragDrop(tdzModel, eventBus)
 
 class App {
 
-        object index: Routes<Index>(Index(tdzModel), "/") {
+        object index: Routes<Index>(Index(tdzModel, eventBus), "/") {
             val home = route { "/" to {
-                index(tdzModel.getCanvas(rootCanvas)!!)
+                index(tdzModel.currentCanvas())
             }
         }
-        val canvas = route {
-            "/{canvas}" to {
-                params -> {
-                    val canvas = tdzModel.getCanvas(CanvasName(params["canvas"]!!))
-                    if (canvas == null) {
-                        Router.navigate("/")
-                    } else {
-                        index(canvas)
-                    }
+        val canvas = route(mode = RenderMode.PARTIAL) {
+            "/{canvas...}" to { params ->
+                val segments = params.segments("canvas")
+                val canvasName = segments.lastOrNull() ?: ""
+
+                val canvas = tdzModel.getCanvas(CanvasName(canvasName))
+                if (canvas == null) {
+                    Router.navigate("/")
+                } else {
+                    index(canvas)
                 }
             }
         }
     }
 
     init {
-        // turn off for production builds
-        Debugger.debugOn()
+        // Debug mode off. Re-enable Debugger.debugOn() to show the column-number watermark + debug logs.
+        // Debugger.debugOn()
         // hacky. init
         listOf(index).forEach { _ ->
             console
@@ -42,8 +53,12 @@ class App {
 }
 
 fun main() {
+    initLeaflet()
+    // Restore the saved theme before the first render so its colours/font apply immediately.
+    tdzModel.getTheme()?.let { saved -> themes.firstOrNull { it.name == saved } }?.let { ThemeManager.use(it) }
     App()
     Router.start()
+    tdz.sync.SyncBootstrap.init(tdzModel, eventBus)
 }
 
 const val ACE_TAB_SIZE = 2

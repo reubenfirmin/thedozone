@@ -8,6 +8,7 @@ import tdz.model.markdown.MarkdownCardMetadata.consumeMetadataLine
 import tdz.model.markdown.MarkdownCodeBlock.consumeCodeBlock
 import tdz.model.markdown.MarkdownDiagram.consumeDiagram
 import tdz.model.markdown.MarkdownHeading.consumeHeading
+import tdz.model.markdown.MarkdownListElement.consumeCallout
 import tdz.model.markdown.MarkdownListElement.consumeListElement
 import tdz.model.markdown.MarkdownWhitespace.consumeEmptyLine
 import tdz.model.markdown.MarkdownWhitespace.consumeSeparator
@@ -18,6 +19,9 @@ import tdz.model.markdown.MarkdownWhitespace.consumeSeparator
 internal object MarkdownReader {
 
     val metadataLine = "[\\t ]*<!--([0-9]+):([0-9])-->".toRegex()
+
+    /** Column-level style header (wallpaper/colour) — skipped when parsing cards; see MarkdownService. */
+    val columnStyleLine = "[\\t ]*<!--tdz-col:.*-->[\\t ]*".toRegex()
 
     /*
 
@@ -59,12 +63,14 @@ internal object MarkdownReader {
 
             when {
                 // note that these are order dependent
+                columnStyleLine.matches(trimmed) -> {}   // column-level style header — not a card
                 consumeCodeBlock(trimmed, line, state) -> {}
                 consumeDiagram(trimmed, state) -> {}
                 consumeMetadataLine(trimmed, state) -> {}
                 consumeSeparator(trimmed, state) -> {}
                 consumeEmptyLine(trimmed, state) -> {}
                 consumeListElement(line, state) -> {}
+                consumeCallout(line, state) -> {}
                 consumeHeading(trimmed, state) -> {}
                 else -> {
                     // just rich text

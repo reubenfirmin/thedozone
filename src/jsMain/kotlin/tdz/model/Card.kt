@@ -6,9 +6,26 @@ data class CardMetadata(val columnId: Int)
 
 data class Card(val segments: List<CardSegment>, val metadata: CardMetadata, val index: Int) {
 
+    /**
+     * A copy with every completed checklist item removed and now-empty list groups pruned.
+     * Structurally equal to the original when nothing is done, so callers can detect a no-op
+     * via equality. Done items live inside [ListGroup]s, so the removal recurses into them.
+     */
+    fun withoutDoneItems(): Card =
+        copy(segments = segments.mapNotNull { segment ->
+            when (segment) {
+                is CardListItem -> segment.takeUnless { it.done }   // defensive: a bare list item
+                is ListGroup -> segment.withoutDoneItems()
+                else -> segment
+            }
+        })
+
     fun headingOnly() = segments.filterNot { it is CardHeading }.isEmpty()
 
-    fun infoOnly() = segments.filterNot { it is CardText || it is CardHeading }.isEmpty()
+    /** A "title" card: its only content is a single level-1 heading (e.g. `# Tracking`). */
+    fun isH1Only() = segments.size == 1 && (segments[0] as? CardHeading)?.level == 1
+
+    fun infoOnly() = segments.filterNot { it is CardText || it is CardHeading || it is Callout }.isEmpty()
 
     fun isCanvasLink() = link()?.isCanvasLink() ?: false
 
@@ -39,6 +56,17 @@ data class Card(val segments: List<CardSegment>, val metadata: CardMetadata, val
     }
 
     companion object {
+        /**
+         * The cards visually "under" the h1-only card at [h1Index] in this column-ordered list:
+         * the contiguous run after it up to (but not including) the next h1-only card or the end
+         * of the column. The h1 itself is not included. Empty if [h1Index] is out of range or the
+         * card there is not h1-only. Used to drag a section header together with its cards.
+         */
+        fun List<Card>.cardsUnderH1(h1Index: Int): List<Card> {
+            if (h1Index !in indices || !this[h1Index].isH1Only()) return emptyList()
+            return drop(h1Index + 1).takeWhile { !it.isH1Only() }
+        }
+
         /**
          * @return column to card index in column
          */

@@ -23,6 +23,21 @@ data class ListGroup(
 
 interface ListMember {}
 
+/**
+ * Remove completed ([CardListItem.done]) items from this group, recursing into nested groups.
+ * Returns null when no members remain, so callers can drop the now-empty group entirely.
+ */
+fun ListGroup.withoutDoneItems(): ListGroup? {
+    val remaining = members.mapNotNull { member ->
+        when (member) {
+            is CardListItem -> member.takeUnless { it.done }
+            is ListGroup -> member.withoutDoneItems()
+            else -> member
+        }
+    }
+    return if (remaining.isEmpty()) null else copy(members = remaining)
+}
+
 fun List<CardListItem>.toGroup(): ListGroup {
     if (isEmpty()) {
         return ListGroup(emptyList(), ListMemberType.BULLET, 0)
