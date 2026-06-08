@@ -54,14 +54,25 @@ class Index(val model: Model, val eventBus: EventBus) {
         }
     }
 
+    /**
+     * Render a help topic as read-only cards in the overlay. Uses [helpEventBus] (inert) so the
+     * help content's interactive affordances never mutate real state. NOTE: help markdown must not
+     * use bare canvas-link syntax outside code fences — CardRenderer's canvas-link onMount registers
+     * a drop zone against the LIVE canvas regardless of the bus, so such links would be a latent trap.
+     */
     fun openHelp(topic: tdz.view.help.HelpTopic) {
         ensureCanvasMounted()
         tdz.view.Overlay.show(topic.title) {
             with(tdz.view.CardRenderer) {
-                render(CanvasName("_help"), tdz.model.markdown.MarkdownService.fromMd(topic.markdown).flatten(), eventBus)
+                render(CanvasName("_help"), tdz.model.markdown.MarkdownService.fromMd(topic.markdown).flatten(), helpEventBus)
             }
         }
     }
+
+    // Help content is read-only: render its cards through an inert bus with no subscribers, so
+    // interactions (task-toggle, canvas-link navigation) fired by CardRenderer never reach the
+    // live controller/model (which would mutate or throw against the synthetic "_help" canvas).
+    private val helpEventBus = EventBus()
 
     private var currentColumns: CanvasColumns? = null
     private val downloader = Downloader(model)

@@ -41,6 +41,10 @@ class App {
             }
         }
 
+        val help = route(mode = RenderMode.PARTIAL) {
+            "/help" to { Router.navigate("/help/shortcuts") }
+        }
+
         val helpShortcuts = route(mode = RenderMode.PARTIAL) {
             "/help/shortcuts" to { openHelp(tdz.view.help.HelpTopic.SHORTCUTS) }
         }.title { "Keyboard Shortcuts" }
