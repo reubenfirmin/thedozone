@@ -27,13 +27,19 @@ object SyncBootstrap {
         val dismiss: () -> Unit = { zoned.framework.routing.Router.navigate(tdz.App.index.resource.currentCanvasUrl()) }
         modal = SyncModal(model, eventBus, controller, onDismiss = dismiss)
         localFolderModal = LocalFolderModal(model, eventBus, controller, onDismiss = dismiss)
-        SyncIndicator(eventBus) { zoned.framework.routing.Router.navigate("/settings/sync") }.attach()
+        SyncIndicator(eventBus) {
+            if (kotlinx.browser.window.location.pathname != "/settings/sync") {
+                zoned.framework.routing.Router.navigate("/settings/sync")
+            }
+        }.attach()
 
         document.addEventListener("keydown", { event ->
             val e = event as KeyboardEvent
             if (e.ctrlKey && e.shiftKey && (e.key == "D" || e.key == "d")) {
                 e.preventDefault()
-                zoned.framework.routing.Router.navigate("/settings/sync")
+                if (kotlinx.browser.window.location.pathname != "/settings/sync") {
+                    zoned.framework.routing.Router.navigate("/settings/sync")
+                }
             }
         })
 

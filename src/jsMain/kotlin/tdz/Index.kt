@@ -76,11 +76,13 @@ class Index(val model: Model, val eventBus: EventBus) {
 
     fun openSyncSettings() {
         ensureCanvasMounted()
+        tdz.sync.SyncBootstrap.dismissModals()
         tdz.sync.SyncBootstrap.modal.show()
     }
 
     fun openFolderSettings() {
         ensureCanvasMounted()
+        tdz.sync.SyncBootstrap.dismissModals()
         tdz.sync.SyncBootstrap.localFolderModal.show()
     }
 
