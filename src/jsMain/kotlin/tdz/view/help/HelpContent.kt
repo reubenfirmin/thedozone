@@ -68,22 +68,16 @@ object HelpContent {
         > Post office before 5pm
         That's the only structural rule: blank line = new card. Everything else is about what you put inside a card.
 
-        ## Simple cards
-        Start a card with a heading using #, and add sub-headings with ##. Plain lines are just text.
+        ## Headings & sections
+        Title a card with a # heading and plain lines beneath it are just text. The structure we recommend, though, is a single # heading alone on its own card — a section header — followed by a series of cards that each carry one ## heading. The ## cards group under the # header, so dragging the header moves the whole section as one block (the group runs until the next # header).
         > # Trip planning
+        >
         > ## Flights
         > Outbound Friday, return Sunday night.
+        >
         > ## Hotel
         > Something near the old town.
-        A card whose only content is a single # heading becomes a section header. It groups every card beneath it, down to the next single-heading card, so dragging the header moves the whole section as one block.
-        > # This week
-        >
-        > * Finish the deck
-        >
-        > # Later
-        >
-        > * Repaint the fence
-        Here "This week" and "Later" are two section headers. Drag "This week" and its task travels with it.
+        That's three cards: the "Trip planning" section header, then "Flights" and "Hotel" beneath it. Drag "Trip planning" and both come along.
 
         ## Tasks & checklists
         Lines that start with * (or +) become checkable tasks. Click the checkbox in card view to complete one. In the editor you can mark a task done by putting a / right after the bullet (not that you'd ever need to; just click the checkbox).
