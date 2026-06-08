@@ -33,7 +33,7 @@ interface CanvasMenuActions {
     fun downloadPng()             // rasterize the canvas to a .png image
     fun uploadNewCanvas()         // pick a .tdz file and import it as a new canvas
     fun uploadCardsHere()         // pick a .tdz file and merge its cards into the current canvas
-    fun openDoc(path: String)     // open a help doc (static /docs/*.html) in a new browser tab
+    fun openDoc(path: String)     // navigate to an in-app help route (e.g. /help/shortcuts)
 }
 
 private val STUB: () -> Unit = {}
@@ -116,11 +116,11 @@ fun canvasSections(
                 label = "Documentation",
                 submenu = listOf(
                     MenuItem(label = "Release Notes",
-                        onSelect = { actions.openDoc("/docs/release-notes.html") }),
+                        onSelect = { actions.openDoc("/help/release-notes") }),
                     MenuItem(label = "Keyboard Shortcuts", shortcut = "F1",
-                        onSelect = { actions.openDoc("/docs/keyboard-shortcuts.html") }),
+                        onSelect = { actions.openDoc("/help/shortcuts") }),
                     MenuItem(label = "Card Formatting", shortcut = "F2",
-                        onSelect = { actions.openDoc("/docs/card-formatting.html") }),
+                        onSelect = { actions.openDoc("/help/formatting") }),
                 ),
             ),
         ),
@@ -174,7 +174,7 @@ fun canvasMenu(
         }
         override fun uploadNewCanvas() { uploader.upload(ImportMode.NEW_CANVAS) }
         override fun uploadCardsHere() { uploader.upload(ImportMode.HERE) }
-        override fun openDoc(path: String) { kotlinx.browser.window.open(path, "_blank") }
+        override fun openDoc(path: String) { zoned.framework.routing.Router.navigate(path) }
     }
     canvasSections(mode, actions, tdz.sync.local.HandleStore.supported())
 }

@@ -35,6 +35,7 @@ import zoned.framework.interop.css
 import zoned.framework.interop.getHtmlElement
 import zoned.framework.interop.clear
 import zoned.framework.interop.appendTo
+import zoned.framework.interop.addToBody
 import zoned.framework.routing.Router
 
 /** Build a canvas URL from a resolved hierarchy path. Pure; unit-tested. */
@@ -45,6 +46,22 @@ class Index(val model: Model, val eventBus: EventBus) {
 
     fun canvasUrl(name: CanvasName): String = canvasUrlFromPath(model.path(name))
     fun currentCanvasUrl(): String = canvasUrl(model.currentCanvas().name)
+
+    /** Render the current canvas into the body if nothing is mounted (e.g. cold deep-link). */
+    private fun ensureCanvasMounted() {
+        if (getHtmlElement("app-container") == null) {
+            addToBody { index(model.currentCanvas()) }
+        }
+    }
+
+    fun openHelp(topic: tdz.view.help.HelpTopic) {
+        ensureCanvasMounted()
+        tdz.view.Overlay.show(topic.title) {
+            with(tdz.view.CardRenderer) {
+                render(CanvasName("_help"), tdz.model.markdown.MarkdownService.fromMd(topic.markdown).flatten(), eventBus)
+            }
+        }
+    }
 
     private var currentColumns: CanvasColumns? = null
     private val downloader = Downloader(model)
@@ -150,13 +167,13 @@ class Index(val model: Model, val eventBus: EventBus) {
                 showCanvasSwitcher(model, eventBus)
                 handled = true
             }
-            // F1 / F2 open the corresponding help docs in a new tab.
+            // F1 / F2 open the corresponding help docs as in-app overlay routes.
             else if (keyEvent.key == "F1") {
-                kotlinx.browser.window.open("/docs/keyboard-shortcuts.html", "_blank")
+                Router.navigate("/help/shortcuts")
                 handled = true
             }
             else if (keyEvent.key == "F2") {
-                kotlinx.browser.window.open("/docs/card-formatting.html", "_blank")
+                Router.navigate("/help/formatting")
                 handled = true
             }
             // Escape closes an open overlay route (help/settings) by navigating back to the canvas.

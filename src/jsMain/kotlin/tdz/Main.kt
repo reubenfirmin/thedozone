@@ -40,6 +40,18 @@ class App {
                 }
             }
         }
+
+        val helpShortcuts = route(mode = RenderMode.PARTIAL) {
+            "/help/shortcuts" to { openHelp(tdz.view.help.HelpTopic.SHORTCUTS) }
+        }.title { "Keyboard Shortcuts" }
+
+        val helpFormatting = route(mode = RenderMode.PARTIAL) {
+            "/help/formatting" to { openHelp(tdz.view.help.HelpTopic.FORMATTING) }
+        }.title { "Card Formatting" }
+
+        val helpReleaseNotes = route(mode = RenderMode.PARTIAL) {
+            "/help/release-notes" to { openHelp(tdz.view.help.HelpTopic.RELEASE_NOTES) }
+        }.title { "Release Notes" }
     }
 
     init {
