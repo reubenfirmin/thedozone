@@ -187,6 +187,17 @@ class Index(val model: Model, val eventBus: EventBus) {
                 fontSize = theme.baseFontSize
             }
         }
+        // Returning to a canvas route always dismisses any open overlay/modal layered on top.
+        tdz.view.Overlay.clear()
+        tdz.sync.SyncBootstrap.dismissModals()
+
+        // Idempotent: if this exact canvas is already mounted, don't tear down and rebuild the
+        // board (that would lose scroll/focus). Opening/closing an overlay reuses the live board.
+        val existing = getHtmlElement("app-container")
+        if (existing != null && currentCanvas?.name == canvas.name) {
+            return
+        }
+
         currentCanvas = canvas
 
         // The canvas route is PARTIAL (zoned appends rather than clearing the body), so remove any
