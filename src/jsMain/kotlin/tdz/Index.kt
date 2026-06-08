@@ -37,7 +37,14 @@ import zoned.framework.interop.clear
 import zoned.framework.interop.appendTo
 import zoned.framework.routing.Router
 
+/** Build a canvas URL from a resolved hierarchy path. Pure; unit-tested. */
+fun canvasUrlFromPath(path: List<CanvasName>): String =
+    if (path.isEmpty()) "/" else "/" + path.joinToString("/") { it.normalized() }
+
 class Index(val model: Model, val eventBus: EventBus) {
+
+    fun canvasUrl(name: CanvasName): String = canvasUrlFromPath(model.path(name))
+    fun currentCanvasUrl(): String = canvasUrl(model.currentCanvas().name)
 
     private var currentColumns: CanvasColumns? = null
     private val downloader = Downloader(model)
@@ -88,9 +95,7 @@ class Index(val model: Model, val eventBus: EventBus) {
             model.changeCanvas(canvasName)
 
             // Update URL with hierarchical path
-            val path = model.path(canvasName)
-            val url = "/" + path.joinToString("/") { it.normalized() }
-            Router.navigate(url)
+            Router.navigate(canvasUrl(canvasName))
         }
     }
 
