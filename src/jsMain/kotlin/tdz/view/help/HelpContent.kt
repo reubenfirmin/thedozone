@@ -153,6 +153,12 @@ object HelpContent {
         > - Double-check the env vars first
         > -- Do not run this on a Friday
         Remember: * and + make checkable tasks, while - makes a callout. That's the one easy thing to mix up.
+
+        ## Blockquotes
+        Prefix lines with > to set them off as a blockquote. It renders as a boxed snippet with a copy button in the corner, so it's the right tool for anything a reader should grab verbatim — in fact every example on this page is a blockquote.
+        > > To be, or not to be,
+        > > that is the question.
+        The contents are shown exactly as typed: Markdown inside a blockquote is not reprocessed, so it's also how you show example syntax without it turning into real cards, tasks, or links.
     """.trimIndent()
 
     val RELEASE_NOTES = """

@@ -71,7 +71,7 @@ class Index(val model: Model, val eventBus: EventBus) {
         closeOverlays()
         tdz.view.Overlay.show(topic.title) {
             with(tdz.view.CardRenderer) {
-                render(CanvasName("_help"), tdz.model.markdown.MarkdownService.fromMd(topic.markdown).flatten(), helpEventBus)
+                render(CanvasName("_help"), tdz.model.markdown.MarkdownService.fromMd(topic.markdown).flatten(), helpEventBus, loose = true)
             }
         }
     }

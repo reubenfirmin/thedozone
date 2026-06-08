@@ -45,14 +45,19 @@ object CardRenderer {
                                         "㉝", "㉞", "㉟", "㊱", "㊲", "㊳", "㊴", "㊵", "㊶", "㊷", "㊸",
                                         "㊹", "㊺", "㊻", "㊼", "㊽", "㊾", "㊿")
 
-    fun FlowContent.render(canvasName: CanvasName, cards: List<Card>, eventBus: EventBus) {
+    /**
+     * Render a stack of cards. [loose] opens up the vertical rhythm — more space between cards and
+     * between the segments within a card — for reading-oriented surfaces like the help overlay,
+     * which feel cramped at the app's default (dense) spacing.
+     */
+    fun FlowContent.render(canvasName: CanvasName, cards: List<Card>, eventBus: EventBus, loose: Boolean = false) {
         console.log("CardRenderer.render called with ${cards.size} cards for canvas $canvasName")
         for (card in cards) {
-            render(canvasName, card, eventBus)
+            render(canvasName, card, eventBus, loose)
         }
     }
 
-    private fun FlowContent.render(canvasName: CanvasName, card: Card, eventBus: EventBus) {
+    private fun FlowContent.render(canvasName: CanvasName, card: Card, eventBus: EventBus, loose: Boolean) {
         val t = ThemeManager.current
         // TUI: a non-title card's leading heading becomes the panel's title, sitting in the top
         // border line (┌─ title ─┐). h1-only cards are excluded — they get the chromeless label
@@ -71,6 +76,8 @@ object CardRenderer {
             ensureCardStyles()   // injects only the bits css{} can't express (line-height, elevation, flourish, header)
             css {
                 margin = Margin(t.cardMargin)
+                // Loose mode adds breathing room between stacked cards (e.g. the help overlay).
+                if (loose) marginBottom = 24.px
                 // A header strip is full-bleed, so its card drops top padding (the strip supplies it).
                 padding = if (stripTitle != null) Padding(0.px) else Padding(t.cardPadding)
                 if (chromeless) {
@@ -115,7 +122,15 @@ object CardRenderer {
             val body: FlowContent.() -> Unit = {
                 for (segment in card.segments) {
                     if (segment === frameTitle || segment === stripTitle) continue
-                    renderSegment(canvasName, segment, card, eventBus)
+                    if (loose) {
+                        // Loose mode spaces segments apart (heading / text / quote sit too close by default).
+                        div {
+                            css { marginBottom = 12.px }
+                            renderSegment(canvasName, segment, card, eventBus)
+                        }
+                    } else {
+                        renderSegment(canvasName, segment, card, eventBus)
+                    }
                 }
                 // Ornamental centered divider at the foot of content cards (not h1-only title cards).
                 if (t.cardFooterFlourish && !chromeless) div("tdz-card-flourish") {}
