@@ -163,8 +163,8 @@ fun canvasMenu(
             // structural=false: a theme switch is purely local UI — it must not push to sync.
             eventBus.fire(RefreshCanvas(model.currentCanvas().name, structural = false))
         }
-        override fun openCloudSync() { tdz.sync.SyncBootstrap.modal.show() }
-        override fun openLocalFolderSync() { tdz.sync.SyncBootstrap.localFolderModal.show() }
+        override fun openCloudSync() { zoned.framework.routing.Router.navigate("/settings/sync") }
+        override fun openLocalFolderSync() { zoned.framework.routing.Router.navigate("/settings/folder") }
         override fun downloadPng() {
             val name = model.currentCanvas().name
             PngExporter().export("app-container", "${name.normalized()}.png") {

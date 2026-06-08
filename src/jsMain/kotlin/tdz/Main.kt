@@ -56,6 +56,14 @@ class App {
         val helpReleaseNotes = route(mode = RenderMode.PARTIAL) {
             "/help/release-notes" to { openHelp(tdz.view.help.HelpTopic.RELEASE_NOTES) }
         }.title { "Release Notes" }
+
+        val settingsSync = route(mode = RenderMode.PARTIAL) {
+            "/settings/sync" to { openSyncSettings() }
+        }.title { "Cloud Sync" }
+
+        val settingsFolder = route(mode = RenderMode.PARTIAL) {
+            "/settings/folder" to { openFolderSettings() }
+        }.title { "Local Folder Sync" }
     }
 
     init {
@@ -73,8 +81,8 @@ fun main() {
     // Restore the saved theme before the first render so its colours/font apply immediately.
     tdzModel.getTheme()?.let { saved -> themes.firstOrNull { it.name == saved } }?.let { ThemeManager.use(it) }
     App()
-    Router.start()
     tdz.sync.SyncBootstrap.init(tdzModel, eventBus)
+    Router.start()
 }
 
 const val ACE_TAB_SIZE = 2

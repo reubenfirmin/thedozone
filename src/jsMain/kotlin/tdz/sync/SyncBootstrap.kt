@@ -24,15 +24,16 @@ object SyncBootstrap {
 
     fun init(model: Model, eventBus: EventBus) {
         controller = SyncController(model, eventBus)
-        modal = SyncModal(model, eventBus, controller)
-        localFolderModal = LocalFolderModal(model, eventBus, controller)
-        SyncIndicator(eventBus) { modal.show() }.attach()
+        val dismiss: () -> Unit = { zoned.framework.routing.Router.navigate(tdz.App.index.resource.currentCanvasUrl()) }
+        modal = SyncModal(model, eventBus, controller, onDismiss = dismiss)
+        localFolderModal = LocalFolderModal(model, eventBus, controller, onDismiss = dismiss)
+        SyncIndicator(eventBus) { zoned.framework.routing.Router.navigate("/settings/sync") }.attach()
 
         document.addEventListener("keydown", { event ->
             val e = event as KeyboardEvent
             if (e.ctrlKey && e.shiftKey && (e.key == "D" || e.key == "d")) {
                 e.preventDefault()
-                modal.show()
+                zoned.framework.routing.Router.navigate("/settings/sync")
             }
         })
 

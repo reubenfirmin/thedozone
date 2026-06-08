@@ -74,6 +74,16 @@ class Index(val model: Model, val eventBus: EventBus) {
     // live controller/model (which would mutate or throw against the synthetic "_help" canvas).
     private val helpEventBus = EventBus()
 
+    fun openSyncSettings() {
+        ensureCanvasMounted()
+        tdz.sync.SyncBootstrap.modal.show()
+    }
+
+    fun openFolderSettings() {
+        ensureCanvasMounted()
+        tdz.sync.SyncBootstrap.localFolderModal.show()
+    }
+
     private var currentColumns: CanvasColumns? = null
     private val downloader = Downloader(model)
     private val uploader = Uploader(model, eventBus)
