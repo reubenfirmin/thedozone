@@ -84,7 +84,7 @@ class App {
 
 fun main() {
     initLeaflet()
-    // Restore the saved theme before the first render so its colours/font apply immediately.
+    // Restore the saved theme before the first render so its colors/font apply immediately.
     tdzModel.getTheme()?.let { saved -> themes.firstOrNull { it.name == saved } }?.let { ThemeManager.use(it) }
     App()
     tdz.sync.SyncBootstrap.init(tdzModel, eventBus)

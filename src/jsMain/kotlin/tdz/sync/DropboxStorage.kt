@@ -26,7 +26,7 @@ class DropboxStorage(refreshToken: String) : RemoteStorage {
         serverModified = toMillis(e.server_modified as String),
     )
 
-    override suspend fun list(folder: String): List<RemoteFile> {
+    override suspend fun list(folder: String): RemoteListing {
         // Dropbox uses "" for the root, not "/".
         val arg = json("path" to (if (folder == "/") "" else folder), "recursive" to true)
         val files = mutableListOf<RemoteFile>()
@@ -36,17 +36,21 @@ class DropboxStorage(refreshToken: String) : RemoteStorage {
             // Only a genuinely-missing folder (first sync) means "no remote files". Any OTHER error
             // (network/auth/rate-limit) MUST propagate: returning empty here would make pull() treat
             // every tracked path as remotely-deleted and wipe local columns. Let reconcile fail instead.
-            if (isNotFound(e)) return emptyList()
+            if (isNotFound(e)) return RemoteListing(emptyList(), rootExists = false)
             throw Exception("Dropbox list failed: ${describe(e)}")
         }
         while (true) {
             val entries = resp.result.entries as Array<dynamic>
             entries.forEach { if (it[".tag"] == "file") files += entryToFile(it) }
             if (resp.result.has_more as Boolean) {
-                resp = dbx.filesListFolderContinue(json("cursor" to resp.result.cursor)).await()
+                resp = try {
+                    dbx.filesListFolderContinue(json("cursor" to resp.result.cursor)).await()
+                } catch (e: dynamic) {
+                    throw Exception("Dropbox list failed (continuation): ${describe(e)}")
+                }
             } else break
         }
-        return files
+        return RemoteListing(files, rootExists = true)
     }
 
     override suspend fun download(path: String): Pair<String, RemoteFile> {

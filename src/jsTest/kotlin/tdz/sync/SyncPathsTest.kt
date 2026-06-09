@@ -76,4 +76,16 @@ class SyncPathsTest {
         assertTrue(SyncPaths.isManifest("/groceries/_canvas.json"))
         assertTrue(!SyncPaths.isManifest("/groceries/col-0.md"))
     }
+
+    @Test
+    fun manifestPathForReturnsCanvasManifest() {
+        assertEquals("/n/_/_canvas.json", SyncPaths.manifestPathFor("/n/_/col-0.md"))
+        assertEquals("/_/_canvas.json", SyncPaths.manifestPathFor("/_/col-11.md"))
+    }
+
+    @Test
+    fun manifestPathForReturnsNullForNonColumn() {
+        assertEquals(null, SyncPaths.manifestPathFor("/n/_/_canvas.json"))
+        assertEquals(null, SyncPaths.manifestPathFor("/n/_/notacolumn.txt"))
+    }
 }

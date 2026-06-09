@@ -22,7 +22,7 @@ import web.mouse.MouseEvent
 /** Dynamic actions the canvas menu invokes; kept as an interface so sections are unit-testable. */
 interface CanvasMenuActions {
     fun toggleColumn()
-    fun columnProperties()        // open the column properties modal (wallpaper / colour)
+    fun columnProperties()        // open the column properties modal (wallpaper / color)
     fun download()                // export the canvas as a .tdz file
     fun splitEven(split: Split)   // SplitColumn: divide focused column into 2 equal panes
     fun distribute(split: Split)  // AddColumn: add a pane to the containing layout

@@ -1,6 +1,7 @@
 package tdz.sync.local
 
 import tdz.sync.RemoteFile
+import tdz.sync.RemoteListing
 import tdz.sync.RemoteStorage
 import tdz.sync.RevConflictException
 import tdz.sync.SyncPaths
@@ -17,10 +18,10 @@ import tdz.sync.SyncPaths
  */
 class LocalFolderStorage(private val root: LocalDir) : RemoteStorage {
 
-    override suspend fun list(folder: String): List<RemoteFile> {
+    override suspend fun list(folder: String): RemoteListing {
         val out = mutableListOf<RemoteFile>()
         walk(root, "", out)
-        return out
+        return RemoteListing(out, rootExists = true)
     }
 
     private suspend fun walk(dir: LocalDir, prefix: String, out: MutableList<RemoteFile>) {

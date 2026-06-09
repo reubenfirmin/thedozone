@@ -29,7 +29,7 @@ import zoned.framework.interop.css
 
 /**
  * A small body-level modal for per-column visual properties: a wallpaper image URL and a background
- * colour. Values are persisted into the column's own markdown (so they sync with column content) and
+ * color. Values are persisted into the column's own markdown (so they sync with column content) and
  * the column is re-rendered to reflect them. Follows the SyncModal rendering model.
  */
 class ColumnPropertiesModal(
@@ -79,9 +79,9 @@ class ColumnPropertiesModal(
 
                     field("Wallpaper (image URL)", WALLPAPER_ID, style.wallpaper ?: "")
 
-                    // An <input type=color> can never be empty, so "use the theme/palette colour" can't
+                    // An <input type=color> can never be empty, so "use the theme/palette color" can't
                     // live in the picker itself — it needs its own switch. Unchecked = no override (the
-                    // theme/Metro palette shows through); apply() only persists a colour when it's checked.
+                    // theme/Metro palette shows through); apply() only persists a color when it's checked.
                     div {
                         css { marginBottom = 4.px; display = Display.flex; flexDirection = FlexDirection.row; alignItems = Align.center }
                         input(type = InputType.checkBox) {
@@ -89,7 +89,7 @@ class ColumnPropertiesModal(
                             if (style.color != null) attributes["checked"] = "checked"
                             css { marginRight = 8.px; cursor = Cursor.pointer }
                         }
-                        div { css { fontSize = 12.px; marginRight = 10.px }; +"Custom colour" }
+                        div { css { fontSize = 12.px; marginRight = 10.px }; +"Custom color" }
                         input(type = InputType.color) {
                             id = COLOR_ID
                             attributes["value"] = colorValue
@@ -98,7 +98,7 @@ class ColumnPropertiesModal(
                     }
                     div {
                         css { fontSize = 11.px; marginBottom = 12.px; opacity = 0.7 }
-                        +"Unchecked uses the theme / Metro palette colour."
+                        +"Unchecked uses the theme / Metro palette color."
                     }
 
                     div {
@@ -110,11 +110,11 @@ class ColumnPropertiesModal(
 
                     onMount {
                         rootEl = r.element
-                        // Convenience: actually choosing a colour in the swatch implies "use a custom
-                        // colour", so tick the enabling checkbox automatically — otherwise apply()
-                        // (which gates on that checkbox) silently drops the picked colour. Wired on
+                        // Convenience: actually choosing a color in the swatch implies "use a custom
+                        // color", so tick the enabling checkbox automatically — otherwise apply()
+                        // (which gates on that checkbox) silently drops the picked color. Wired on
                         // change/input — a real selection — not click, so opening then cancelling the
-                        // OS picker never bakes in the default colour.
+                        // OS picker never bakes in the default color.
                         (document.getElementById(ElementId(COLOR_ID)) as? HTMLInputElement)?.let { picker ->
                             val enable: (Event) -> Unit = {
                                 (document.getElementById(ElementId(COLOR_ENABLED_ID)) as? HTMLInputElement)?.checked = true
@@ -130,7 +130,7 @@ class ColumnPropertiesModal(
 
     private fun apply() {
         val wallpaper = inputVal(WALLPAPER_ID).trim().ifBlank { null }
-        // No colour unless the switch is on — so leaving the picker at its default never bakes in white.
+        // No color unless the switch is on — so leaving the picker at its default never bakes in white.
         val color = if (isChecked(COLOR_ENABLED_ID)) inputVal(COLOR_ID).ifBlank { null } else null
         save(ColumnStyle(wallpaper, color))
     }
@@ -140,7 +140,7 @@ class ColumnPropertiesModal(
     private fun save(style: ColumnStyle) {
         model.setColumnStyle(canvasName, columnId, style)
         // ColumnEdited persists the rewritten file (Controller) and pushes it (SyncController);
-        // RefreshColumns re-renders the column so the new wallpaper/colour is painted.
+        // RefreshColumns re-renders the column so the new wallpaper/color is painted.
         val raw = model.getCanvasColumnRaw(canvasName, columnId) ?: ""
         eventBus.fire(ColumnEdited(raw, canvasName, columnId))
         eventBus.fire(RefreshColumns(canvasName, setOf(columnId)))

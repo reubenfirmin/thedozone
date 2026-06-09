@@ -18,7 +18,7 @@ enum class PortalStyle { VORTEX, BLACK_HOLE }
 /**
  * The drop visual for canvas links: a single shared, `position: fixed` effect pinned over whichever
  * canvas-link the dragged card is hovering, plus a "swallow" climax on drop. Two interchangeable
- * looks (see [style]), both tinted to the theme link colour:
+ * looks (see [style]), both tinted to the theme link color:
  *
  *  - [PortalStyle.VORTEX] — swirling conic-gradient rings around a glowing core; the card spirals in.
  *  - [PortalStyle.BLACK_HOLE] — a bright spinning accretion ring + black event horizon with a photon
@@ -161,7 +161,7 @@ object WormholePortal {
         window.setTimeout({ el.remove() }, 540)
     }
 
-    /** Inject/refresh the CSS for both styles, tinted to the current theme link colour. */
+    /** Inject/refresh the CSS for both styles, tinted to the current theme link color. */
     private fun ensureStyles() {
         val c = ThemeManager.current.link.toString()
         val css = """

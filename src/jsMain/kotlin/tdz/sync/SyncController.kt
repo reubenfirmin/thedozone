@@ -154,14 +154,29 @@ class SyncController(
         return if (name.isEmpty()) null else CanvasName(name)
     }
 
+    /**
+     * Serialized manifest WITH its version-vector section attached from [s]. The single source of truth
+     * for manifest bytes on every push path — never serialize a manifest any other way (a plain
+     * CanvasDoc.toJson() drops `vv` and would wipe the vectors). Null if the canvas no longer exists.
+     */
+    private fun manifestContent(name: CanvasName, s: SyncStateDoc): String? {
+        val canvas = model.getCanvas(name) ?: return null
+        val j = CanvasDoc(canvas.name, canvas.parent, canvas.columns, canvas.layouts).toJson()
+        ManifestVv.write(j, root(), name, s.entries.mapValues { it.value.vv })
+        return JSON.stringify(j)
+    }
+
     // ---- push side ----
 
     private fun onColumnEdited(e: ColumnEdited) {
         val eng = engine ?: return
         val path = SyncPaths.columnPath(root(), e.canvasName, e.columnId)
         val now = Date.now()
-        saveState(state().with(path, state().entries[path]?.copy(localUpdatedAt = now)
-            ?: SyncEntry(rev = state().entries[path]?.rev, localUpdatedAt = now)))
+        val self = DeviceId.get()
+        val prev = state().entries[path]
+        val stamped = (prev ?: SyncEntry(rev = null, localUpdatedAt = now))
+            .copy(localUpdatedAt = now, vv = bump(prev?.vv ?: emptyMap(), self))
+        saveState(state().with(path, stamped))
         debouncePush(path) {
             SyncStateStore.set(SyncState.Syncing, eventBus)
             // Push the persisted column bytes (which include the column's style header that Controller
@@ -169,6 +184,20 @@ class SyncController(
             val content = model.getCanvasColumnRaw(e.canvasName, e.columnId) ?: e.markdown
             val (newState, winner) = eng.push(path, content, now, state())
             saveState(newState)
+            // Re-push the manifest so the remote carries this column's updated version vector. If this
+            // fails (the column already uploaded, so the remote vector would otherwise lag the column),
+            // mark the manifest pending (rev = null) so the next reconcile retries it with the current vv.
+            val manifestPath = SyncPaths.manifestPath(root(), e.canvasName)
+            runCatching {
+                manifestContent(e.canvasName, state())?.let { mc ->
+                    saveState(eng.push(manifestPath, mc, now, state()).first)
+                }
+            }.onFailure { t ->
+                console.warn("[sync] manifest vv push failed; marking pending for retry: ${t.message}")
+                val cur = state().entries[manifestPath]
+                saveState(state().with(manifestPath,
+                    (cur ?: SyncEntry(rev = null, localUpdatedAt = now)).copy(rev = null)))
+            }
             if (winner == Winner.LOCAL) eventBus.fire(SyncConflict(path, "local"))
             if (winner == Winner.REMOTE) eventBus.fire(SyncConflict(path, "remote"))
             SyncStateStore.set(SyncState.Synced, eventBus)
@@ -183,10 +212,8 @@ class SyncController(
             SyncStateStore.set(SyncState.Syncing, eventBus)
             // push manifest
             val manifestPath = SyncPaths.manifestPath(root(), canvasName)
-            val manifest = JSON.stringify(
-                CanvasDoc(canvas.name, canvas.parent, canvas.columns, canvas.layouts).toJson()
-            )
             var s = state()
+            val manifest = manifestContent(canvasName, s) ?: return@launch
             s = eng.push(manifestPath, manifest, Date.now(), s).first
             // reconcile column files: delete orphans not in canvas.columns (concurrently)
             val live = canvas.columns.map { SyncPaths.columnPath(root(), canvasName, it) }.toSet()
@@ -219,6 +246,7 @@ class SyncController(
         }
         reconciling = true        // set synchronously so a rapid second call is rejected above
         scope.launch {
+            LocalBackup.snapshot()   // recoverable safety net before any pull can overwrite/delete local
             SyncStateStore.set(SyncState.Reconciling, eventBus)
             runCatching {
                 val result = eng.pull(root(), state())
@@ -230,7 +258,11 @@ class SyncController(
                 val pending = s.entries.filter { (p, e) -> e.rev == null && readLocal(p) != null }.keys
                 val dirty = (pending + result.keptLocalPaths).distinct()
                 val items = dirty.mapNotNull { p ->
-                    readLocal(p)?.let { PushItem(p, it, s.entries[p]?.localUpdatedAt ?: Date.now()) }
+                    // Manifests must be serialized WITH their vv (readLocal rebuilds them from the model
+                    // and would drop the vectors); columns use their raw local bytes.
+                    val content = if (SyncPaths.isManifest(p)) manifestCanvas(p)?.let { manifestContent(it, s) }
+                                  else readLocal(p)
+                    content?.let { PushItem(p, it, s.entries[p]?.localUpdatedAt ?: Date.now()) }
                 }
                 if (items.isNotEmpty()) {
                     console.log("[sync] reconcile pushing ${items.size} pending/local-newer file(s)")
@@ -247,8 +279,10 @@ class SyncController(
     }
 
     private fun fail(t: Throwable) {
-        console.error("[sync] error: ${t.message}")
-        SyncStateStore.set(SyncState.Error(t.message ?: "sync error"), eventBus)
+        val state = syncFailureState(t)
+        if (state is SyncState.Error) console.error("[sync] error: ${t.message}")
+        else console.warn("[sync] needs reconnect: ${t.message}")
+        SyncStateStore.set(state, eventBus)
     }
 
     // ---- modal-facing API ----
@@ -266,6 +300,10 @@ class SyncController(
 
     fun connect() {
         SyncStateStore.set(SyncState.Connecting, eventBus)
+        // Fresh connect: drop any stale per-path bookkeeping from a prior provider/session so the first
+        // pull cannot mistake previously-tracked paths for remote deletions. initialSync re-establishes
+        // revs by pulling then pushing all local content.
+        saveState(SyncStateDoc.EMPTY)
         val provider = config().provider
         scope.launch {
             runCatching { SyncProviders.connect(provider) }
@@ -355,8 +393,13 @@ class SyncController(
         val eng = engine ?: return
         SyncStateStore.set(SyncState.Reconciling, eventBus)
         reconciling = true
+        LocalBackup.snapshot()   // recoverable safety net before any pull can overwrite/delete local
         runCatching {
-            var s = eng.pull(root(), state()).state    // remote -> local
+            // Seed local column vectors BEFORE pulling: otherwise an unseeded local column would be
+            // silently overwritten by a remote that another device already seeded (REMOTE_DOMINATES).
+            var s = seedLocalVvs(state())
+            saveState(s)
+            s = eng.pull(root(), s).state               // remote -> local
             s = pushAllLocal(eng, s)                    // local -> remote (manifests + columns)
             saveState(s)
             SyncStateStore.set(SyncState.Synced, eventBus)
@@ -364,21 +407,50 @@ class SyncController(
         reconciling = false
     }
 
+    /**
+     * Seed every local column that has no version vector yet with this device's component (`{self:1}`).
+     * MUST run BEFORE the first pull on connect: an unseeded local column (empty vv) compared against a
+     * remote another device already seeded would classify as REMOTE_DOMINATES and silently overwrite the
+     * local content. With both sides seeded by different devices the comparison is CONCURRENT, so they
+     * merge instead of one silently winning. Idempotent — already-seeded columns are left untouched.
+     */
+    private fun seedLocalVvs(start: SyncStateDoc): SyncStateDoc {
+        val now = Date.now()
+        val self = DeviceId.get()
+        var seeded = start
+        for (name in allLocalCanvases()) {
+            val canvas = model.getCanvas(name) ?: continue
+            for (col in canvas.columns) {
+                if (model.getCanvasColumnRaw(name, col) == null) continue
+                val colPath = SyncPaths.columnPath(root(), name, col)
+                val e = seeded.entries[colPath]
+                if ((e?.vv ?: emptyMap()).isEmpty()) {
+                    seeded = seeded.with(colPath, (e ?: SyncEntry(rev = null, localUpdatedAt = now))
+                        .copy(vv = mapOf(self to 1L)))
+                }
+            }
+        }
+        return seeded
+    }
+
     private suspend fun pushAllLocal(eng: SyncEngine, start: SyncStateDoc): SyncStateDoc {
         val now = Date.now()
+        // Defensive: seeding normally already happened before the pull in initialSync; this catches any
+        // column that gained content between pull and push. Idempotent for already-seeded columns.
+        val seeded = seedLocalVvs(start)
         val items = mutableListOf<PushItem>()
         for (name in allLocalCanvases()) {
             val canvas = model.getCanvas(name) ?: continue
-            val manifest = JSON.stringify(
-                CanvasDoc(canvas.name, canvas.parent, canvas.columns, canvas.layouts).toJson()
-            )
-            items += PushItem(SyncPaths.manifestPath(root(), name), manifest, now)
+            val manifestPath = SyncPaths.manifestPath(root(), name)
+            items += PushItem(manifestPath, manifestContent(name, seeded) ?: continue,
+                seeded.entries[manifestPath]?.localUpdatedAt ?: now)
             for (col in canvas.columns) {
                 val content = model.getCanvasColumnRaw(name, col) ?: continue   // layout cols have none
-                items += PushItem(SyncPaths.columnPath(root(), name, col), content, now)
+                val colPath = SyncPaths.columnPath(root(), name, col)
+                items += PushItem(colPath, content, seeded.entries[colPath]?.localUpdatedAt ?: now)
             }
         }
-        val (s, conflicts) = eng.pushBatch(items, start)   // all files upload concurrently
+        val (s, conflicts) = eng.pushBatch(items, seeded)   // all files upload concurrently
         conflicts.forEach { (path, winner) -> fireConflict(path, winner) }
         return s
     }
@@ -445,4 +517,13 @@ class SyncController(
     }
 
     fun syncNow() = reconcile()
+
+    /** User-triggered recovery: restore the most recent pre-sync snapshot and re-render. Returns
+     *  false if there was no backup to restore. */
+    fun restoreLastBackup(): Boolean {
+        val id = LocalBackup.latest() ?: return false
+        val ok = LocalBackup.restore(id)
+        if (ok) eventBus.fire(RefreshCanvas(model.currentCanvas().name))
+        return ok
+    }
 }

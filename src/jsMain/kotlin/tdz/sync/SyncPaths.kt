@@ -42,6 +42,13 @@ object SyncPaths {
 
     fun isManifest(path: String): Boolean = path.endsWith("/$MANIFEST")
 
+    /** The manifest path for the canvas that owns [columnPath], or null if it isn't a column file. */
+    fun manifestPathFor(columnPath: String): String? {
+        if (parseColumn(columnPath) == null) return null
+        val canvasFolder = columnPath.substringBeforeLast('/')
+        return "$canvasFolder/$MANIFEST"
+    }
+
     /** Inverse of [columnPath]: returns (canvasName, columnId) or null if not a column file. */
     fun parseColumn(path: String): Pair<CanvasName, ColumnId>? {
         val m = COLUMN_RE.find(path) ?: return null

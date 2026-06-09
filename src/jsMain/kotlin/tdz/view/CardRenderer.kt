@@ -63,7 +63,7 @@ object CardRenderer {
         // border line (┌─ title ─┐). h1-only cards are excluded — they get the chromeless label
         // treatment below instead of an empty group-box frame.
         val frameTitle = if (t.titleInBorder && !card.isH1Only()) card.segments.firstOrNull() as? CardHeading else null
-        // Material: a non-title card's leading heading goes into a full-bleed coloured header strip.
+        // Material: a non-title card's leading heading goes into a full-bleed colored header strip.
         val stripTitle = if (t.titleInStrip && !card.isH1Only()) card.segments.firstOrNull() as? CardHeading else null
         // An h1-only "title" card sits chrome-free on the column background — no fill, border, or
         // shadow — so the heading reads as a section label, in every theme (DOS renders it ALL CAPS
@@ -114,7 +114,7 @@ object CardRenderer {
                     +frameTitle.text
                 }
             }
-            // Material header strip: the card title on a coloured band across the top.
+            // Material header strip: the card title on a colored band across the top.
             if (stripTitle != null) {
                 div("tdz-card-header") { +stripTitle.text }
             }
@@ -297,7 +297,7 @@ object CardRenderer {
                 }
             }
             // Elegant divider: a short centered line with a centered diamond (the ::before), sized to
-            // ~14% of the card and tinted via the muted icon colour.
+            // ~14% of the card and tinted via the muted icon color.
             if (t.cardFooterFlourish) {
                 rule(".tdz-card-flourish") {
                     position = Position.relative
@@ -322,7 +322,7 @@ object CardRenderer {
                     transform { rotate(45.deg) }
                 }
             }
-            // Material header strip: a full-bleed coloured band carrying the card title, with the body
+            // Material header strip: a full-bleed colored band carrying the card title, with the body
             // padded back in (the card itself zeroes its padding when a strip is present).
             if (t.titleInStrip) {
                 rule(".tdz-card-header") {
@@ -423,9 +423,9 @@ object CardRenderer {
 
     private fun FlowContent.renderSegment(segment: CardDiagram, card: Card) {
         val t = ThemeManager.current
-        // Derive nomnoml's colours from the theme so lines/arrowheads/text stay legible in every theme.
+        // Derive nomnoml's colors from the theme so lines/arrowheads/text stay legible in every theme.
         // Previously these were hardcoded (stroke white, fill black) — fine on dark themes, but the white
-        // strokes/arrows were invisible against a light card. stroke = text colour, fill = card background.
+        // strokes/arrows were invisible against a light card. stroke = text color, fill = card background.
         val diagramStroke = t.fg
         val diagramFill = t.cardBg
         val noml = listOf(
@@ -575,7 +575,7 @@ object CardRenderer {
             attributes["data-canvas-name"] = link.canvasName.normalized()
             id = linkId
 
-            // Fancy chip: bordered pill in the link colour with a nav arrow; hover brightens + arcade shadow.
+            // Fancy chip: bordered pill in the link color with a nav arrow; hover brightens + arcade shadow.
             a("tdz-canvas-link cursor-pointer") {
                 css {
                     display = Display.inlineBlock
@@ -622,7 +622,7 @@ object CardRenderer {
     private fun FlowContent.renderRichText(link: ExternalLink) {
         span {
             // Style it as a web link so it's visibly distinct from plain text (and from the
-            // canvas-link chip): theme link colour, underline, pointer cursor.
+            // canvas-link chip): theme link color, underline, pointer cursor.
             css {
                 color = ThemeManager.current.link
                 textDecoration = TextDecoration(setOf(TextDecorationLine.underline))

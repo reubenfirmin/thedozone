@@ -21,7 +21,7 @@ internal object MarkdownReader {
 
     val metadataLine = "[\\t ]*<!--([0-9]+):([0-9])-->".toRegex()
 
-    /** Column-level style header (wallpaper/colour) — skipped when parsing cards; see MarkdownService. */
+    /** Column-level style header (wallpaper/color) — skipped when parsing cards; see MarkdownService. */
     val columnStyleLine = "[\\t ]*<!--tdz-col:.*-->[\\t ]*".toRegex()
 
     /*

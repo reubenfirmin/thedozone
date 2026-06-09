@@ -50,7 +50,7 @@ class LocalFolderStorageTest {
         s.upload("/main/_canvas.json", "{}", null)
         s.upload("/main/col-0.md", "x", null)
         s.upload("/main/notes.txt", "junk", null)   // stray, must be ignored
-        val paths = s.list("").map { it.path }.toSet()
+        val paths = s.list("").files.map { it.path }.toSet()
         assertEquals(setOf("/main/_canvas.json", "/main/col-0.md"), paths)
     }
 
@@ -58,7 +58,7 @@ class LocalFolderStorageTest {
         val s = storage()
         s.upload("/main/col-0.md", "x", null)
         s.delete("/main/col-0.md")
-        assertTrue(s.list("").isEmpty())
+        assertTrue(s.list("").files.isEmpty())
     }
 
     @Test fun deleteMissingIsNoError() = runTest {

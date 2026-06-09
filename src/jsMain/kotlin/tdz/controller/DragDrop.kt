@@ -267,14 +267,14 @@ class DragDrop(private val model: Model, private val eventBus: EventBus) {
     /**
      * Inject/refresh the drag styling from the active theme. The drop placeholder (ghostClass) is a
      * solid rectangle with its contents hidden; the floating mirror (dragClass) is opaque with a
-     * solid background + shadow. Colours come from the typed theme (interpolated into the rule —
+     * solid background + shadow. Colors come from the typed theme (interpolated into the rule —
      * an injected stylesheet is inherently a string, but the source stays typed).
      */
     private fun ensureDragStyles() {
         val theme = ThemeManager.current
         // Placeholder background-image: "@bg" paints the page background fixed to the viewport, so the
         // preview cuts straight through the (translucent) column to the real background. A gradient value
-        // paints it on the preview itself (e.g. a spotlight). "none" = the solid dragPlaceholder colour.
+        // paints it on the preview itself (e.g. a spotlight). "none" = the solid dragPlaceholder color.
         val phImg = if (theme.dragPlaceholderImage == "@bg") theme.appBgImage else theme.dragPlaceholderImage
         val phAttach = if (theme.dragPlaceholderImage == "@bg") "fixed" else "scroll"
         val css = """

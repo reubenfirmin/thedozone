@@ -103,8 +103,8 @@ class ColumnContainer(
         focused = isFocused
         val t = ThemeManager.current
         val element = getHtmlElement("column-$columnId") ?: return
-        // A per-column accent colour (Poodle Rocks: set via the column-properties colour) overrides
-        // the theme focus colour, so the hover highlight matches the column's own colour. Absent on
+        // A per-column accent color (Poodle Rocks: set via the column-properties color) overrides
+        // the theme focus color, so the hover highlight matches the column's own color. Absent on
         // other themes/columns → the theme default.
         val focusColor = element.getAttribute("data-focus-color") ?: t.columnFocusBorder.toString()
         if (t.focusTopStripe) {
@@ -119,7 +119,7 @@ class ColumnContainer(
                 else -> "none"
             }
         } else {
-            // Only the colour changes on focus; width/style come from the theme border set at render.
+            // Only the color changes on focus; width/style come from the theme border set at render.
             element.style.borderColor =
                 if (isFocused) focusColor
                 else t.columnBorder.toString()
@@ -131,7 +131,7 @@ class ColumnContainer(
     /** Debug aid: tile this column's id faintly across its background, to identify columns. */
     fun showDebugBackground() {
         val element = getHtmlElement("column-$columnId") ?: return
-        // The SVG data-URI needs a literal colour string; take it from the typed theme token.
+        // The SVG data-URI needs a literal color string; take it from the typed theme token.
         val fill = ThemeManager.current.watermark
         val svg = "<svg xmlns='http://www.w3.org/2000/svg' width='110' height='64'>" +
             "<text x='8' y='40' font-family='monospace' font-size='30' fill='$fill'>$columnId</text></svg>"

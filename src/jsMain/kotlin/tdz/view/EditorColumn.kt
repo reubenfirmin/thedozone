@@ -169,7 +169,7 @@ class EditorColumn(
     }
 
     /**
-     * Cobalt (like many Ace themes) colours markdown tokens only subtly. Inject theme-driven colours
+     * Cobalt (like many Ace themes) colors markdown tokens only subtly. Inject theme-driven colors
      * for the editor's markdown tokens so the editor reads like the card view. Scoped to .ace_editor,
      * refreshed so a theme switch updates it.
      */

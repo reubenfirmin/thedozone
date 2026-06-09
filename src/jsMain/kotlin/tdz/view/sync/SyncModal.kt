@@ -1,6 +1,8 @@
 package tdz.view.sync
 
+import kotlinx.browser.window
 import kotlinx.css.*
+import kotlinx.css.properties.*
 import kotlinx.html.FlowContent
 import kotlinx.html.InputType
 import kotlinx.html.div
@@ -100,6 +102,18 @@ class SyncModal(
                     // Provider chooser: only before connecting (provider is fixed for the life of a sync).
                     if (!shownConnected) {
                         providerChooser(connecting)
+                        if (selectedProvider == SyncProvider.GOOGLE_DRIVE) {
+                            div {
+                                css {
+                                    marginTop = (-2).px; marginBottom = 10.px
+                                    fontSize = 12.px; lineHeight = LineHeight("1.4")
+                                    opacity = 0.85; maxWidth = 340.px
+                                }
+                                +("Heads up: Google signs you out periodically, so Drive needs an " +
+                                  "occasional Reconnect. Dropbox or a local folder + Syncthing stay " +
+                                  "connected without that.")
+                            }
+                        }
                     }
 
                     // Folder: editable before connect or while changing it; read-only otherwise.
@@ -120,6 +134,22 @@ class SyncModal(
                     }
                     div { ref(statusRef); css { marginBottom = 12.px; fontSize = 12.px }
                         +stateText(SyncStateStore.current) }
+
+                    // Google's GIS token model has no refresh token, so its session lapses periodically.
+                    // That's expected — frame it as a calm reconnect, not an error, and point at the
+                    // providers that DON'T need this dance.
+                    if (SyncStateStore.current == SyncState.NeedsReconnect &&
+                        cfg.provider == SyncProvider.GOOGLE_DRIVE) {
+                        div {
+                            css {
+                                marginBottom = 12.px; fontSize = 12.px; lineHeight = LineHeight("1.4")
+                                opacity = 0.85; maxWidth = 340.px
+                            }
+                            +("Google signs you out periodically — that's expected, not an error. Just " +
+                              "click Reconnect to resume. Dropbox or a local folder + Syncthing stay " +
+                              "connected without these periodic reconnects.")
+                        }
+                    }
 
                     div {
                         css { display = Display.flex; flexDirection = FlexDirection.row }
@@ -142,18 +172,25 @@ class SyncModal(
                             }
 
                             else -> {
-                                // After a reload, a Drive token must be re-minted interactively if the
-                                // silent renewal failed (no live Google session). Surfacing Reconnect on
-                                // any Error lets a user gesture drive the consent popup. Helps Dropbox too
-                                // (e.g. a revoked refresh token).
-                                if (SyncStateStore.current is SyncState.Error) {
+                                // Reconnect is the primary action whenever auth lapsed: an expected Google
+                                // session timeout (NeedsReconnect) or a genuine Error (e.g. a revoked
+                                // Dropbox refresh token). The user gesture drives the consent popup.
+                                val needsAuth = SyncStateStore.current is SyncState.Error ||
+                                    SyncStateStore.current == SyncState.NeedsReconnect
+                                if (needsAuth) {
                                     button("Reconnect", primary = true) { controller.connect() }
                                 }
-                                button("Sync now", primary = SyncStateStore.current !is SyncState.Error) {
+                                button("Sync now", primary = !needsAuth) {
                                     controller.syncNow()
                                 }
                                 button("Change folder") { editingFolder = true; render() }
                                 button("Disconnect") { controller.disconnect() }
+                                button("Restore last backup") {
+                                    if (controller.restoreLastBackup())
+                                        window.alert("Restored the most recent pre-sync backup.")
+                                    else
+                                        window.alert("No backup available yet.")
+                                }
                             }
                         }
                     }
@@ -218,7 +255,9 @@ class SyncModal(
         SyncState.Synced -> "Up to date"
         SyncState.Syncing -> "Syncing…"
         SyncState.Offline -> "Offline — changes will sync when online"
-        SyncState.NeedsReconnect -> "Folder access paused — reconnect to resume"
+        SyncState.NeedsReconnect ->
+            if (model.readSyncConfig().provider == SyncProvider.GOOGLE_DRIVE) "Reconnection needed"
+            else "Reconnect to resume"
         is SyncState.Error -> "Error: ${state.message}"
     }
 

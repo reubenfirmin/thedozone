@@ -156,6 +156,14 @@ class Index(val model: Model, val eventBus: EventBus) {
                 currentColumns?.toggleMode()
                 handled = true
             }
+            // Plain `i` is the documented alias for the toggle (vim-style "i" to start editing). Guarded
+            // so it never hijacks typing: Ace lets plain-character keydowns bubble to the document (unlike
+            // arrows, which it consumes), so without this guard `i` would toggle mid-edit. In card mode
+            // nothing editable is focused, so `i` acts as the toggle; while editing it's a normal char.
+            else if (!keyEvent.ctrlKey && !keyEvent.altKey && !keyEvent.metaKey && keyEvent.key == "i" && !isEditableFocused()) {
+                currentColumns?.toggleMode()
+                handled = true
+            }
             // Arrow keys navigate between columns (without ctrl/alt modifiers)
             else if (!keyEvent.ctrlKey && !keyEvent.altKey && keyEvent.key in listOf("ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown")) {
                 val direction = when (keyEvent.key) {
@@ -219,6 +227,15 @@ class Index(val model: Model, val eventBus: EventBus) {
                 event.preventDefault()
             }
         })
+    }
+
+    /** True when a text field or the Ace editor has focus, so a bare letter key must type, not act as a
+     *  shortcut. Ace's input target is a textarea, so this also covers in-editor typing. */
+    private fun isEditableFocused(): Boolean {
+        val ae = document.activeElement ?: return false
+        val tag = ae.tagName.uppercase()
+        if (tag == "INPUT" || tag == "TEXTAREA") return true
+        return ae.asDynamic().isContentEditable == true   // isContentEditable lives on HTMLElement
     }
 
     fun TagConsumer<*>.index(canvas: Canvas) {
