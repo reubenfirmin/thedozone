@@ -59,6 +59,7 @@ kotlin {
         implementation(npm("nomnoml", "1.7.0"))
         implementation(npm("leaflet", "1.9.4"))
         implementation(npm("dropbox", "10.34.0"))
+        implementation(npm("node-diff3", "3.1.2"))
         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     }
 
@@ -69,6 +70,25 @@ kotlin {
         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     }
 }
+/**
+ * The full production build that `wrangler deploy` expects: generate styles, run the test gate, then
+ * assemble the optimized, hashed browser bundle into `build/dist/js/productionExecutable` (the
+ * `assets.directory` in wrangler.jsonc). `wrangler deploy` only UPLOADS that directory — it builds
+ * nothing — so always run this first or you ship a stale bundle. Mirrors the CI step in ci.yml:
+ * `./gradlew build-style build jsBrowserDistribution`.
+ */
+tasks.register("build-production") {
+    group = "build"
+    description = "Full production build for deploy (styles + tests + optimized browser bundle)."
+    // `build` already assembles `jsBrowserDistribution` (via `assemble`) and runs the test gate (via
+    // `check`); we only need to add style generation alongside it.
+    dependsOn("build-style", "build")
+}
+
+// Generate styles before the deployable bundle is assembled, mirroring CI's task order. (Ordering
+// against `build` itself would be circular, since `build` depends on `jsBrowserDistribution`.)
+tasks.named("jsBrowserDistribution") { mustRunAfter("build-style") }
+
 //
 //tasks.withType<org.jetbrains.kotlin.gradle.dsl.KotlinCompile<*>> {
 //    kotlinOptions {

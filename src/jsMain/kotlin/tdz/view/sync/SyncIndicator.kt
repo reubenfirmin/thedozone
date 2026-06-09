@@ -35,7 +35,7 @@ class SyncIndicator(
         SyncState.Synced -> "Synced ✓"
         SyncState.Syncing -> "Syncing…"
         SyncState.Offline -> "Offline"
-        SyncState.NeedsReconnect -> "Reconnect folder"
+        SyncState.NeedsReconnect -> "Reconnect"
         is SyncState.Error -> "Sync error"
     }
 

@@ -4,6 +4,7 @@ import tdz.App
 import tdz.model.Card
 import tdz.model.CardMetadata
 import tdz.model.card.*
+import tdz.model.markdown.MarkdownBlockquote.consumeBlockquote
 import tdz.model.markdown.MarkdownCardMetadata.consumeMetadataLine
 import tdz.model.markdown.MarkdownCodeBlock.consumeCodeBlock
 import tdz.model.markdown.MarkdownDiagram.consumeDiagram
@@ -20,7 +21,7 @@ internal object MarkdownReader {
 
     val metadataLine = "[\\t ]*<!--([0-9]+):([0-9])-->".toRegex()
 
-    /** Column-level style header (wallpaper/colour) — skipped when parsing cards; see MarkdownService. */
+    /** Column-level style header (wallpaper/color) — skipped when parsing cards; see MarkdownService. */
     val columnStyleLine = "[\\t ]*<!--tdz-col:.*-->[\\t ]*".toRegex()
 
     /*
@@ -66,6 +67,8 @@ internal object MarkdownReader {
                 columnStyleLine.matches(trimmed) -> {}   // column-level style header — not a card
                 consumeCodeBlock(trimmed, line, state) -> {}
                 consumeDiagram(trimmed, state) -> {}
+                // before separator/empty-line: a blank line both ends the quote and the card
+                consumeBlockquote(trimmed, line, state) -> {}
                 consumeMetadataLine(trimmed, state) -> {}
                 consumeSeparator(trimmed, state) -> {}
                 consumeEmptyLine(trimmed, state) -> {}

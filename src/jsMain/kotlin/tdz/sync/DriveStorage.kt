@@ -27,12 +27,13 @@ class DriveStorage : RemoteStorage {
 
     // ---- RemoteStorage ----
 
-    override suspend fun list(folder: String): List<RemoteFile> {
+    override suspend fun list(folder: String): RemoteListing {
         val token = DriveAuth.token()
-        val rootId = resolveFolderId(folder, create = false, token) ?: return emptyList()
+        val rootId = resolveFolderId(folder, create = false, token)
+            ?: return RemoteListing(emptyList(), rootExists = false)
         val out = mutableListOf<RemoteFile>()
         listInto(rootId, normalize(folder), token, out)
-        return out
+        return RemoteListing(out, rootExists = true)
     }
 
     override suspend fun download(path: String): Pair<String, RemoteFile> {

@@ -45,20 +45,25 @@ object CardRenderer {
                                         "㉝", "㉞", "㉟", "㊱", "㊲", "㊳", "㊴", "㊵", "㊶", "㊷", "㊸",
                                         "㊹", "㊺", "㊻", "㊼", "㊽", "㊾", "㊿")
 
-    fun FlowContent.render(canvasName: CanvasName, cards: List<Card>, eventBus: EventBus) {
+    /**
+     * Render a stack of cards. [loose] opens up the vertical rhythm — more space between cards and
+     * between the segments within a card — for reading-oriented surfaces like the help overlay,
+     * which feel cramped at the app's default (dense) spacing.
+     */
+    fun FlowContent.render(canvasName: CanvasName, cards: List<Card>, eventBus: EventBus, loose: Boolean = false) {
         console.log("CardRenderer.render called with ${cards.size} cards for canvas $canvasName")
         for (card in cards) {
-            render(canvasName, card, eventBus)
+            render(canvasName, card, eventBus, loose)
         }
     }
 
-    private fun FlowContent.render(canvasName: CanvasName, card: Card, eventBus: EventBus) {
+    private fun FlowContent.render(canvasName: CanvasName, card: Card, eventBus: EventBus, loose: Boolean) {
         val t = ThemeManager.current
         // TUI: a non-title card's leading heading becomes the panel's title, sitting in the top
         // border line (┌─ title ─┐). h1-only cards are excluded — they get the chromeless label
         // treatment below instead of an empty group-box frame.
         val frameTitle = if (t.titleInBorder && !card.isH1Only()) card.segments.firstOrNull() as? CardHeading else null
-        // Material: a non-title card's leading heading goes into a full-bleed coloured header strip.
+        // Material: a non-title card's leading heading goes into a full-bleed colored header strip.
         val stripTitle = if (t.titleInStrip && !card.isH1Only()) card.segments.firstOrNull() as? CardHeading else null
         // An h1-only "title" card sits chrome-free on the column background — no fill, border, or
         // shadow — so the heading reads as a section label, in every theme (DOS renders it ALL CAPS
@@ -71,6 +76,8 @@ object CardRenderer {
             ensureCardStyles()   // injects only the bits css{} can't express (line-height, elevation, flourish, header)
             css {
                 margin = Margin(t.cardMargin)
+                // Loose mode adds breathing room between stacked cards (e.g. the help overlay).
+                if (loose) marginBottom = 24.px
                 // A header strip is full-bleed, so its card drops top padding (the strip supplies it).
                 padding = if (stripTitle != null) Padding(0.px) else Padding(t.cardPadding)
                 if (chromeless) {
@@ -107,7 +114,7 @@ object CardRenderer {
                     +frameTitle.text
                 }
             }
-            // Material header strip: the card title on a coloured band across the top.
+            // Material header strip: the card title on a colored band across the top.
             if (stripTitle != null) {
                 div("tdz-card-header") { +stripTitle.text }
             }
@@ -115,7 +122,15 @@ object CardRenderer {
             val body: FlowContent.() -> Unit = {
                 for (segment in card.segments) {
                     if (segment === frameTitle || segment === stripTitle) continue
-                    renderSegment(canvasName, segment, card, eventBus)
+                    if (loose) {
+                        // Loose mode spaces segments apart (heading / text / quote sit too close by default).
+                        div {
+                            css { marginBottom = 12.px }
+                            renderSegment(canvasName, segment, card, eventBus)
+                        }
+                    } else {
+                        renderSegment(canvasName, segment, card, eventBus)
+                    }
                 }
                 // Ornamental centered divider at the foot of content cards (not h1-only title cards).
                 if (t.cardFooterFlourish && !chromeless) div("tdz-card-flourish") {}
@@ -132,6 +147,7 @@ object CardRenderer {
             is CardText -> renderSegment(segment, card, eventBus)
             is Callout -> renderSegment(segment, card, eventBus)
             is CardCodeBlock -> renderRichText(segment)
+            is Blockquote -> renderRichText(segment)
             is CardDiagram -> renderSegment(segment, card)
             is IgnoreMe -> renderSegment() to {}
             else -> throw Exception("No handler for $segment")
@@ -281,7 +297,7 @@ object CardRenderer {
                 }
             }
             // Elegant divider: a short centered line with a centered diamond (the ::before), sized to
-            // ~14% of the card and tinted via the muted icon colour.
+            // ~14% of the card and tinted via the muted icon color.
             if (t.cardFooterFlourish) {
                 rule(".tdz-card-flourish") {
                     position = Position.relative
@@ -306,7 +322,7 @@ object CardRenderer {
                     transform { rotate(45.deg) }
                 }
             }
-            // Material header strip: a full-bleed coloured band carrying the card title, with the body
+            // Material header strip: a full-bleed colored band carrying the card title, with the body
             // padded back in (the card itself zeroes its padding when a strip is present).
             if (t.titleInStrip) {
                 rule(".tdz-card-header") {
@@ -407,9 +423,9 @@ object CardRenderer {
 
     private fun FlowContent.renderSegment(segment: CardDiagram, card: Card) {
         val t = ThemeManager.current
-        // Derive nomnoml's colours from the theme so lines/arrowheads/text stay legible in every theme.
+        // Derive nomnoml's colors from the theme so lines/arrowheads/text stay legible in every theme.
         // Previously these were hardcoded (stroke white, fill black) — fine on dark themes, but the white
-        // strokes/arrows were invisible against a light card. stroke = text colour, fill = card background.
+        // strokes/arrows were invisible against a light card. stroke = text color, fill = card background.
         val diagramStroke = t.fg
         val diagramFill = t.cardBg
         val noml = listOf(
@@ -453,6 +469,7 @@ object CardRenderer {
         // TODO this is silly
         when (value) {
             is CardCodeBlock -> renderRichText(value)
+            is Blockquote -> renderRichText(value)
             is LinkText -> renderRichText(value, eventBus)
             is Text -> renderRichText(value)
         }
@@ -464,6 +481,42 @@ object CardRenderer {
             code {
                 +codeBlock.text
             }
+        }
+    }
+
+    /** A quote box (`> ...` lines) with a built-in copy button that copies the raw text. */
+    private fun FlowContent.renderRichText(blockquote: Blockquote) {
+        val theme = ThemeManager.current
+        blockQuote {
+            css {
+                position = Position.relative
+                margin = Margin(8.px, 0.px)
+                padding = Padding(8.px, 40.px, 8.px, 12.px)   // right padding leaves room for the button
+                borderLeft = Border(3.px, BorderStyle.solid, theme.menuBorder)
+                backgroundColor = Color("rgba(127,127,127,0.08)")
+                borderRadius = 3.px
+                whiteSpace = WhiteSpace.preWrap
+                fontFamily = "monospace"
+            }
+            button {
+                +"⧉"
+                attributes["title"] = "Copy"
+                css {
+                    position = Position.absolute
+                    top = 4.px
+                    right = 4.px
+                    backgroundColor = Color.transparent
+                    borderStyle = BorderStyle.none
+                    cursor = Cursor.pointer
+                    color = theme.fg
+                    fontSize = 15.px
+                }
+                onClick {
+                    kotlinx.browser.window.navigator.asDynamic().clipboard.writeText(blockquote.text)
+                    Unit
+                }
+            }
+            +blockquote.text
         }
     }
 
@@ -522,7 +575,7 @@ object CardRenderer {
             attributes["data-canvas-name"] = link.canvasName.normalized()
             id = linkId
 
-            // Fancy chip: bordered pill in the link colour with a nav arrow; hover brightens + arcade shadow.
+            // Fancy chip: bordered pill in the link color with a nav arrow; hover brightens + arcade shadow.
             a("tdz-canvas-link cursor-pointer") {
                 css {
                     display = Display.inlineBlock
@@ -569,7 +622,7 @@ object CardRenderer {
     private fun FlowContent.renderRichText(link: ExternalLink) {
         span {
             // Style it as a web link so it's visibly distinct from plain text (and from the
-            // canvas-link chip): theme link colour, underline, pointer cursor.
+            // canvas-link chip): theme link color, underline, pointer cursor.
             css {
                 color = ThemeManager.current.link
                 textDecoration = TextDecoration(setOf(TextDecorationLine.underline))

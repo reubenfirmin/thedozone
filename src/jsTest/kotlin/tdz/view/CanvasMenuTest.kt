@@ -143,9 +143,9 @@ class CanvasMenuTest {
 
         assertEquals(
             listOf(
-                "/docs/release-notes.html",
-                "/docs/keyboard-shortcuts.html",
-                "/docs/card-formatting.html",
+                "/help/release-notes",
+                "/help/shortcuts",
+                "/help/formatting",
             ),
             actions.openedDocs,
         )

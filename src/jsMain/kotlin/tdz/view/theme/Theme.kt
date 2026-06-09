@@ -11,7 +11,7 @@ import kotlinx.css.rem
 enum class MarkerStyle { UNICODE, ASCII }
 
 /**
- * A UI theme: typed [Color] tokens (the single source of truth for every UI colour) plus the Ace
+ * A UI theme: typed [Color] tokens (the single source of truth for every UI color) plus the Ace
  * [editorTheme]. Components consume tokens directly via typed `css { }`
  * (e.g. `borderColor = ThemeManager.current.cardBorder`). The few unavoidable string sinks
  * (inline `element.style`, injected `<style>` rules, the SVG-data-URI watermark, gradients)
@@ -39,10 +39,10 @@ data class Theme(
     val headingStrokeWidth: LinearDimension = 0.4.px,   // hairline text-stroke on a monochrome h1 (0 = none)
     val markerStyle: MarkerStyle,        // list/checkbox glyph set
     val titleInBorder: Boolean,          // render a card's leading heading into its top border (group-box)
-    // Material: render a card's leading heading into a full-bleed coloured header strip at the top.
+    // Material: render a card's leading heading into a full-bleed colored header strip at the top.
     val titleInStrip: Boolean = false,
-    val cardHeaderBg: Color = Color("transparent"),   // colour of that header strip
-    val cardHeaderFg: Color = Color("transparent"),   // title colour inside the strip
+    val cardHeaderBg: Color = Color("transparent"),   // color of that header strip
+    val cardHeaderFg: Color = Color("transparent"),   // title color inside the strip
     // app
     val appBg: Color,
     val appGradientInner: Color,
@@ -58,7 +58,7 @@ data class Theme(
     // Empty = none (the default for every theme but Rainbow Gaps, which uses the Nyan sprite).
     val columnFocusSprite: String = "",
     // When true, the focused/hovered column shows a bold top accent stripe (Material-style) instead
-    // of recolouring its whole frame. Painted as an inset top shadow so layout doesn't shift.
+    // of recoloring its whole frame. Painted as an inset top shadow so layout doesn't shift.
     val focusTopStripe: Boolean = false,
     val panelBg: Color,            // solid/translucent window fill (transparent = none)
     // Optional "smoked glass" backdrop blur on the column panel (CSS blur length, e.g. "6px"): the
@@ -71,7 +71,7 @@ data class Theme(
     val columnGap: LinearDimension,      // gap around each column so the background shows between them
     // Ordered set of solid column fills cycled through by leaf-column index (Metro live-tile grid).
     // Empty = every column uses panelBg (the single-surface behaviour of every other theme). A per-column
-    // colour override still wins, since it's painted after render in onMount.
+    // color override still wins, since it's painted after render in onMount.
     val columnPalette: List<Color> = emptyList(),
     // cards
     val cardBorder: Color,
@@ -87,7 +87,7 @@ data class Theme(
     val cardElevationHover: List<BoxShadow> = emptyList(),
     // Render a centered ornamental divider at the bottom of content cards (not h1-only title cards).
     val cardFooterFlourish: Boolean = false,
-    val heading1: Color,           // monochrome h1 colour (used when headingGradient is empty)
+    val heading1: Color,           // monochrome h1 color (used when headingGradient is empty)
     val headingGlow: Color,        // soft same-hue glow behind a monochrome h1 (transparent = none)
     val headingGradient: String,   // if non-empty, h1 is this CSS gradient clipped to the text instead
     val heading2: Color,
@@ -104,7 +104,7 @@ data class Theme(
     val menuHover: Color,
     // drag & drop
     val dragPlaceholder: Color,
-    val dragPlaceholderImage: String,   // CSS background-image for the drop preview ("none" = solid colour)
+    val dragPlaceholderImage: String,   // CSS background-image for the drop preview ("none" = solid color)
     val dragMirrorBg: Color,
     // misc
     val shadow: Color,
@@ -173,7 +173,7 @@ val blueRoomTheme = Theme(
 
 /**
  * "DOS" — modeled on DOS-era text UIs: flat dark-gray background, light-gray text, single-line
- * gray borders, and colour used sparingly (yellow titles + cyan accents; black hard shadows).
+ * gray borders, and color used sparingly (yellow titles + cyan accents; black hard shadows).
  */
 val dosTheme = Theme(
     name = "DOS",
@@ -183,7 +183,7 @@ val dosTheme = Theme(
     borderWidth = 1.px,                 // crisp 1px rule, like a TUI ─│ frame
     baseFontSize = 19.px,               // VGA font nudged up for readability
     lineHeight = "1.15",                // tight text-grid rows
-    heading1FontSize = 1.em,            // one cell size — headings read by colour, not size
+    heading1FontSize = 1.em,            // one cell size — headings read by color, not size
     heading2FontSize = 1.em,
     markerStyle = MarkerStyle.ASCII,    // [ ] / [X]
     titleInBorder = true,               // headings sit in the panel's top border (DOS group-box)
@@ -329,7 +329,7 @@ val smoothDarkTheme = Theme(
     columnRadius = 12.px,                  // rounded like their feature cards
     columnGap = 16.px,
     cardBorder = Color("transparent"),     // smooth — the fill alone distinguishes cards
-    cardBg = Color("#202127"),             // VitePress card fill (cards carry the colour, not the column)
+    cardBg = Color("#202127"),             // VitePress card fill (cards carry the color, not the column)
     cardShadow = Color("transparent"),     // smooth — no hard shadow
     cardRadius = 8.px,
     cardMargin = 12.px,
@@ -569,7 +569,7 @@ val immaterialTheme = Theme(
 
 /**
  * "Metro" — modeled on Windows Phone / Microsoft's Metro design: a near-black canvas almost wholly
- * covered by flush, solid rectangular colour tiles (the columns) cycled from an ordered palette, with
+ * covered by flush, solid rectangular color tiles (the columns) cycled from an ordered palette, with
  * flat white type — no gaps, borders, rounded corners, gradients, or shadows. Headings take the Metro
  * voice: large, light-weight (300), lowercase Segoe UI.
  */
@@ -602,7 +602,7 @@ val metroTheme = Theme(
     columnBorder = Color("transparent"),   // adjacent tiles touch directly — no seam
     columnFocusBorder = Color("rgba(255,255,255,0.85)"),   // crisp white inset on the focused tile
     // borderWidth is 0 so tiles stay flush (a transparent border would open black seams); show focus
-    // as an inset top stripe (box-shadow, no layout shift) instead of recolouring an invisible border.
+    // as an inset top stripe (box-shadow, no layout shift) instead of recoloring an invisible border.
     focusTopStripe = true,
     panelBg = Color("#1f1f1f"),            // fallback only; columnPalette supplies the real fills
     // Ordered Windows-Phone accent tiles; columns cycle through these by index. All carry white text.

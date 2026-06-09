@@ -264,7 +264,7 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
     }
 
     /**
-     * Per-column visual overrides (wallpaper image url + background colour); blanks = no override.
+     * Per-column visual overrides (wallpaper image url + background color); blanks = no override.
      * Lives in the column's own markdown (a header line) so it syncs with column content.
      */
     fun getColumnStyle(canvasName: CanvasName, columnId: ColumnId): ColumnStyle =

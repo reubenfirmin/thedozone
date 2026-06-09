@@ -12,6 +12,8 @@ data class ParseState(val column: Int,
 
     private var inCodeBlock = false
     private val codeBuffer = mutableListOf<String>()
+    private var inBlockquote = false
+    private val blockquoteBuffer = mutableListOf<String>()
     private var inDiagramBlock = false
     private val diagramBuffer = mutableListOf<String>()
     private var inListBlock = false
@@ -37,6 +39,26 @@ data class ParseState(val column: Int,
         segmentsBuffer.add(CardCodeBlock(codeBuffer.joinToString("\n")))
         codeBuffer.clear()
         inCodeBlock = false
+    }
+
+    fun inBlockquote() = inBlockquote
+
+    fun startBlockquote() {
+        inBlockquote = true
+        // lists have no terminator
+        if (inListBlock) {
+            finishList()
+        }
+    }
+
+    fun appendBlockquote(line: String) {
+        blockquoteBuffer.add(line)
+    }
+
+    fun finishBlockquote() {
+        segmentsBuffer.add(Blockquote(blockquoteBuffer.joinToString("\n")))
+        blockquoteBuffer.clear()
+        inBlockquote = false
     }
 
     fun inDiagram() = inDiagramBlock
@@ -83,6 +105,11 @@ data class ParseState(val column: Int,
     fun getCurrentColumn() = currentColumn
 
     fun createCardFromSegments() {
+        // A blockquote ends at the line that breaks it (often a blank line / card boundary);
+        // flush any pending quote into the card before closing it.
+        if (inBlockquote) {
+            finishBlockquote()
+        }
         // Lists have no terminator: flush any pending list into the segments FIRST, so a
         // list-only card (whose segmentsBuffer is otherwise empty) isn't dropped.
         if (inListBlock) {
@@ -106,6 +133,11 @@ data class ParseState(val column: Int,
     }
 
     fun finalize(): List<Card> {
+
+        // A trailing blockquote at end-of-input has no breaking line; flush it.
+        if (inBlockquote || blockquoteBuffer.size > 0) {
+            finishBlockquote()
+        }
 
         // A trailing list has no terminator; flush it into the current card's segments FIRST
         // so it's included below (previously it was finished AFTER the card was created and lost).

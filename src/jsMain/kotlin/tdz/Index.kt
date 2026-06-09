@@ -35,9 +35,63 @@ import zoned.framework.interop.css
 import zoned.framework.interop.getHtmlElement
 import zoned.framework.interop.clear
 import zoned.framework.interop.appendTo
+import zoned.framework.interop.addToBody
 import zoned.framework.routing.Router
 
+/** Build a canvas URL from a resolved hierarchy path. Pure; unit-tested. */
+fun canvasUrlFromPath(path: List<CanvasName>): String =
+    if (path.isEmpty()) "/" else "/" + path.joinToString("/") { it.normalized() }
+
 class Index(val model: Model, val eventBus: EventBus) {
+
+    fun canvasUrl(name: CanvasName): String = canvasUrlFromPath(model.path(name))
+    fun currentCanvasUrl(): String = canvasUrl(model.currentCanvas().name)
+
+    /** Render the current canvas into the body if nothing is mounted (e.g. cold deep-link). */
+    private fun ensureCanvasMounted() {
+        if (getHtmlElement("app-container") == null) {
+            addToBody { index(model.currentCanvas()) }
+        }
+    }
+
+    /**
+     * Render a help topic as read-only cards in the overlay. Uses [helpEventBus] (inert) so the
+     * help content's interactive affordances never mutate real state. NOTE: help markdown must not
+     * use bare canvas-link syntax outside code fences — CardRenderer's canvas-link onMount registers
+     * a drop zone against the LIVE canvas regardless of the bus, so such links would be a latent trap.
+     */
+    /** Dismiss any overlay/modal layered on the canvas (the #overlay layer and the sync modals). */
+    private fun closeOverlays() {
+        tdz.view.Overlay.clear()
+        tdz.sync.SyncBootstrap.dismissModals()
+    }
+
+    fun openHelp(topic: tdz.view.help.HelpTopic) {
+        ensureCanvasMounted()
+        closeOverlays()
+        tdz.view.Overlay.show(topic.title) {
+            with(tdz.view.CardRenderer) {
+                render(CanvasName("_help"), tdz.model.markdown.MarkdownService.fromMd(topic.markdown).flatten(), helpEventBus, loose = true)
+            }
+        }
+    }
+
+    // Help content is read-only: render its cards through an inert bus with no subscribers, so
+    // interactions (task-toggle, canvas-link navigation) fired by CardRenderer never reach the
+    // live controller/model (which would mutate or throw against the synthetic "_help" canvas).
+    private val helpEventBus = EventBus()
+
+    fun openSyncSettings() {
+        ensureCanvasMounted()
+        closeOverlays()
+        tdz.sync.SyncBootstrap.modal.show()
+    }
+
+    fun openFolderSettings() {
+        ensureCanvasMounted()
+        closeOverlays()
+        tdz.sync.SyncBootstrap.localFolderModal.show()
+    }
 
     private var currentColumns: CanvasColumns? = null
     private val downloader = Downloader(model)
@@ -88,9 +142,7 @@ class Index(val model: Model, val eventBus: EventBus) {
             model.changeCanvas(canvasName)
 
             // Update URL with hierarchical path
-            val path = model.path(canvasName)
-            val url = "/" + path.joinToString("/") { it.normalized() }
-            Router.navigate(url)
+            Router.navigate(canvasUrl(canvasName))
         }
     }
 
@@ -101,6 +153,14 @@ class Index(val model: Model, val eventBus: EventBus) {
 
             // Ctrl+' toggles editor mode for focused column
             if (keyEvent.ctrlKey && keyEvent.key == "'") {
+                currentColumns?.toggleMode()
+                handled = true
+            }
+            // Plain `i` is the documented alias for the toggle (vim-style "i" to start editing). Guarded
+            // so it never hijacks typing: Ace lets plain-character keydowns bubble to the document (unlike
+            // arrows, which it consumes), so without this guard `i` would toggle mid-edit. In card mode
+            // nothing editable is focused, so `i` acts as the toggle; while editing it's a normal char.
+            else if (!keyEvent.ctrlKey && !keyEvent.altKey && !keyEvent.metaKey && keyEvent.key == "i" && !isEditableFocused()) {
                 currentColumns?.toggleMode()
                 handled = true
             }
@@ -145,20 +205,37 @@ class Index(val model: Model, val eventBus: EventBus) {
                 showCanvasSwitcher(model, eventBus)
                 handled = true
             }
-            // F1 / F2 open the corresponding help docs in a new tab.
+            // F1 / F2 open the corresponding help docs as in-app overlay routes.
             else if (keyEvent.key == "F1") {
-                kotlinx.browser.window.open("/docs/keyboard-shortcuts.html", "_blank")
+                Router.navigate("/help/shortcuts")
                 handled = true
             }
             else if (keyEvent.key == "F2") {
-                kotlinx.browser.window.open("/docs/card-formatting.html", "_blank")
+                Router.navigate("/help/formatting")
                 handled = true
+            }
+            // Escape closes an open overlay route (help/settings) by navigating back to the canvas.
+            else if (keyEvent.key == "Escape") {
+                val p = kotlinx.browser.window.location.pathname
+                if (p == "/help" || p.startsWith("/help/") || p == "/settings" || p.startsWith("/settings/")) {
+                    Router.navigate(currentCanvasUrl())
+                    handled = true
+                }
             }
 
             if (handled) {
                 event.preventDefault()
             }
         })
+    }
+
+    /** True when a text field or the Ace editor has focus, so a bare letter key must type, not act as a
+     *  shortcut. Ace's input target is a textarea, so this also covers in-editor typing. */
+    private fun isEditableFocused(): Boolean {
+        val ae = document.activeElement ?: return false
+        val tag = ae.tagName.uppercase()
+        if (tag == "INPUT" || tag == "TEXTAREA") return true
+        return ae.asDynamic().isContentEditable == true   // isContentEditable lives on HTMLElement
     }
 
     fun TagConsumer<*>.index(canvas: Canvas) {
@@ -174,6 +251,16 @@ class Index(val model: Model, val eventBus: EventBus) {
                 fontSize = theme.baseFontSize
             }
         }
+        // Returning to a canvas route always dismisses any open overlay/modal layered on top.
+        closeOverlays()
+
+        // Idempotent: if this exact canvas is already mounted, don't tear down and rebuild the
+        // board (that would lose scroll/focus). Opening/closing an overlay reuses the live board.
+        val existing = getHtmlElement("app-container")
+        if (existing != null && currentCanvas?.name == canvas.name) {
+            return
+        }
+
         currentCanvas = canvas
 
         // The canvas route is PARTIAL (zoned appends rather than clearing the body), so remove any

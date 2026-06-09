@@ -80,7 +80,7 @@ class CanvasColumns(val canvas: Canvas,
      * The themed background fill for a column. When the theme supplies a [columnPalette] (Metro's
      * live-tile grid) the fill cycles through it by the column's ordinal among leaf (content) columns,
      * so the order is stable and predictable; otherwise every column uses the single `panelBg`. A
-     * per-column colour override is painted later (onMount) and still wins over this default.
+     * per-column color override is painted later (onMount) and still wins over this default.
      */
     private fun paletteBg(columnId: Int): Color {
         val t = ThemeManager.current
@@ -269,7 +269,7 @@ class CanvasColumns(val canvas: Canvas,
             }
         }
         // Apply per-column overrides first: setFocused reads the accent (data-focus-color) this sets,
-        // so the focused column's hover stripe picks up the column colour on the very first paint.
+        // so the focused column's hover stripe picks up the column color on the very first paint.
         applyColumnStyle(columnId)
         // Apply focus styling if this is the focused column
         if (columnId == focusedColumn) {
@@ -283,19 +283,19 @@ class CanvasColumns(val canvas: Canvas,
         IntroCard.evaluate(model, canvas)
     }
 
-    /** Paint a column's per-column overrides (wallpaper image + background colour) over the theme defaults. */
+    /** Paint a column's per-column overrides (wallpaper image + background color) over the theme defaults. */
     private fun applyColumnStyle(columnId: ColumnId) {
         val el = getHtmlElement("column-$columnId") ?: return
         val style = model.getColumnStyle(canvas.name, columnId)
         val color = style.color?.takeIf { it.startsWith("#") }
         if (ThemeManager.current.titleInStrip) {
-            // Poodle Rocks: the per-column colour is an *accent*, not a fill. It recolours this column's
-            // card header strips (the coloured band atop each card) and its hover stripe (via the
+            // Poodle Rocks: the per-column color is an *accent*, not a fill. It recolors this column's
+            // card header strips (the colored band atop each card) and its hover stripe (via the
             // data-focus-color attribute, read in setFocused); the white document sheet stays white.
             if (color != null) el.setAttribute("data-focus-color", color) else el.removeAttribute("data-focus-color")
             setColumnHeaderAccent(columnId, color)
         } else {
-            // Every other theme: the colour fills the column surface (e.g. tints a Metro tile).
+            // Every other theme: the color fills the column surface (e.g. tints a Metro tile).
             color?.let { el.style.backgroundColor = it }
         }
         style.wallpaper?.let {
@@ -306,7 +306,7 @@ class CanvasColumns(val canvas: Canvas,
     }
 
     /**
-     * Recolour a single column's card header strips to [color] via an injected, id-scoped rule (so it
+     * Recolor a single column's card header strips to [color] via an injected, id-scoped rule (so it
      * beats the theme's global `.tdz-card-header` rule and survives card re-renders). A null [color]
      * empties the rule, restoring the theme default.
      */

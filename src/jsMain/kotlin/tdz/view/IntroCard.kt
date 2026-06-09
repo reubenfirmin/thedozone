@@ -38,7 +38,7 @@ object IntroCard {
     private var hintHooked = false
 
     private fun show() {
-        ensureStyles()                 // refresh each time so a theme switch while empty recolours the card
+        ensureStyles()                 // refresh each time so a theme switch while empty recolors the card
         PointerHint.start()            // begin sniffing wheel events to refine the instruction
         hookPointerHint()
         if (getHtmlElement(ID) != null) return
@@ -74,7 +74,7 @@ object IntroCard {
         val cur = ThemeManager.current.menuFg.toString()      // mouse outline / wheel
         val accent = ThemeManager.current.link.toString()      // highlighted right button
         // A mouse whose top is a semicircle (rx = half width); the right button is the top-right
-        // quadrant, filled in the accent colour and pulsed via CSS to cue the right-click.
+        // quadrant, filled in the accent color and pulsed via CSS to cue the right-click.
         val mouse = """
             <svg class="tdz-intro-mouse" width="54" height="80" viewBox="0 0 60 90" fill="none">
               <path class="tdz-intro-rbtn" d="M30 6 A24 24 0 0 1 54 30 L54 41 L30 41 Z" fill="$accent"/>

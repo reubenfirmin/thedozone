@@ -30,6 +30,7 @@ internal object MarkdownWriter {
                     is ListGroup -> renderListGroup(segment)
                     is CardHeading -> "${"#".repeat(segment.level)}${segment.text}"
                     is CardCodeBlock -> segment.toMarkdown()
+                    is Blockquote -> segment.toMarkdown()
                     is CardText -> renderRichText(segment.text)
                     is Callout -> "${"  ".repeat(segment.level)}${"-".repeat(segment.weight)} ${renderRichText(segment.text)}"
                     is CardDiagram -> "---\n${segment.text}\n---"

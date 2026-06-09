@@ -22,7 +22,7 @@ import web.mouse.MouseEvent
 /** Dynamic actions the canvas menu invokes; kept as an interface so sections are unit-testable. */
 interface CanvasMenuActions {
     fun toggleColumn()
-    fun columnProperties()        // open the column properties modal (wallpaper / colour)
+    fun columnProperties()        // open the column properties modal (wallpaper / color)
     fun download()                // export the canvas as a .tdz file
     fun splitEven(split: Split)   // SplitColumn: divide focused column into 2 equal panes
     fun distribute(split: Split)  // AddColumn: add a pane to the containing layout
@@ -33,7 +33,7 @@ interface CanvasMenuActions {
     fun downloadPng()             // rasterize the canvas to a .png image
     fun uploadNewCanvas()         // pick a .tdz file and import it as a new canvas
     fun uploadCardsHere()         // pick a .tdz file and merge its cards into the current canvas
-    fun openDoc(path: String)     // open a help doc (static /docs/*.html) in a new browser tab
+    fun openDoc(path: String)     // navigate to an in-app help route (e.g. /help/shortcuts)
 }
 
 private val STUB: () -> Unit = {}
@@ -116,11 +116,11 @@ fun canvasSections(
                 label = "Documentation",
                 submenu = listOf(
                     MenuItem(label = "Release Notes",
-                        onSelect = { actions.openDoc("/docs/release-notes.html") }),
+                        onSelect = { actions.openDoc("/help/release-notes") }),
                     MenuItem(label = "Keyboard Shortcuts", shortcut = "F1",
-                        onSelect = { actions.openDoc("/docs/keyboard-shortcuts.html") }),
+                        onSelect = { actions.openDoc("/help/shortcuts") }),
                     MenuItem(label = "Card Formatting", shortcut = "F2",
-                        onSelect = { actions.openDoc("/docs/card-formatting.html") }),
+                        onSelect = { actions.openDoc("/help/formatting") }),
                 ),
             ),
         ),
@@ -163,8 +163,8 @@ fun canvasMenu(
             // structural=false: a theme switch is purely local UI — it must not push to sync.
             eventBus.fire(RefreshCanvas(model.currentCanvas().name, structural = false))
         }
-        override fun openCloudSync() { tdz.sync.SyncBootstrap.modal.show() }
-        override fun openLocalFolderSync() { tdz.sync.SyncBootstrap.localFolderModal.show() }
+        override fun openCloudSync() { zoned.framework.routing.Router.navigate("/settings/sync") }
+        override fun openLocalFolderSync() { zoned.framework.routing.Router.navigate("/settings/folder") }
         override fun downloadPng() {
             val name = model.currentCanvas().name
             PngExporter().export("app-container", "${name.normalized()}.png") {
@@ -174,7 +174,7 @@ fun canvasMenu(
         }
         override fun uploadNewCanvas() { uploader.upload(ImportMode.NEW_CANVAS) }
         override fun uploadCardsHere() { uploader.upload(ImportMode.HERE) }
-        override fun openDoc(path: String) { kotlinx.browser.window.open(path, "_blank") }
+        override fun openDoc(path: String) { zoned.framework.routing.Router.navigate(path) }
     }
     canvasSections(mode, actions, tdz.sync.local.HandleStore.supported())
 }

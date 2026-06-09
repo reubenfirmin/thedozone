@@ -23,7 +23,7 @@ class Controller(eventBus: EventBus, model: Model) {
 
         eventBus.on<ColumnEdited> { event ->
             // The editor rebuilds its text from cards and omits the column's style header; preserve
-            // the existing header so editing cards doesn't drop the column's wallpaper/colour.
+            // the existing header so editing cards doesn't drop the column's wallpaper/color.
             val style = model.getColumnStyle(event.canvasName, event.columnId)
             model.updateColumn(event.canvasName, event.columnId,
                 MarkdownService.columnStyleHeader(style) + MarkdownService.stripColumnStyle(event.markdown))

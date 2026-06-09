@@ -3,8 +3,14 @@ package tdz.model.localstorage
 import kotlin.js.Json
 import kotlin.js.json
 
-/** Per remote-path sync bookkeeping: last seen Dropbox [rev] and last local edit time. */
-data class SyncEntry(val rev: String?, val localUpdatedAt: Double)
+/** Per remote-path sync bookkeeping: last seen [rev], last local edit time, and the last-synced
+ *  content ([base]) used as the common ancestor for 3-way column merges (null until first sync). */
+data class SyncEntry(
+    val rev: String?,
+    val localUpdatedAt: Double,
+    val base: String? = null,
+    val vv: tdz.sync.VersionVector = emptyMap(),
+)
 
 /**
  * Singleton map of Dropbox path -> [SyncEntry]. Powers conflict detection: on push we send the
@@ -21,7 +27,7 @@ data class SyncStateDoc(val entries: Map<String, SyncEntry>) : HasKey {
     override fun toJson(): Json {
         val obj = json()
         entries.forEach { (path, e) ->
-            obj[path] = json("rev" to e.rev, "localUpdatedAt" to e.localUpdatedAt)
+            obj[path] = json("rev" to e.rev, "localUpdatedAt" to e.localUpdatedAt, "base" to e.base, "vv" to tdz.sync.vvToJson(e.vv))
         }
         return obj
     }
@@ -40,6 +46,8 @@ data class SyncStateDoc(val entries: Map<String, SyncEntry>) : HasKey {
                 map[path] = SyncEntry(
                     rev = e["rev"] as String?,
                     localUpdatedAt = (e["localUpdatedAt"] as Number).toDouble(),
+                    base = e["base"] as String?,
+                    vv = (e["vv"] as kotlin.js.Json?)?.let { tdz.sync.vvFromJson(it) } ?: emptyMap(),
                 )
             }
             return SyncStateDoc(map)
