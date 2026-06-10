@@ -9,6 +9,7 @@ import tdz.controller.DragDrop
 import tdz.controller.events.EventBus
 import tdz.model.Canvas
 import tdz.model.Card
+import tdz.model.ColumnId
 import tdz.view.Mode.*
 import web.events.Event
 import web.events.EventType
@@ -26,43 +27,15 @@ import zoned.framework.interop.getHtmlElement
  * A column that contains cards.
  */
 class ColumnContainer(
-    headingColor: Color,
     val canvas: Canvas,
     val mode: Mode,
     val cards: List<Card>,
     val boundary: Boundary,
-    private val columnId: Int,
+    private val columnId: ColumnId,
     val eventBus: EventBus) {
-
-    private val darkHeader = Border(2.px, BorderStyle.solid, color = Color.black)
-    private val highlightHeader = Border(2.px, BorderStyle.solid, color = headingColor)
 
     private var focused = false
     private var editorColumn: EditorColumn? = null
-
-    fun FlowContent.render() {
-        val t = ThemeManager.current
-        val columnCss: CssBuilder.() -> Unit = {
-            height = 100.pct
-            border = Border(t.borderWidth, BorderStyle.valueOf(t.borderStyle), t.columnBorder)
-            backgroundColor = t.panelBg
-            borderRadius = t.columnRadius
-            t.columnShadow.forEach { boxShadow += it }
-            if (t.panelBackdropBlur.isNotEmpty()) backdropFilter = "blur(${t.panelBackdropBlur})"
-        }
-        when (mode) {
-            CARD -> div("w-full h-full mx-4 overflow-y-auto") {
-                id = DomIds.column(columnId)
-                css(columnCss)
-                paint()
-            }
-            EDITOR -> div("w-full h-full mx-4") {
-                id = DomIds.column(columnId)
-                css { columnCss(); overflow = Overflow.hidden }
-                paint()
-            }
-        }
-    }
 
     fun setupDragDrop(dragDrop: DragDrop) {
         dragDrop.setupColumn(DomIds.column(columnId), canvas.name)
@@ -75,17 +48,13 @@ class ColumnContainer(
 
     fun FlowContent.paint() {
         val canvasName = canvas.name
-        console.log("ColumnContainer.paint() called for column $columnId, mode=$mode, cards.size=${cards.size}")
-
         when (mode) {
             CARD -> {
-                console.log("Rendering CARD mode for column $columnId with ${cards.size} cards")
                 with (CardRenderer) {
                     render(canvasName, cards, eventBus)
                 }
             }
             EDITOR -> {
-                console.log("Rendering EDITOR mode for column $columnId")
                 val editor = EditorColumn(canvas, cards, columnId, eventBus)
                 editorColumn = editor
                 with(editor) {
@@ -161,6 +130,6 @@ class ColumnContainer(
 
     companion object {
         /** Id of the injected <style> carrying a column's header-accent rule. */
-        fun accentStyleId(columnId: Int) = "tdz-col-accent-$columnId"
+        fun accentStyleId(columnId: ColumnId) = "tdz-col-accent-$columnId"
     }
  }

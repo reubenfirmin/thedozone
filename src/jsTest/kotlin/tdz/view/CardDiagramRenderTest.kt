@@ -1,5 +1,6 @@
 package tdz.view
 
+import tdz.model.ColumnId
 import tdz.controller.events.EventBus
 import tdz.model.CanvasName
 import tdz.model.Card
@@ -30,7 +31,7 @@ class CardDiagramRenderTest {
 
     @Test
     fun diagramIsDrawnOntoCanvas() {
-        val card = Card(listOf(CardDiagram("[A] -> [B]")), CardMetadata(0), 0)
+        val card = Card(listOf(CardDiagram("[A] -> [B]")), CardMetadata(ColumnId(0)), 0)
         addToBody {
             div {
                 with(CardRenderer) {

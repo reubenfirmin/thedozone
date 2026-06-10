@@ -53,16 +53,8 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
     }
 
     override fun cards(canvasName: CanvasName, columnId: ColumnId): List<Card> {
-        val stored = fs.getColumn(canvasName, columnId)
-        console.log("Model.cards() called for canvas=$canvasName, columnId=$columnId, stored=${if (stored != null) "has ${stored.length} chars" else "null"}")
-        return if (stored != null) {
-            val cards = MarkdownService.fromMd(stored, columnId)
-            console.log("Model.cards() returning ${cards.size} cards")
-            cards
-        } else {
-            console.log("Model.cards() returning empty list (stored was null)")
-            listOf()
-        }
+        val stored = fs.getColumn(canvasName, columnId) ?: return listOf()
+        return MarkdownService.fromMd(stored, columnId)
     }
 
     fun allCards(canvasName: CanvasName): List<List<Card>> {
@@ -86,9 +78,13 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
 
     fun writeVersion() = fs.writeVersion(version)
 
-    fun getCardByIndex(canvasName: CanvasName, column: Int, idx: Int): Card {
-        val cards = cards(canvasName, column)
-        return cards[idx]
+    fun getCardByIndex(canvasName: CanvasName, ref: CardRef): Card {
+        val cards = cards(canvasName, ref.columnId)
+        require(ref.index in cards.indices) {
+            "No card at index ${ref.index} in column ${ref.columnId} of '${canvasName.normalized()}' " +
+                "(${cards.size} cards) — stale element id?"
+        }
+        return cards[ref.index]
     }
 
     override fun getCanvas(canvasName: CanvasName): Canvas? = fs.getCanvas(canvasName)
@@ -115,7 +111,8 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
         fs.storeColumn(column, canvasName, markdown)
     }
 
-    fun moveCardToCanvas(srcCard: Card, fromCanvas: CanvasName, toCanvas: CanvasName) {
+    /** Moves [srcCard] into [toCanvas] (creating it if needed); returns the destination column. */
+    fun moveCardToCanvas(srcCard: Card, fromCanvas: CanvasName, toCanvas: CanvasName): ColumnId {
 
         val canvasBeingMoved = srcCard.linkedCanvas()
         if (canvasBeingMoved != null) {
@@ -124,7 +121,9 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
             if (canvasBeingMoved != toCanvas) {
                 val existing = fs.getCanvas(canvasBeingMoved)
                 if (existing != null) {
-                    fs.storeCanvas(Canvas(existing.name, existing.parent, existing.columns, existing.layouts))
+                    // The link card stands for its canvas: moving it moves the canvas in the
+                    // hierarchy, so the linked canvas's parent follows the card.
+                    fs.storeCanvas(Canvas(existing.name, toCanvas, existing.columns, existing.layouts))
                 } // otherwise, it's a new canvas, and we don't need to store it yet
             } else {
                 // happens when user drops card onto itself??
@@ -132,11 +131,8 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
             }
         }
 
-        val destCanvas = fs.getCanvas(toCanvas) ?: run {
-            // TODO change this to just return in single operation
-            fs.storeCanvas(canvasFromTemplate(name = toCanvas, parent = fromCanvas, SINGLE_PANE))
-            fs.getCanvas(toCanvas) ?: error("Canvas '${toCanvas.normalized()}' failed to persist")
-        }
+        val destCanvas = fs.getCanvas(toCanvas)
+            ?: canvasFromTemplate(name = toCanvas, parent = fromCanvas, SINGLE_PANE).also { fs.storeCanvas(it) }
 
         val intendedColumn = srcCard.metadata.columnId
 
@@ -150,8 +146,9 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
         // update cards
         val cards = cards(toCanvas, destColumn)
         saveCards(toCanvas, destColumn, cards + srcCard)
-        // TODO it sucks to remove a card by index
+        // Removal is positional by design (cards have no stable ids; markdown is the source of truth).
         remove(fromCanvas, srcCard.metadata.columnId, srcCard.index)
+        return destColumn
     }
 
     /**
@@ -160,7 +157,7 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
     fun moveCardToColumn(canvasName: CanvasName,
                          movedCard: Card,
                          beforeCard: Card? = null,
-                         destColumn: Int) {
+                         destColumn: ColumnId) {
 
         if (beforeCard == null) { // goes at end
             val size = size(canvasName, destColumn)
@@ -173,11 +170,11 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
     fun moveCardToColumn(canvasName: CanvasName,
                          movedCard: Card,
                          toIndex: Int,
-                         destColumn: Int) {
+                         destColumn: ColumnId) {
         replace(canvasName, movedCard, movedCard.copy(metadata = CardMetadata(destColumn)), toIndex)
     }
 
-    fun delete(canvasName: CanvasName, column: Int, card: Card) {
+    fun delete(canvasName: CanvasName, column: ColumnId, card: Card) {
         remove(canvasName, column, card.index)
     }
 
@@ -213,8 +210,8 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
         }
     }
 
-    fun clearDone(canvasName: CanvasName): List<Int> {
-        val changedCols = mutableSetOf<Int>()
+    fun clearDone(canvasName: CanvasName): List<ColumnId> {
+        val changedCols = mutableSetOf<ColumnId>()
         allCards(canvasName).flatten().forEach { card ->
             val cleared = card.withoutDoneItems()
             if (cleared != card) {
@@ -225,7 +222,7 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
         return changedCols.toList()
     }
 
-    fun size(canvasName: CanvasName, column: Int) = cards(canvasName, column).size
+    fun size(canvasName: CanvasName, column: ColumnId) = cards(canvasName, column).size
 
     private fun replace(canvasName: CanvasName, card: Card, newCard: Card, newIdx: Int? = null) {
         remove(canvasName, card.metadata.columnId, card.index)
@@ -236,7 +233,7 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
         }
     }
 
-    private fun add(canvasName: CanvasName, column: Int, card: Card, index: Int) {
+    private fun add(canvasName: CanvasName, column: ColumnId, card: Card, index: Int) {
         val cards = cards(canvasName, column)
         val newCards = cards.toMutableList()
         if (index < cards.size) {
@@ -247,7 +244,7 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
         saveCards(canvasName, column, newCards)
     }
 
-    private fun remove(canvasName: CanvasName, column: Int, cardIdx: Int) {
+    private fun remove(canvasName: CanvasName, column: ColumnId, cardIdx: Int) {
         val cards = cards(canvasName, column)
         val newCards = cards.toMutableList()
         newCards.removeAt(cardIdx)

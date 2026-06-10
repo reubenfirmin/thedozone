@@ -35,6 +35,6 @@ CI is GitHub Actions (`.github/workflows/ci.yml`):
 
 ### Local deploy (optional)
 
-    ./gradlew clean build-style jsBrowserDistribution
+    ./gradlew clean jsBrowserDistribution
     CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... npx wrangler deploy
 

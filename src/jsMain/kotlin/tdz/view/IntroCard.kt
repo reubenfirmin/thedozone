@@ -8,9 +8,13 @@ import kotlinx.html.unsafe
 import tdz.model.Canvas
 import tdz.model.Model
 import tdz.rootCanvas
+import kotlinx.css.*
+import kotlinx.css.properties.*
 import tdz.view.theme.ThemeManager
 import zoned.framework.dom.onClick
 import zoned.framework.interop.addToBody
+import zoned.framework.interop.animation
+import zoned.framework.interop.keyframes
 import zoned.framework.interop.styleSheet
 import zoned.framework.routing.Zone.Companion.zone
 
@@ -31,7 +35,6 @@ import zoned.framework.routing.Zone.Companion.zone
 object IntroCard {
 
     private val ID get() = Zones.INTRO.elementId
-    private const val SANS = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
     /**
      * Show the welcome card iff [canvas] is the ROOT board in its pristine state (a single, empty content
@@ -119,38 +122,95 @@ object IntroCard {
 
     private fun ensureStyles() {
         val t = ThemeManager.current
-        val bg = t.menuBg.toString()
-        val fg = t.menuFg.toString()
-        val border = t.menuBorder.toString()
-        val link = t.link.toString()
-        val radius = t.cardRadius.toString().let { if (it == "0px") "14px" else it }
+        // DOS's square cards read fine, but a square welcome dialog reads broken; round it anyway.
+        val radius = if (t.cardRadius.toString() == "0px") 14.px else t.cardRadius
         styleSheet("tdz-intro-styles") {
-            raw("""
-                #$ID { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-                       pointer-events: none; z-index: 500; }
-                #$ID .tdz-intro-card { display: flex; align-items: center; gap: 20px; text-align: left;
-                       max-width: 460px; background: $bg; color: $fg; border: 1px solid $border;
-                       border-radius: $radius; padding: 24px 28px; font-family: $SANS;
-                       animation: tdz-intro-in 360ms cubic-bezier(0.2,0.8,0.3,1) both,
-                                  tdz-intro-glow 2.6s ease-in-out infinite 360ms; }
-                #$ID .tdz-intro-mouse { flex: 0 0 auto; display: block; }
-                #$ID .tdz-intro-rbtn { animation: tdz-intro-rbtn 1.2s ease-in-out infinite; transform-origin: center; }
-                #$ID .tdz-intro-text { min-width: 0; }
-                #$ID .tdz-intro-h { font-size: 20px; font-weight: 600; margin: 0 0 6px; letter-spacing: 0.01em;
-                       font-family: $SANS; }
-                #$ID .tdz-intro-p { font-size: 14px; line-height: 1.55; margin: 0; opacity: 0.92; font-family: $SANS; }
-                #$ID .tdz-intro-accent { color: $link; font-weight: 700; white-space: nowrap; }
-                #$ID .tdz-intro-btn { pointer-events: auto; cursor: pointer; margin-top: 16px; display: inline-block;
-                       font-family: $SANS; font-size: 13px; font-weight: 600; background: $link; color: $bg;
-                       border: none; border-radius: 6px; padding: 8px 16px; }
-                #$ID .tdz-intro-btn:hover { filter: brightness(1.08); }
-                @keyframes tdz-intro-in { from { opacity: 0; transform: translateY(10px) scale(0.96); }
-                                          to { opacity: 1; transform: none; } }
-                @keyframes tdz-intro-rbtn { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
-                @keyframes tdz-intro-glow {
-                    0%,100% { box-shadow: 0 12px 44px rgba(0,0,0,0.45), 0 0 0 1px $border, 0 0 16px -4px $link; }
-                    50%     { box-shadow: 0 12px 44px rgba(0,0,0,0.45), 0 0 0 1px $link,   0 0 34px 0px $link; } }
-            """.trimIndent())
+            val enter = keyframes("tdz-intro-in") {
+                from { opacity = 0.0; put("transform", "translateY(10px) scale(0.96)") }
+                to { opacity = 1.0; put("transform", "none") }
+            }
+            val rightButtonPulse = keyframes("tdz-intro-rbtn") {
+                at(0.pct, 100.pct) { opacity = 0.3 }
+                at(50.pct) { opacity = 1.0 }
+            }
+            val glow = keyframes("tdz-intro-glow") {
+                at(0.pct, 100.pct) {
+                    put("box-shadow", "0 12px 44px ${t.scrimBg}, 0 0 0 1px ${t.menuBorder}, 0 0 16px -4px ${t.link}")
+                }
+                at(50.pct) {
+                    put("box-shadow", "0 12px 44px ${t.scrimBg}, 0 0 0 1px ${t.link}, 0 0 34px 0px ${t.link}")
+                }
+            }
+            rule("#$ID") {
+                position = Position.fixed
+                top = 0.px; left = 0.px; right = 0.px; bottom = 0.px
+                display = Display.flex
+                alignItems = Align.center
+                justifyContent = JustifyContent.center
+                pointerEvents = PointerEvents.none
+                zIndex = ZLayer.WELCOME_CARD
+            }
+            rule("#$ID .tdz-intro-card") {
+                display = Display.flex
+                alignItems = Align.center
+                gap = 20.px
+                textAlign = TextAlign.left
+                maxWidth = 460.px
+                backgroundColor = t.menuBg
+                color = t.menuFg
+                border = Border(1.px, BorderStyle.solid, t.menuBorder)
+                borderRadius = radius
+                padding = Padding(vertical = 24.px, horizontal = 28.px)
+                fontFamily = t.fontFamily
+                animation(enter, 360.ms, cubicBezier(0.2, 0.8, 0.3, 1.0), fillMode = FillMode.both)
+                animation(glow, 2.6.s, Timing.easeInOut, delay = 360.ms, iterationCount = IterationCount.infinite)
+            }
+            rule("#$ID .tdz-intro-mouse") {
+                put("flex", "0 0 auto")
+                display = Display.block
+            }
+            rule("#$ID .tdz-intro-rbtn") {
+                animation(rightButtonPulse, 1.2.s, Timing.easeInOut, iterationCount = IterationCount.infinite)
+                put("transform-origin", "center")
+            }
+            rule("#$ID .tdz-intro-text") { minWidth = 0.px }
+            rule("#$ID .tdz-intro-h") {
+                fontSize = 20.px
+                fontWeight = FontWeight.w600
+                margin = Margin(0.px)
+                marginBottom = 6.px
+                letterSpacing = 0.01.em
+                fontFamily = t.fontFamily
+            }
+            rule("#$ID .tdz-intro-p") {
+                fontSize = 14.px
+                lineHeight = LineHeight("1.55")
+                margin = Margin(0.px)
+                opacity = 0.92
+                fontFamily = t.fontFamily
+            }
+            rule("#$ID .tdz-intro-accent") {
+                color = t.link
+                fontWeight = FontWeight.w700
+                whiteSpace = WhiteSpace.nowrap
+            }
+            // The card itself is pointer-events:none (right-clicks pass through to the canvas);
+            // the button opts back in as the single clickable affordance.
+            rule("#$ID .tdz-intro-btn") {
+                pointerEvents = PointerEvents.auto
+                cursor = Cursor.pointer
+                marginTop = 16.px
+                display = Display.inlineBlock
+                fontFamily = t.fontFamily
+                fontSize = 13.px
+                fontWeight = FontWeight.w600
+                backgroundColor = t.link
+                color = t.menuBg
+                borderStyle = BorderStyle.none
+                borderRadius = 6.px
+                padding = Padding(vertical = 8.px, horizontal = 16.px)
+            }
+            rule("#$ID .tdz-intro-btn:hover") { put("filter", "brightness(1.08)") }
         }
     }
 }

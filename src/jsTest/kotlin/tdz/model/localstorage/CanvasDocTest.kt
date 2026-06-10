@@ -1,5 +1,6 @@
 package tdz.model.localstorage
 
+import tdz.model.ColumnId
 import tdz.model.CanvasName
 import tdz.model.ColumnLayoutSpec
 import tdz.model.Split
@@ -12,8 +13,8 @@ class CanvasDocTest {
     private val doc = CanvasDoc(
         name = CanvasName("work"),
         parentName = CanvasName("_"),
-        columns = listOf(0, 1, 2),
-        layouts = listOf(ColumnLayoutSpec(0, Split.VERTICAL, listOf(1, 2))),
+        columns = listOf(ColumnId(0), ColumnId(1), ColumnId(2)),
+        layouts = listOf(ColumnLayoutSpec(ColumnId(0), Split.VERTICAL, listOf(ColumnId(1), ColumnId(2)))),
     )
 
     @Test
@@ -30,8 +31,8 @@ class CanvasDocTest {
         val back = CanvasDoc.decode(legacy)
         assertEquals(CanvasName("_"), back.name)
         assertEquals(null, back.parentName)
-        assertEquals(listOf(0, 1), back.columns)
-        assertEquals(listOf(ColumnLayoutSpec(0, Split.HORIZONTAL, listOf(1))), back.layouts)
+        assertEquals(listOf(ColumnId(0), ColumnId(1)), back.columns)
+        assertEquals(listOf(ColumnLayoutSpec(ColumnId(0), Split.HORIZONTAL, listOf(ColumnId(1)))), back.layouts)
     }
 
     @Test

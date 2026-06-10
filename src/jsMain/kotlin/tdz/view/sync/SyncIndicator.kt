@@ -7,6 +7,7 @@ import tdz.controller.events.SyncStatusChanged
 import tdz.sync.SyncState
 import tdz.sync.SyncStateStore
 import tdz.sync.locked
+import tdz.view.ZLayer
 import tdz.view.Zones
 import web.html.HTMLElement
 import zoned.framework.dom.Ref
@@ -64,7 +65,7 @@ class SyncIndicator(
                     position = Position.fixed
                     right = 12.px
                     bottom = 12.px
-                    zIndex = 9000
+                    zIndex = ZLayer.SYNC_BADGE
                     padding = Padding(vertical = 4.px, horizontal = 10.px)
                     backgroundColor = SyncColors.badgeBg
                     color = SyncColors.badgeFg
@@ -91,7 +92,7 @@ class SyncIndicator(
                 css {
                     position = Position.fixed
                     top = 0.px; left = 0.px; right = 0.px; bottom = 0.px
-                    zIndex = 8999
+                    zIndex = ZLayer.SYNC_OVERLAY
                     display = Display.none
                     alignItems = Align.center
                     justifyContent = JustifyContent.center

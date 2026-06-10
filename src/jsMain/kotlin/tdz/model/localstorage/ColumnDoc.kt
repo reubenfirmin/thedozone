@@ -4,6 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import tdz.model.CanvasName
+import tdz.model.ColumnId
 
 @Serializable
 private data class ColumnWire(
@@ -21,7 +22,7 @@ internal data class ColumnDoc(val columnLabel: String, val canvasName: CanvasNam
         storageJson.encodeToString(ColumnWire(columnLabel, canvasName.normalized(), value))
 
     companion object {
-        fun toLabel(columnId: Int): String {
+        fun toLabel(columnId: ColumnId): String {
             return "$columnId"
         }
 

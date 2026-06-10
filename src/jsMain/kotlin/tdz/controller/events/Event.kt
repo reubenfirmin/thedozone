@@ -7,21 +7,45 @@ import tdz.model.ColumnId
 import tdz.model.Direction
 import tdz.model.Split
 import tdz.model.card.CardListItem
-import web.mouse.MouseEvent
 
 interface Event
 
-data class TaskToggleDone(val sourceEvent: MouseEvent, val canvasName: CanvasName, val card: Card, val segment: CardListItem): Event
+data class TaskToggleDone(val canvasName: CanvasName, val card: Card, val segment: CardListItem): Event
 
-data class CardMoved(val canvasName: CanvasName, val card: Card, val fromColumnId: Int, val toColumnId: Int): Event
+/**
+ * A column's persisted markdown was replaced (editor save, properties modal). [refresh] asks the
+ * Controller to re-render the column afterwards — the editor passes false so its own save never
+ * rebuilds the editor mid-typing.
+ */
+data class ColumnEdited(val markdown: String, val canvasName: CanvasName, val columnId: ColumnId, val refresh: Boolean = false): Event
 
-data class ColumnEdited(val markdown: String, val canvasName: CanvasName, val columnId: Int): Event
+/**
+ * Drag-drop outcome: [toColumnId] now holds [toCards] in this order (and [fromColumnId] holds
+ * [fromCards] when the drag crossed columns). The Controller persists and emits the change events.
+ */
+data class CardsReordered(
+    val canvasName: CanvasName,
+    val toColumnId: ColumnId,
+    val toCards: List<Card>,
+    val fromColumnId: ColumnId,
+    val fromCards: List<Card>?,
+): Event
 
-data class RefreshColumns(val canvasName: CanvasName, val columnIds: Set<Int>): Event
+/** Cards dropped on a canvas link: move them from [sourceCanvas] into [targetCanvas]. */
+data class CardsSentToCanvas(val sourceCanvas: CanvasName, val targetCanvas: CanvasName, val cards: List<Card>): Event
+
+/**
+ * MODEL FACT: the content of [columnIds] on [canvasName] changed. Sync pushes on this — every
+ * local mutation must emit it, or the change silently never reaches other devices. Distinct from
+ * [RefreshColumns] (a render command): [remote] = true marks changes sync itself just applied
+ * from a pull, which subscribers must not push back.
+ */
+data class ColumnsChanged(val canvasName: CanvasName, val columnIds: Set<ColumnId>, val remote: Boolean = false): Event
+
+/** RENDER COMMAND: rebuild these columns' DOM from the model. */
+data class RefreshColumns(val canvasName: CanvasName, val columnIds: Set<ColumnId>): Event
 
 data class SwitchToCanvas(val canvasName: CanvasName): Event
-
-data class CanvasSwitched(val canvas: Canvas): Event
 
 /** "Even": divide [columnId] into two equal panes in direction [split]. */
 data class SplitColumn(val canvasName: CanvasName, val split: Split, val columnId: ColumnId): Event

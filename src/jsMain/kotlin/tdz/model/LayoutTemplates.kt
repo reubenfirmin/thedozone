@@ -8,17 +8,19 @@ object LayoutTemplates {
 
 }
 
+private fun cols(vararg ids: Int) = ids.map(::ColumnId)
+
 enum class LayoutTemplate(val columns: List<ColumnId>, val layoutSpecs: List<ColumnLayoutSpec>) {
-    SINGLE_PANE(listOf(0, 1), listOf(
-        ColumnLayoutSpec(0, Split.HORIZONTAL, listOf(1))
+    SINGLE_PANE(cols(0, 1), listOf(
+        ColumnLayoutSpec(ColumnId(0), Split.HORIZONTAL, cols(1))
     )),
-    TWO_COLUMNS_VERTICAL(listOf(0, 1, 2), listOf(
-        ColumnLayoutSpec(0, Split.VERTICAL, listOf(1, 2))
+    TWO_COLUMNS_VERTICAL(cols(0, 1, 2), listOf(
+        ColumnLayoutSpec(ColumnId(0), Split.VERTICAL, cols(1, 2))
     )),
-    THREE_COLUMNS_VERTICAL(listOf(0, 1, 2, 3), listOf(
-        ColumnLayoutSpec(0, Split.VERTICAL, listOf(1, 2, 3))
+    THREE_COLUMNS_VERTICAL(cols(0, 1, 2, 3), listOf(
+        ColumnLayoutSpec(ColumnId(0), Split.VERTICAL, cols(1, 2, 3))
     )),
-    TWO_ROWS_HORIZONTAL(listOf(0, 1, 2), listOf(
-        ColumnLayoutSpec(0, Split.HORIZONTAL, listOf(1, 2))
+    TWO_ROWS_HORIZONTAL(cols(0, 1, 2), listOf(
+        ColumnLayoutSpec(ColumnId(0), Split.HORIZONTAL, cols(1, 2))
     ))
 }

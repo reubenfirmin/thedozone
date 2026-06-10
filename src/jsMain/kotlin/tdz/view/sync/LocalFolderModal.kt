@@ -9,6 +9,8 @@ import tdz.model.Model
 import tdz.sync.SyncController
 import tdz.sync.SyncState
 import tdz.sync.SyncStateStore
+import tdz.view.ZLayer
+import tdz.view.modalButton
 import tdz.view.theme.ThemeManager
 import web.html.HTMLElement
 import zoned.framework.dom.Ref
@@ -55,7 +57,7 @@ class LocalFolderModal(
                 css {
                     position = Position.fixed
                     top = 0.px; left = 0.px; right = 0.px; bottom = 0.px
-                    zIndex = 10001
+                    zIndex = ZLayer.MODAL
                     display = Display.flex
                     alignItems = Align.center
                     justifyContent = JustifyContent.center
@@ -123,27 +125,6 @@ class LocalFolderModal(
 
     // --- button helper (kotlinx.html receiver), copied from SyncModal's style ---
     private fun kotlinx.html.FlowContent.button(
-        text: String, primary: Boolean = false, onPress: () -> Unit,
-    ) {
-        div {
-            css {
-                padding = Padding(vertical = 7.px, horizontal = 14.px)
-                marginRight = 8.px
-                cursor = Cursor.pointer
-                borderRadius = 4.px
-                fontSize = 13.px
-                fontWeight = if (primary) FontWeight.w600 else FontWeight.normal
-                textAlign = TextAlign.center
-                userSelect = UserSelect.none
-                backgroundColor = if (primary) SyncColors.primaryBg else SyncColors.buttonBg
-                color = if (primary) SyncColors.primaryFg else SyncColors.buttonFg
-                border = Border(
-                    1.px, BorderStyle.solid,
-                    if (primary) SyncColors.primaryBg else SyncColors.buttonBorder,
-                )
-            }
-            onClick { onPress() }
-            +text
-        }
-    }
+        text: String, primary: Boolean = false, enabled: Boolean = true, onPress: () -> Unit,
+    ) = modalButton(text, primary, enabled, onPress)
 }

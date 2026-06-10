@@ -26,6 +26,7 @@ import zoned.framework.dom.ref
 import zoned.framework.interop.addToBody
 import zoned.framework.interop.css
 import zoned.framework.interop.styleSheet
+import tdz.view.ZLayer
 import tdz.view.theme.ThemeManager
 
 /**
@@ -74,7 +75,7 @@ object ContextMenu {
                     position = Position.fixed
                     left = (x - MENU_BUFFER).px
                     top = (y - MENU_BUFFER).px
-                    zIndex = 9999
+                    zIndex = ZLayer.CONTEXT_MENU
                     padding = Padding(MENU_BUFFER.px)   // transparent (no background on the wrapper)
                 }
                 onMouseLeave { hide() }
@@ -209,7 +210,7 @@ object ContextMenu {
                     border = Border(1.px, BorderStyle.solid, ThemeManager.current.menuBorder)
                     borderRadius = ThemeManager.current.cardRadius
                     boxShadow += BoxShadow(ThemeManager.current.shadow, 0.px, 2.px, 8.px)
-                    zIndex = 10000
+                    zIndex = ZLayer.SUBMENU
                 }
                 item.submenu?.forEach { renderItem(it, false) }
             }

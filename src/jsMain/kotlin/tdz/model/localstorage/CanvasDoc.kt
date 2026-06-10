@@ -54,7 +54,7 @@ data class CanvasDoc (
         internal fun fromWire(wire: CanvasWire) = CanvasDoc(
             CanvasName(wire.name),
             wire.parentId?.let { CanvasName(it) },
-            wire.columns.split(",").map { it.toInt() },
+            wire.columns.split(",").map { ColumnId(it.toInt()) },
             wire.layouts.split("||")
                 .mapNotNull { ColumnLayoutSpecDoc.decode(it) }
                 .map { ColumnLayoutSpec(it.columnId, it.split, it.contains) },
@@ -83,9 +83,9 @@ data class ColumnLayoutSpecDoc(
             }
             return ColumnLayoutSpecDoc(
                 CanvasName(parts[0]),
-                parts[1].toInt(),
+                ColumnId(parts[1].toInt()),
                 Split.valueOf(parts[2]),
-                (parts[3]).split(",").map { it.toInt() }
+                (parts[3]).split(",").map { ColumnId(it.toInt()) }
             )
         }
     }

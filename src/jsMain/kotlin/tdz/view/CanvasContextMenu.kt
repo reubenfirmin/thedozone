@@ -5,7 +5,11 @@ import tdz.controller.PngExporter
 import tdz.controller.Uploader
 import tdz.controller.io.ImportMode
 import tdz.controller.events.AddColumn
+import tdz.controller.events.ClearDone
 import tdz.controller.events.DeleteColumn
+import tdz.helpPages
+import tdz.settingsPages
+import zoned.framework.routing.Router
 import tdz.controller.events.EventBus
 import tdz.controller.events.RefreshCanvas
 import tdz.controller.events.SplitColumn
@@ -33,10 +37,9 @@ interface CanvasMenuActions {
     fun downloadPng()             // rasterize the canvas to a .png image
     fun uploadNewCanvas()         // pick a .tdz file and import it as a new canvas
     fun uploadCardsHere()         // pick a .tdz file and merge its cards into the current canvas
+    fun clearDone()
     fun openDoc(path: String)     // navigate to an in-app help route (e.g. /help/shortcuts)
 }
-
-private val STUB: () -> Unit = {}
 
 /**
  * Pure builder for the canvas context-menu sections.
@@ -54,7 +57,7 @@ fun canvasSections(
                 enabled = columnMode != null,
                 onSelect = actions::toggleColumn,
             ),
-            MenuItem(label = "Clear Done", enabled = false, onSelect = STUB),
+            MenuItem(label = "Clear Done", shortcut = "Ctrl+;", onSelect = actions::clearDone),
             MenuItem(label = "Delete Column", enabled = columnMode != null, onSelect = actions::deleteColumn),
         ),
     ),
@@ -116,11 +119,11 @@ fun canvasSections(
                 label = "Help",
                 submenu = listOf(
                     MenuItem(label = "Release Notes",
-                        onSelect = { actions.openDoc("/help/release-notes") }),
+                        onSelect = { actions.openDoc(helpPages.releaseNotes.path()) }),
                     MenuItem(label = "Keyboard Shortcuts", shortcut = "F1",
-                        onSelect = { actions.openDoc("/help/shortcuts") }),
+                        onSelect = { actions.openDoc(helpPages.shortcuts.path()) }),
                     MenuItem(label = "Card Formatting", shortcut = "F2",
-                        onSelect = { actions.openDoc("/help/formatting") }),
+                        onSelect = { actions.openDoc(helpPages.formatting.path()) }),
                 ),
             ),
         ),
@@ -163,8 +166,9 @@ fun canvasMenu(
             // structural=false: a theme switch is purely local UI — it must not push to sync.
             eventBus.fire(RefreshCanvas(model.currentCanvas().name, structural = false))
         }
-        override fun openCloudSync() { zoned.framework.routing.Router.navigate("/settings/sync") }
-        override fun openLocalFolderSync() { zoned.framework.routing.Router.navigate("/settings/folder") }
+        override fun clearDone() { eventBus.fire(ClearDone(model.currentCanvas().name)) }
+        override fun openCloudSync() { Router.navigate(settingsPages.sync.path()) }
+        override fun openLocalFolderSync() { Router.navigate(settingsPages.folder.path()) }
         override fun downloadPng() {
             val name = model.currentCanvas().name
             PngExporter().export("app-container", "${name.normalized()}.png") {

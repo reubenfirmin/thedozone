@@ -56,8 +56,8 @@ class CanvasImporter(private val store: CanvasStore) {
             val columnCount = doc.cards.map { it.metadata.columnId }.distinct().size
             store.addCanvas(
                 Canvas(
-                    name, currentCanvas.name, (0..columnCount).toList(),
-                    listOf(ColumnLayoutSpec(0, Split.VERTICAL, (1..columnCount).toList())),
+                    name, currentCanvas.name, (0..columnCount).map(::ColumnId),
+                    listOf(ColumnLayoutSpec(ColumnId(0), Split.VERTICAL, (1..columnCount).map(::ColumnId))),
                 )
             )
         }

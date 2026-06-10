@@ -9,7 +9,6 @@ data class CardCodeBlock(val text: String): CardSegment, RichText {
         return "`$text`"
     }
 
-    // TODO This is inefficient
     fun code() = text
 
     fun className() = "microlight"

@@ -1,4 +1,4 @@
-    package tdz
+package tdz
 
 import kotlinx.css.Color
 import tdz.controller.Controller
@@ -6,6 +6,8 @@ import tdz.controller.DragDrop
 import tdz.controller.events.EventBus
 import tdz.model.CanvasName
 import tdz.model.Model
+import tdz.view.Zones
+import tdz.view.help.HelpTopic
 import tdz.view.theme.ThemeManager
 import tdz.view.theme.themes
 import zoned.framework.*
@@ -19,80 +21,69 @@ val tdzModel = Model(rootCanvas)
 val eventBus = EventBus()
 val tdzController = Controller(eventBus, tdzModel)
 val tdzDragDrop = DragDrop(tdzModel, eventBus)
+val tdzIndex = Index(tdzModel, eventBus)
 
-class App {
+/** The canvas itself: the board at "/" or any nested board path. */
+object canvasPages : Routes<Index>(tdzIndex, "/") {
 
-        object index: Routes<Index>(Index(tdzModel, eventBus), "/") {
-            // Every route is PARTIAL: the body hosts permanent sibling layers (canvas shell, sync
-            // badge, portals), and Index swaps the canvas ZONE itself — nothing may clear the body.
-            val home = route(mode = RenderMode.PARTIAL) { "/" to {
-                index(tdzModel.currentCanvas())
-            }
-        }.title { "The Do Zone" }
-        val canvas = route(mode = RenderMode.PARTIAL) {
-            "/{canvas...}" to { params ->
-                val segments = params.segments("canvas")
-                val canvasName = segments.lastOrNull() ?: ""
+    val home = route(mode = RenderMode.PARTIAL) { "/" to {
+        index(tdzModel.currentCanvas())
+    } }.title { "The Do Zone" }
 
-                val canvas = tdzModel.getCanvas(CanvasName(canvasName))
-                if (canvas == null) {
-                    Router.navigate("/")
-                } else {
-                    index(canvas)
-                }
-            }
-        }.title { params ->
-            params.segments("canvas").lastOrNull()?.let { "$it — The Do Zone" } ?: "The Do Zone"
+    val board = route(mode = RenderMode.PARTIAL) { "/{canvas...}" to { params ->
+        val segments = params.segments("canvas")
+        val canvasName = segments.lastOrNull() ?: ""
+
+        val canvas = tdzModel.getCanvas(CanvasName(canvasName))
+        if (canvas == null) {
+            Router.navigate("/")
+        } else {
+            index(canvas)
         }
-
-        val help = route(mode = RenderMode.PARTIAL) {
-            "/help" to { Router.navigate("/help/shortcuts") }
-        }
-
-        val settings = route(mode = RenderMode.PARTIAL) {
-            "/settings" to { Router.navigate("/settings/sync") }
-        }
-
-        val helpShortcuts = route(mode = RenderMode.PARTIAL) {
-            "/help/shortcuts" to { openHelp(tdz.view.help.HelpTopic.SHORTCUTS) }
-        }.title { "Keyboard Shortcuts" }
-
-        val helpFormatting = route(mode = RenderMode.PARTIAL) {
-            "/help/formatting" to { openHelp(tdz.view.help.HelpTopic.FORMATTING) }
-        }.title { "Card Formatting" }
-
-        val helpReleaseNotes = route(mode = RenderMode.PARTIAL) {
-            "/help/release-notes" to { openHelp(tdz.view.help.HelpTopic.RELEASE_NOTES) }
-        }.title { "Release Notes" }
-
-        val settingsSync = route(mode = RenderMode.PARTIAL) {
-            "/settings/sync" to { openSyncSettings() }
-        }.title { "Cloud Sync" }
-
-        val settingsFolder = route(mode = RenderMode.PARTIAL) {
-            "/settings/folder" to { openFolderSettings() }
-        }.title { "Local Folder Sync" }
+    } }.title { params ->
+        params.segments("canvas").lastOrNull()?.let { "$it — The Do Zone" } ?: "The Do Zone"
     }
+}
 
-    init {
-        // Debug mode off. Re-enable Debugger.debugOn() to show the column-number watermark + debug logs.
-        // Debugger.debugOn()
-        // hacky. init
-        listOf(index).forEach { _ ->
-            console
-        }
-    }
+/** Help topics render into the overlay zone; on a cold deep-link the canvas route runs first. */
+object helpPages : Routes<Index>(tdzIndex, "/help") {
+
+    val root = route(mode = RenderMode.PARTIAL) { "" to { Router.navigate(shortcuts.path()) } }
+
+    val shortcuts = fragment(Zones.OVERLAY, canvasPages.home, mode = RenderMode.PARTIAL) {
+        "/shortcuts" to { _ -> helpPage(HelpTopic.SHORTCUTS) }
+    }.title { "Keyboard Shortcuts" }
+
+    val formatting = fragment(Zones.OVERLAY, canvasPages.home, mode = RenderMode.PARTIAL) {
+        "/formatting" to { _ -> helpPage(HelpTopic.FORMATTING) }
+    }.title { "Card Formatting" }
+
+    val releaseNotes = fragment(Zones.OVERLAY, canvasPages.home, mode = RenderMode.PARTIAL) {
+        "/release-notes" to { _ -> helpPage(HelpTopic.RELEASE_NOTES) }
+    }.title { "Release Notes" }
+}
+
+/** Settings open body-level modals (their own scrims), so these stay plain routes. */
+object settingsPages : Routes<Index>(tdzIndex, "/settings") {
+
+    val root = route(mode = RenderMode.PARTIAL) { "" to { Router.navigate(sync.path()) } }
+
+    val sync = route(mode = RenderMode.PARTIAL) { "/sync" to { openSyncSettings() } }
+        .title { "Cloud Sync" }
+
+    val folder = route(mode = RenderMode.PARTIAL) { "/folder" to { openFolderSettings() } }
+        .title { "Local Folder Sync" }
 }
 
 fun main() {
     initLeaflet()
     // Restore the saved theme before the first render so its colors/font apply immediately.
     tdzModel.getTheme()?.let { saved -> themes.firstOrNull { it.name == saved } }?.let { ThemeManager.use(it) }
-    App()
     tdz.sync.SyncBootstrap.init(tdzModel, eventBus)
-    Router.start()
+    // Passing the collections IS their registration — an unmounted collection contributes no
+    // routes, and any typed Route.path() link to it fails loudly naming the missing mount.
+    Router.start(canvasPages, helpPages, settingsPages)
 }
 
 const val ACE_TAB_SIZE = 2
 val mapLog = LogType("maps", Color.black, Color.white)
-val eventLog = LogType("events", Color.black, Color.yellow)

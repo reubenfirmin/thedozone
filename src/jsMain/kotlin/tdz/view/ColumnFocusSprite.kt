@@ -55,7 +55,7 @@ object ColumnFocusSprite {
                     backgroundSize = "contain"
                     backgroundPosition = RelativePosition.center
                     pointerEvents = PointerEvents.none   // purely decorative — never intercept clicks
-                    zIndex = 60
+                    zIndex = ZLayer.FOCUS_SPRITE
                     display = Display.none
                 }
             }

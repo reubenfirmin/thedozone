@@ -1,7 +1,7 @@
  package tdz.model.markdown
 
-import tdz.App
 import tdz.model.Card
+import tdz.model.ColumnId
 import tdz.model.CardMetadata
 import tdz.model.card.*
 import tdz.model.markdown.MarkdownBlockquote.consumeBlockquote
@@ -15,7 +15,7 @@ import tdz.model.markdown.MarkdownWhitespace.consumeEmptyLine
 import tdz.model.markdown.MarkdownWhitespace.consumeSeparator
 
  /**
- * Markdown -> Tasks for a specific column
+ * Markdown -> Cards (column assignment via embedded metadata comments)
  */
 internal object MarkdownReader {
 
@@ -49,14 +49,14 @@ internal object MarkdownReader {
       * Parse this markdown which contains all columns on the canvas
       */
     fun parseAll(content: String): List<List<Card>> {
-        return parse(content, 0).groupBy { it.metadata.columnId }.values.toList()
+        return parse(content, ColumnId(0)).groupBy { it.metadata.columnId }.values.toList()
     }
 
      /**
       * Parse markdown, assigning cards to the specified column, until a new column editor tag is found, at which point
-      * start using that. (TODO - move to H1 for splitting)
+      * start using that.
       */
-    fun parse(content: String, column: Int): List<Card> {
+    fun parse(content: String, column: ColumnId): List<Card> {
         val state = ParseState(column)
 
         for (line in content.split("\n")) {

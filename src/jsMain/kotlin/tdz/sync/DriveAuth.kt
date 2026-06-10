@@ -1,5 +1,6 @@
 package tdz.sync
 
+import zoned.framework.Debugger
 import kotlinx.browser.window
 import kotlinx.coroutines.await
 import kotlinx.serialization.Serializable
@@ -48,7 +49,7 @@ object DriveAuth {
         DriveApi.awaitReady()
         val resp = DriveApi.requestToken(GoogleApp.CLIENT_ID, GoogleApp.SCOPE, prompt = "consent")
         cache(resp)
-        console.log("[sync/auth] connected; token expires in ${resp.expiresInSec}s")
+        Debugger.debug("[sync/auth] connected; token expires in ${resp.expiresInSec}s")
         // Email is available under drive.file via the about endpoint — best-effort, like Dropbox's.
         val email = runCatching { fetchAccountEmail(resp.accessToken) }.getOrNull() ?: "Google Drive account"
         return DriveCredentials(email)
@@ -58,16 +59,16 @@ object DriveAuth {
     suspend fun token(): String {
         val cached = accessToken
         if (cached != null && Date.now() < expiresAtMs - SKEW_MS) {
-            console.log("[sync/auth] token cache hit (${remainingSec()}s left)")
+            Debugger.debug("[sync/auth] token cache hit (${remainingSec()}s left)")
             return cached
         }
-        if (cached == null) console.log("[sync/auth] no usable token in memory/storage (likely page reload); trying silent renewal")
-        else console.log("[sync/auth] token expired/expiring (${remainingSec()}s); trying silent renewal")
+        if (cached == null) Debugger.debug("[sync/auth] no usable token in memory/storage (likely page reload); trying silent renewal")
+        else Debugger.debug("[sync/auth] token expired/expiring (${remainingSec()}s); trying silent renewal")
         DriveApi.awaitReady()
         return try {
             val resp = DriveApi.requestToken(GoogleApp.CLIENT_ID, GoogleApp.SCOPE, prompt = "none")
             cache(resp)
-            console.log("[sync/auth] silent renewal OK (expires in ${resp.expiresInSec}s)")
+            Debugger.debug("[sync/auth] silent renewal OK (expires in ${resp.expiresInSec}s)")
             resp.accessToken
         } catch (e: Throwable) {
             console.warn("[sync/auth] silent renewal failed: ${e.message}")
@@ -80,7 +81,7 @@ object DriveAuth {
         accessToken = null
         expiresAtMs = 0.0
         runCatching { window.localStorage.removeItem(STORE_KEY) }
-        console.log("[sync/auth] token revoked and cleared")
+        Debugger.debug("[sync/auth] token revoked and cleared")
     }
 
     private fun remainingSec(): Int = ((expiresAtMs - Date.now()) / 1000.0).toInt()
@@ -104,9 +105,9 @@ object DriveAuth {
             if (stored.accessToken.isNotEmpty() && Date.now() < stored.expiresAtMs - SKEW_MS) {
                 accessToken = stored.accessToken
                 expiresAtMs = stored.expiresAtMs
-                console.log("[sync/auth] restored persisted Drive token (${remainingSec()}s left)")
+                Debugger.debug("[sync/auth] restored persisted Drive token (${remainingSec()}s left)")
             } else if (stored.accessToken.isNotEmpty()) {
-                console.log("[sync/auth] persisted Drive token had expired")
+                Debugger.debug("[sync/auth] persisted Drive token had expired")
             }
         }
     }

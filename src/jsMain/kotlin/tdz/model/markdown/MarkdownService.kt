@@ -1,6 +1,7 @@
 package tdz.model.markdown
 
 import tdz.model.Card
+import tdz.model.ColumnId
 import tdz.model.ColumnStyle
 import kotlin.js.Json
 import kotlin.js.json
@@ -12,7 +13,7 @@ object MarkdownService {
 
     fun toMd(cards: List<Card>, withMetadata: Boolean = true) = markdownWriter.generate(cards, withMetadata)
 
-    fun fromMd(markdown: String, column: Int) = markdownReader.parse(markdown, column)
+    fun fromMd(markdown: String, column: ColumnId) = markdownReader.parse(markdown, column)
 
     fun fromMd(markdown: String) = markdownReader.parseAll(markdown)
 

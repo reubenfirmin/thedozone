@@ -1,8 +1,11 @@
 package tdz.controller
 
 import tdz.controller.events.AddColumn
+import tdz.controller.events.CardsReordered
+import tdz.controller.events.CardsSentToCanvas
 import tdz.controller.events.ClearDone
 import tdz.controller.events.ColumnEdited
+import tdz.controller.events.ColumnsChanged
 import tdz.controller.events.DeleteColumn
 import tdz.controller.events.EventBus
 import tdz.controller.events.RefreshCanvas
@@ -17,8 +20,10 @@ class Controller(eventBus: EventBus, model: Model) {
     init {
         eventBus.on<TaskToggleDone> { event ->
             model.toggleDone(event.canvasName, event.card, event.segment)
+            val changed = setOf(event.card.metadata.columnId)
+            eventBus.fire(ColumnsChanged(event.canvasName, changed))
             // Re-render the card's column from the (now updated) model so the checkbox reflects state.
-            eventBus.fire(RefreshColumns(event.canvasName, setOf(event.card.metadata.columnId)))
+            eventBus.fire(RefreshColumns(event.canvasName, changed))
         }
 
         eventBus.on<ColumnEdited> { event ->
@@ -27,13 +32,44 @@ class Controller(eventBus: EventBus, model: Model) {
             val style = model.getColumnStyle(event.canvasName, event.columnId)
             model.updateColumn(event.canvasName, event.columnId,
                 MarkdownService.columnStyleHeader(style) + MarkdownService.stripColumnStyle(event.markdown))
+            eventBus.fire(ColumnsChanged(event.canvasName, setOf(event.columnId)))
+            if (event.refresh) {
+                eventBus.fire(RefreshColumns(event.canvasName, setOf(event.columnId)))
+            }
         }
 
         eventBus.on<ClearDone> { event ->
             val changed = model.clearDone(event.canvasName)
             if (changed.isNotEmpty()) {
+                eventBus.fire(ColumnsChanged(event.canvasName, changed.toSet()))
                 eventBus.fire(RefreshColumns(event.canvasName, changed.toSet()))
             }
+        }
+
+        eventBus.on<CardsReordered> { event ->
+            model.saveCards(event.canvasName, event.toColumnId, event.toCards)
+            event.fromCards?.let { model.saveCards(event.canvasName, event.fromColumnId, it) }
+            val changed = setOf(event.fromColumnId, event.toColumnId)
+            eventBus.fire(ColumnsChanged(event.canvasName, changed))
+            // Re-render so the positional card ids reflect the new order.
+            eventBus.fire(RefreshColumns(event.canvasName, changed))
+        }
+
+        eventBus.on<CardsSentToCanvas> { event ->
+            // Highest source index first so each removal doesn't shift the cards not yet moved.
+            // Indices are column-local, but a single global descending sort is still safe for a
+            // multi-column group: within any one column the sorted subsequence is also descending,
+            // and removals never affect another column's indices.
+            val targetColumns = event.cards.sortedByDescending { it.index }
+                .map { model.moveCardToCanvas(it, event.sourceCanvas, event.targetCanvas) }
+                .toSet()
+            val sourceColumns = event.cards.map { it.metadata.columnId }.toSet()
+            eventBus.fire(ColumnsChanged(event.sourceCanvas, sourceColumns))
+            eventBus.fire(ColumnsChanged(event.targetCanvas, targetColumns))
+            eventBus.fire(RefreshColumns(event.sourceCanvas, sourceColumns))
+            // The user stays on the source canvas, but the target's manifest may be new/changed —
+            // structural so sync pushes it (Index skips re-rendering a non-current canvas).
+            eventBus.fire(RefreshCanvas(event.targetCanvas, structural = true))
         }
 
         eventBus.on<SplitColumn> { event ->

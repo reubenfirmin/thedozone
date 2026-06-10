@@ -1,8 +1,8 @@
 package tdz.view
 
 import kotlinx.browser.document
-import kotlinx.css.Color
 import tdz.controller.events.EventBus
+import tdz.model.ColumnId
 import tdz.model.CanvasName
 import tdz.model.LayoutTemplate.SINGLE_PANE
 import tdz.model.LayoutTemplates.canvasFromTemplate
@@ -14,7 +14,7 @@ class ColumnContainerTest {
 
     @Test
     fun beforeRemovalRemovesColumnAccentStyle() {
-        val columnId = 4242
+        val columnId = ColumnId(4242)
         val styleEl = document.createElement("style")
         styleEl.id = "tdz-col-accent-$columnId"
         document.head?.appendChild(styleEl)
@@ -22,7 +22,7 @@ class ColumnContainerTest {
 
         val canvas = canvasFromTemplate(CanvasName("_accent-test"), null, SINGLE_PANE)
         val container = ColumnContainer(
-            Color.cyan, canvas, Mode.CARD, emptyList(), Boundary(0, 0, 100, 100), columnId, EventBus(),
+            canvas, Mode.CARD, emptyList(), Boundary(0, 0, 100, 100), columnId, EventBus(),
         )
         container.beforeRemoval()
 

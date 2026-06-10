@@ -5,6 +5,7 @@ import kotlinx.html.id
 import tdz.controller.events.EventBus
 import tdz.controller.events.RefreshColumns
 import tdz.model.CanvasName
+import tdz.model.ColumnId
 import tdz.model.LayoutTemplate.TWO_COLUMNS_VERTICAL
 import tdz.model.LayoutTemplates.canvasFromTemplate
 import tdz.model.Model
@@ -35,7 +36,7 @@ class CanvasColumnsRenderTest {
             val orderBefore = (0 until grid.childElementCount).map { grid.children[it].id.toString() }
             assertEquals(listOf("column-1", "column-2"), orderBefore)
 
-            bus.fire(RefreshColumns(canvas.name, setOf(1)))
+            columns.refreshColumns(setOf(ColumnId(1)))   // (the RefreshColumns subscription is CanvasView's job)
 
             val orderAfter = (0 until grid.childElementCount).map { grid.children[it].id.toString() }
             assertEquals(listOf("column-1", "column-2"), orderAfter, "re-rendered column keeps its slot")
@@ -43,11 +44,10 @@ class CanvasColumnsRenderTest {
             val col1 = getHtmlElement("column-1")
             assertNotNull(col1)
             assertTrue(
-                col1.className.toString().contains("overflow-y-auto"),
-                "a CARD-mode column keeps its scroll class after a re-render",
+                col1.style.overflowY == "auto",
+                "a CARD-mode column keeps its scroll behavior after a re-render (got '${col1.style.overflowY}')",
             )
         } finally {
-            columns.dispose()
             getHtmlElement("rr-host")?.remove()
         }
     }

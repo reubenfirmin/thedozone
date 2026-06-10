@@ -2,7 +2,6 @@ package tdz.model.card
 
 data class MapLink(val lat: Double, val long: Double, val zoom: Int?, val height: Int?): LinkText {
 
-    // TODO this is shitty
     override fun isImage() = false
 
     override fun isCanvasLink() = false

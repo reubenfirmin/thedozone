@@ -52,7 +52,7 @@ object SyncPaths {
     /** Inverse of [columnPath]: returns (canvasName, columnId) or null if not a column file. */
     fun parseColumn(path: String): Pair<CanvasName, ColumnId>? {
         val m = COLUMN_RE.find(path) ?: return null
-        val col = m.groupValues[1].toInt()
+        val col = ColumnId(m.groupValues[1].toInt())
         val beforeFile = path.substring(0, m.range.first)   // ".../<canvas>"
         val canvas = beforeFile.substringAfterLast('/')
         if (canvas.isEmpty()) return null

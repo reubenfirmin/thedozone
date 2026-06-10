@@ -23,7 +23,8 @@ import zoned.framework.Debugger
 import zoned.framework.dom.onMount
 import zoned.framework.interop.css
 import zoned.framework.interop.getHtmlElement
-import zoned.framework.interop.rebuildInPlace
+import zoned.framework.routing.Zone
+import zoned.framework.interop.important
 import zoned.framework.interop.styleSheet
 
 
@@ -31,20 +32,12 @@ import zoned.framework.interop.styleSheet
 class CanvasColumns(val canvas: Canvas,
                     val eventBus: EventBus,
                     val model: Model,
-                    val cards: (columnId: Int) -> List<Card>) {
+                    val cards: (columnId: ColumnId) -> List<Card>) {
 
     private val boundaries = mutableMapOf<ColumnId, Boundary>()
     private val columnModes = mutableMapOf<ColumnId, Mode>()
     private val columnContainers = mutableMapOf<ColumnId, ColumnContainer>()
-    private var focusedColumn: ColumnId = canvas.columns.firstOrNull { !canvas.layoutMap.containsKey(it) } ?: canvas.columns.firstOrNull() ?: 0
-    private var disposed = false
-
-    // Named (not inline at the subscription site) so dispose() can detach the exact reference.
-    private val refreshHandler: (RefreshColumns) -> Unit = { event ->
-        if (event.canvasName == canvas.name) {
-            refreshColumns(event.columnIds)
-        }
-    }
+    private var focusedColumn: ColumnId = canvas.columns.firstOrNull { !canvas.layoutMap.containsKey(it) } ?: canvas.columns.firstOrNull() ?: ColumnId(0)
 
     init {
         // Load persisted modes from localStorage
@@ -54,22 +47,14 @@ class CanvasColumns(val canvas: Canvas,
                 columnModes[columnId] = persistedMode
             }
         }
-
-        // Listen for refresh events (detached again in [dispose])
-        eventBus.on(refreshHandler)
     }
 
     /**
-     * Detach this instance before it is abandoned (each canvas render builds a fresh CanvasColumns):
-     * saves/tears down any open editors and removes the [RefreshColumns] subscription. Without this,
-     * every re-render leaks a permanent handler that keeps firing against a DOM it no longer owns —
-     * and unsaved editor buffers are silently discarded with the old DOM.
+     * Save any open editor buffers and tear down their Ace instances. [CanvasView] calls this
+     * before each swap — without it, unsaved edits would be silently discarded with the old DOM.
      */
-    fun dispose() {
-        if (disposed) return
-        disposed = true
+    fun saveEditors() {
         columnContainers.values.forEach { it.beforeRemoval() }
-        eventBus.off(refreshHandler)
     }
 
     private fun loadModeFromStorage(columnId: ColumnId): Mode? =
@@ -79,18 +64,13 @@ class CanvasColumns(val canvas: Canvas,
         model.setColumnMode(canvas.name, columnId, mode)
     }
 
-    fun color(columnId: Int): Color {
-        // TODO
-        return Color.cyan
-    }
-
     /**
      * The themed background fill for a column. When the theme supplies a [columnPalette] (Metro's
      * live-tile grid) the fill cycles through it by the column's ordinal among leaf (content) columns,
      * so the order is stable and predictable; otherwise every column uses the single `panelBg`. A
      * per-column color override is painted later (onMount) and still wins over this default.
      */
-    private fun paletteBg(columnId: Int): Color {
+    private fun paletteBg(columnId: ColumnId): Color {
         val t = ThemeManager.current
         if (t.columnPalette.isEmpty()) return t.panelBg
         val leaves = canvas.columns.filter { !canvas.layoutMap.containsKey(it) }
@@ -98,58 +78,42 @@ class CanvasColumns(val canvas: Canvas,
         return t.columnPalette[idx % t.columnPalette.size]
     }
 
-    /**
-     * @param container - container to render into
-     * @param regenerateColumns - which columns should be recomputed (before re-rendering)
-     * @param cardStyle - style to apply to cards
-     */
-    fun FlowContent.render(regenerateColumns: List<Int>) {
-        console.log("CanvasColumns.render called with regenerateColumns: $regenerateColumns")
-        console.log("canvas.columns: ${canvas.columns}")
-        console.log("canvas.layoutMap: ${canvas.layoutMap}")
+    /** Render the layout tree, (re)building the LEAF columns listed in [regenerateColumns]. */
+    fun FlowContent.render(regenerateColumns: List<ColumnId>) {
         val rootBoundary = rootBoundary()
         val rootColumnId = canvas.root().columnId
-        console.log("rootColumnId: $rootColumnId")
         boundaries[rootColumnId] = rootBoundary
         renderLayoutTree(true, rootColumnId, rootBoundary, regenerateColumns)
     }
 
-    // TODO check container dimensions rather than window's
-    // note used in export, rendering, surrounds
     fun rootBoundary() = Boundary(0, 0, window.innerWidth, window.innerHeight)
 
     // resolve a particular column layout, adding dom elements to it
-    private fun FlowContent.renderLayoutTree(root: Boolean, parentIndex: ColumnId, parentBoundary: Boundary, regenerateColumns: List<Int>) {
+    private fun FlowContent.renderLayoutTree(root: Boolean, parentIndex: ColumnId, parentBoundary: Boundary, regenerateColumns: List<ColumnId>) {
 
         val layoutSpec = canvas.layoutMap[parentIndex] ?: throw Exception("Layout $parentIndex not found in ${canvas.layoutMap}")
 
-        val dir = when (layoutSpec.split) {
-            HORIZONTAL -> {
-                "grid-rows-${layoutSpec.contains.size}"
-            }
-            VERTICAL -> {
-                "grid-cols-${layoutSpec.contains.size}"
-            }
-        }
-
         val lt = ThemeManager.current
-        div("w-full h-full justify-start $dir grid") {
+        val tracks = "repeat(${layoutSpec.contains.size}, minmax(0, 1fr))"
+        div {
             id = DomIds.column(layoutSpec.columnId)
-            // Grid needs explicit row/column sizing and height constraint. min-width:0 lets this node
-            // shrink to its parent's track instead of its content's min-content (the default grid-item
-            // `min-width: auto`), which otherwise makes a content-heavy nested column overflow its cell
-            // and overlap its neighbour horizontally. Only the width is constrained — heights stay
-            // free so a stacked split still sizes its rows to content.
+            // Grid needs explicit row/column sizing and height constraint. minmax(0, 1fr) lets each
+            // cell shrink below its content's min-content (the default grid-item `min-width: auto`),
+            // which otherwise makes a content-heavy nested column overflow its cell and overlap its
+            // neighbour horizontally.
             css {
+                display = Display.grid
+                width = 100.pct
+                height = 100.pct
+                justifyContent = JustifyContent.flexStart
                 if (layoutSpec.split == HORIZONTAL) {
+                    gridTemplateRows = GridTemplateRows(tracks)      // stacked
                     gridTemplateColumns = GridTemplateColumns("1fr")
-                    gridAutoRows = GridAutoRows("1fr")
                 } else {
+                    gridTemplateColumns = GridTemplateColumns(tracks)   // side by side
                     gridTemplateRows = GridTemplateRows("1fr")
-                    gridAutoColumns = GridAutoColumns("1fr")
                 }
                 gap = lt.columnGap
-                height = 100.pct
                 minWidth = 0.px
                 border = Border(lt.borderWidth, BorderStyle.valueOf(lt.borderStyle), lt.layoutBorder)   // themed (DOS double-line)
             }
@@ -161,9 +125,8 @@ class CanvasColumns(val canvas: Canvas,
                     renderLayoutTree(false, columnId, boundary, regenerateColumns)
                 } else {
                     if (columnId in regenerateColumns) {
-                        console.log("Rendering column $columnId - in regenerateColumns")
                         val columnContainer = setupColumnContainer(columnId)
-                        div(columnClasses(columnContainer.mode)) {
+                        div {
                             id = DomIds.column(columnId)
                             css { columnCss(columnId, columnContainer.mode) }
                             with(columnContainer) {
@@ -174,8 +137,6 @@ class CanvasColumns(val canvas: Canvas,
                                 setupColumnHandlers(columnId, columnContainer)
                             }
                         }
-                    } else {
-                        console.log("Column $columnId NOT in regenerateColumns: $regenerateColumns")
                     }
                 }
                 boundaries[columnId] = boundary
@@ -190,7 +151,7 @@ class CanvasColumns(val canvas: Canvas,
      * [boundaries], which assume even splits). Returns null over gaps / layout chrome. Used by the
      * context menu so right-clicking anywhere over a column (even an empty one) targets it.
      */
-    fun columnAt(x: Int, y: Int): Int? {
+    fun columnAt(x: Int, y: Int): ColumnId? {
         var el = document.elementFromPoint(x.toDouble(), y.toDouble())
         while (el != null) {
             val colId = el.getAttribute("id")?.let { DomIds.columnId(it) }
@@ -200,7 +161,7 @@ class CanvasColumns(val canvas: Canvas,
         return null
     }
 
-    fun findColumnSurrounding(x: Int, y: Int, recurse: Boolean = false): Int {
+    fun findColumnSurrounding(x: Int, y: Int, recurse: Boolean = false): ColumnId {
         val candidates = boundaries.filter { entry ->
             val columnId = entry.key
             val boundary = entry.value
@@ -213,7 +174,9 @@ class CanvasColumns(val canvas: Canvas,
                 inset.first >= x && inset.second >= y
             }
             if (best.size > 1 || best.isEmpty()) {
-                val max = best.maxBy { it.second.leftX + it.second.topY }
+                // A probe on a shared edge can disqualify EVERY candidate (each loses on x or y);
+                // fall back to the candidates rather than maxBy-ing an empty list.
+                val max = best.ifEmpty { candidates }.maxBy { it.second.leftX + it.second.topY }
                 return max.first
             }
             return best.first().first
@@ -232,10 +195,9 @@ class CanvasColumns(val canvas: Canvas,
 
     private fun setupColumnContainer(columnId: ColumnId): ColumnContainer {
         val colCards = cards(columnId)
-        val color = color(columnId)
         val mode = columnModes[columnId] ?: Mode.CARD
         val boundary = boundaries[columnId] ?: rootBoundary()
-        val columnContainer = ColumnContainer(color, canvas, mode, colCards, boundary, columnId, eventBus)
+        val columnContainer = ColumnContainer(canvas, mode, colCards, boundary, columnId, eventBus)
         columnContainers[columnId] = columnContainer
 
         return columnContainer
@@ -297,28 +259,28 @@ class CanvasColumns(val canvas: Canvas,
      * beats the theme's global `.tdz-card-header` rule and survives card re-renders). A null [color]
      * empties the rule, restoring the theme default.
      */
-    private fun setColumnHeaderAccent(columnId: Int, color: String?) {
+    private fun setColumnHeaderAccent(columnId: ColumnId, color: String?) {
         styleSheet(ColumnContainer.accentStyleId(columnId)) {
             if (color != null) {
-                raw("#${DomIds.column(columnId)} .tdz-card-header { background: $color !important; }")
+                // !important: must beat the theme's global .tdz-card-header rule.
+                rule("#${DomIds.column(columnId)} .tdz-card-header") { important("background", color) }
             }
         }
     }
 
-    /** The leaf column's mode-dependent classes — CARD columns scroll, EDITOR columns clip (Ace scrolls itself). */
-    private fun columnClasses(mode: Mode) = when (mode) {
-        Mode.CARD -> "w-full h-full overflow-y-auto"
-        Mode.EDITOR -> "w-full h-full"
-    }
-
     /**
-     * A leaf column's themed chrome. min-width:0 lets the column shrink to its grid track rather
-     * than its content's min-content (which would overflow into the next column).
+     * A leaf column's themed chrome and mode behavior: CARD columns scroll, EDITOR columns clip
+     * (Ace scrolls itself). min-width:0 lets the column shrink to its grid track rather than its
+     * content's min-content (which would overflow into the next column).
      */
     private fun CssBuilder.columnCss(columnId: ColumnId, mode: Mode) {
         val t = ThemeManager.current
+        width = 100.pct
         height = 100.pct
-        if (mode == Mode.EDITOR) overflow = Overflow.hidden
+        when (mode) {
+            Mode.CARD -> overflowY = Overflow.auto
+            Mode.EDITOR -> overflow = Overflow.hidden
+        }
         minWidth = 0.px
         border = Border(t.borderWidth, BorderStyle.valueOf(t.borderStyle), t.columnBorder)
         backgroundColor = paletteBg(columnId)
@@ -330,11 +292,11 @@ class CanvasColumns(val canvas: Canvas,
         // Clean up old column
         columnContainers[columnId]?.beforeRemoval()
 
-        val element = getHtmlElement(DomIds.column(columnId)) ?: return
         val columnContainer = setupColumnContainer(columnId)
-        // Same construction as renderLayoutTree's leaf, rebuilt in the column's existing slot.
-        element.rebuildInPlace {
-            div(columnClasses(columnContainer.mode)) {
+        // Each column is a zone. Its mode classes/css live ON the element, so a re-render REBUILDS
+        // the zone element in its slot (Zone.swap would keep stale mode styling on the wrapper).
+        Zone(DomIds.column(columnId)).rebuild {
+            div {
                 id = DomIds.column(columnId)
                 css { columnCss(columnId, columnContainer.mode) }
                 with(columnContainer) {
@@ -350,7 +312,7 @@ class CanvasColumns(val canvas: Canvas,
         columnContainer.focusEditor()
     }
 
-    fun refreshColumns(columnIds: Set<Int>) {
+    fun refreshColumns(columnIds: Set<ColumnId>) {
         columnIds.forEach { columnId ->
             reRenderColumn(columnId)
         }
@@ -393,37 +355,39 @@ class CanvasColumns(val canvas: Canvas,
         focus(newFocused)
     }
 
-    private fun columnRight(currColumnId: Int): Int {
+    // Directional probes aim at the MIDPOINT of the facing edge (not its corner): in a mixed
+    // layout a corner probe can land beside a neighbour that only overlaps this column's middle.
+    private fun columnRight(currColumnId: ColumnId): ColumnId {
         val boundary = boundaries[currColumnId] ?: return currColumnId
         return try {
-            findColumnSurrounding(boundary.leftX + boundary.width + 1, boundary.topY)
+            findColumnSurrounding(boundary.leftX + boundary.width + 1, boundary.topY + boundary.height / 2)
         } catch (e: Exception) {
             currColumnId
         }
     }
 
-    private fun columnLeft(currColumnId: Int): Int {
+    private fun columnLeft(currColumnId: ColumnId): ColumnId {
         val boundary = boundaries[currColumnId] ?: return currColumnId
         return try {
-            findColumnSurrounding(boundary.leftX - 1, boundary.topY)
+            findColumnSurrounding(boundary.leftX - 1, boundary.topY + boundary.height / 2)
         } catch (e: Exception) {
             currColumnId
         }
     }
 
-    private fun columnUp(currColumnId: Int): Int {
+    private fun columnUp(currColumnId: ColumnId): ColumnId {
         val boundary = boundaries[currColumnId] ?: return currColumnId
         return try {
-            findColumnSurrounding(boundary.leftX, boundary.topY - 1)
+            findColumnSurrounding(boundary.leftX + boundary.width / 2, boundary.topY - 1)
         } catch (e: Exception) {
             currColumnId
         }
     }
 
-    private fun columnDown(currColumnId: Int): Int {
+    private fun columnDown(currColumnId: ColumnId): ColumnId {
         val boundary = boundaries[currColumnId] ?: return currColumnId
         return try {
-            findColumnSurrounding(boundary.leftX, boundary.topY + boundary.height + 1)
+            findColumnSurrounding(boundary.leftX + boundary.width / 2, boundary.topY + boundary.height + 1)
         } catch (e: Exception) {
             currColumnId
         }

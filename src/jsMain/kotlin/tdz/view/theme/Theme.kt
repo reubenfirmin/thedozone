@@ -108,6 +108,12 @@ data class Theme(
     val dragMirrorBg: Color,
     // misc
     val shadow: Color,
+    /** Scrim behind modals/overlays (over the canvas). */
+    val scrimBg: Color = Color("rgba(0,0,0,0.45)"),
+    /** Blockquote fill — a faint neutral wash that works on light and dark card surfaces. */
+    val blockquoteBg: Color = Color("rgba(127,127,127,0.08)"),
+    /** Lift under h1 text; transparent on light themes where a dark shadow reads harsh. */
+    val headingDropShadow: Color = Color("rgba(0,0,0,0.35)"),
     val icon: Color,
     val iconFaint: Color,
     val watermark: Color,
@@ -429,6 +435,7 @@ val hackerTheme = Theme(
  */
 val poodleRocksTheme = Theme(
     name = "Poodle Rocks",
+    headingDropShadow = Color.transparent,
     editorTheme = "ace/theme/chrome",
     fontFamily = "Roboto, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Arial, sans-serif",
     borderStyle = "solid",
@@ -512,6 +519,7 @@ val poodleRocksTheme = Theme(
  */
 val immaterialTheme = Theme(
     name = "Immaterial",
+    headingDropShadow = Color.transparent,
     editorTheme = "ace/theme/github",
     fontFamily = "Charter, 'Iowan Old Style', 'Source Serif 4', Georgia, 'Times New Roman', serif",
     borderStyle = "solid",
@@ -575,6 +583,7 @@ val immaterialTheme = Theme(
  */
 val metroTheme = Theme(
     name = "Metro",
+    headingDropShadow = Color.transparent,
     editorTheme = "ace/theme/clouds_midnight",
     // Segoe UI is the authentic Microsoft face (present on Windows); graceful fallback elsewhere.
     fontFamily = "\"Segoe UI\", \"Segoe UI Web (West European)\", system-ui, -apple-system, \"Helvetica Neue\", Arial, sans-serif",

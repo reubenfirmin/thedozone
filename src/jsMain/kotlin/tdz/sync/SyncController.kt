@@ -1,17 +1,19 @@
 package tdz.sync
 
+import zoned.framework.Debugger
 import kotlinx.browser.window as browserWindow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlin.js.Date
-import tdz.controller.events.ColumnEdited
+import tdz.controller.events.ColumnsChanged
 import tdz.controller.events.EventBus
 import tdz.controller.events.RefreshCanvas
 import tdz.controller.events.RefreshColumns
 import tdz.controller.events.SyncConflict
 import tdz.model.Canvas
 import tdz.model.CanvasName
+import tdz.model.ColumnId
 import tdz.model.Model
 import tdz.model.localstorage.CanvasDoc
 import tdz.model.localstorage.Namespace
@@ -38,7 +40,7 @@ class SyncController(
     private var engine: SyncEngine? = null
     private var localHandle: tdz.sync.local.FileSystemDirectoryHandle? = null   // the granted handle, once loaded/picked
     private val pushTimers = mutableMapOf<String, Int>()   // path -> window timeout handle
-    private val PUSH_DEBOUNCE_MS = 1500
+    private val pushDebounceMs = 1500   // quiet period after a local edit before pushing
 
     // True while a pull is applying remote changes. A pulled manifest fires RefreshCanvas (so the UI
     // re-renders), but onCanvasStructure also listens to RefreshCanvas — without this guard a pull
@@ -53,7 +55,13 @@ class SyncController(
     private fun root() = SyncPaths.rootPrefix(config().rootFolder)
 
     init {
-        eventBus.on<ColumnEdited> { e -> onColumnEdited(e) }
+        // ColumnsChanged is the model fact every local mutation emits (editor save, task toggle,
+        // clear-done, drag reorder, wormhole move) — the single hook that keeps devices in sync.
+        // remote=true marks changes this controller itself just pulled; pushing those back would
+        // be an echo loop.
+        eventBus.on<ColumnsChanged> { e ->
+            if (!e.remote) e.columnIds.forEach { onColumnChanged(e.canvasName, it) }
+        }
         eventBus.on<RefreshCanvas> { e -> if (e.structural) onCanvasStructure(e.canvasName) }
         val onlineHandler: (web.events.Event) -> Unit = { reconcile() }
         val offlineHandler: (web.events.Event) -> Unit = {
@@ -131,6 +139,8 @@ class SyncController(
     private fun writeLocal(path: String, content: String) {
         SyncPaths.parseColumn(path)?.let { (canvas, col) ->
             model.updateColumn(canvas, col, content)
+            // remote=true: this change came FROM the remote; subscribers must not push it back.
+            eventBus.fire(ColumnsChanged(canvas, setOf(col), remote = true))
             eventBus.fire(RefreshColumns(canvas, setOf(col)))
             return
         }
@@ -167,9 +177,9 @@ class SyncController(
 
     // ---- push side ----
 
-    private fun onColumnEdited(e: ColumnEdited) {
+    private fun onColumnChanged(canvasName: CanvasName, columnId: ColumnId) {
         val eng = engine ?: return
-        val path = SyncPaths.columnPath(root(), e.canvasName, e.columnId)
+        val path = SyncPaths.columnPath(root(), canvasName, columnId)
         val now = Date.now()
         val self = DeviceId.get()
         val prev = state().entries[path]
@@ -177,18 +187,18 @@ class SyncController(
             .copy(localUpdatedAt = now, vv = bump(prev?.vv ?: emptyMap(), self))
         saveState(state().with(path, stamped))
         debouncePush(path) {
+            // The column may have been deleted between the change and the debounce firing; the
+            // structural path handles remote deletions.
+            val content = model.getCanvasColumnRaw(canvasName, columnId) ?: return@debouncePush
             SyncStateStore.set(SyncState.Syncing, eventBus)
-            // Push the persisted column bytes (which include the column's style header that Controller
-            // preserves), not the raw editor markdown which omits it.
-            val content = model.getCanvasColumnRaw(e.canvasName, e.columnId) ?: e.markdown
             val (newState, winner) = eng.push(path, content, now, state())
             saveState(newState)
             // Re-push the manifest so the remote carries this column's updated version vector. If this
             // fails (the column already uploaded, so the remote vector would otherwise lag the column),
             // mark the manifest pending (rev = null) so the next reconcile retries it with the current vv.
-            val manifestPath = SyncPaths.manifestPath(root(), e.canvasName)
+            val manifestPath = SyncPaths.manifestPath(root(), canvasName)
             runCatching {
-                manifestContent(e.canvasName, state())?.let { mc ->
+                manifestContent(canvasName, state())?.let { mc ->
                     saveState(eng.push(manifestPath, mc, now, state()).first)
                 }
             }.onFailure { t ->
@@ -231,7 +241,7 @@ class SyncController(
         pushTimers[path] = browserWindow.setTimeout({
             pushTimers.remove(path)
             scope.launch { runCatching { block() }.onFailure { fail(it) } }
-        }, PUSH_DEBOUNCE_MS)
+        }, pushDebounceMs)
     }
 
     // ---- pull / reconcile ----
@@ -245,12 +255,15 @@ class SyncController(
         }
         reconciling = true        // set synchronously so a rapid second call is rejected above
         scope.launch {
+            // try/finally, not just runCatching: if ANYTHING here escapes (snapshot, fail() itself),
+            // a stuck reconciling=true would silently freeze every future reconcile this session.
+            try {
             LocalBackup.snapshot()   // recoverable safety net before any pull can overwrite/delete local
             SyncStateStore.set(SyncState.Reconciling, eventBus)
             runCatching {
                 val result = eng.pull(root(), state())
                 var s = result.state
-                console.log("[sync] pull: ${result.changedPaths.size} changed, ${result.keptLocalPaths.size} kept-local")
+                Debugger.debug("[sync] pull: ${result.changedPaths.size} changed, ${result.keptLocalPaths.size} kept-local")
                 // Two-way reconcile: push files the remote doesn't have yet (pending, rev == null) and
                 // those where local won last-write-wins. Without this, edits made while pushes were
                 // failing (e.g. an expired Drive token) would never reach the remote on a plain Sync now.
@@ -264,7 +277,7 @@ class SyncController(
                     content?.let { PushItem(p, it, s.entries[p]?.localUpdatedAt ?: Date.now()) }
                 }
                 if (items.isNotEmpty()) {
-                    console.log("[sync] reconcile pushing ${items.size} pending/local-newer file(s)")
+                    Debugger.debug("[sync] reconcile pushing ${items.size} pending/local-newer file(s)")
                     val (pushed, conflicts) = eng.pushBatch(items, s)
                     s = pushed
                     conflicts.forEach { (path, w) -> fireConflict(path, w) }
@@ -273,7 +286,9 @@ class SyncController(
                 // writeLocal already fired refresh events per changed file
                 SyncStateStore.set(SyncState.Synced, eventBus)
             }.onFailure { fail(it) }
-            reconciling = false
+            } finally {
+                reconciling = false
+            }
         }
     }
 
@@ -393,17 +408,20 @@ class SyncController(
         SyncStateStore.set(SyncState.Reconciling, eventBus)
         reconciling = true
         LocalBackup.snapshot()   // recoverable safety net before any pull can overwrite/delete local
-        runCatching {
-            // Seed local column vectors BEFORE pulling: otherwise an unseeded local column would be
-            // silently overwritten by a remote that another device already seeded (REMOTE_DOMINATES).
-            var s = seedLocalVvs(state())
-            saveState(s)
-            s = eng.pull(root(), s).state               // remote -> local
-            s = pushAllLocal(eng, s)                    // local -> remote (manifests + columns)
-            saveState(s)
-            SyncStateStore.set(SyncState.Synced, eventBus)
-        }.onFailure { fail(it) }
-        reconciling = false
+        try {
+            runCatching {
+                // Seed local column vectors BEFORE pulling: otherwise an unseeded local column would be
+                // silently overwritten by a remote that another device already seeded (REMOTE_DOMINATES).
+                var s = seedLocalVvs(state())
+                saveState(s)
+                s = eng.pull(root(), s).state               // remote -> local
+                s = pushAllLocal(eng, s)                    // local -> remote (manifests + columns)
+                saveState(s)
+                SyncStateStore.set(SyncState.Synced, eventBus)
+            }.onFailure { fail(it) }
+        } finally {
+            reconciling = false
+        }
     }
 
     /**

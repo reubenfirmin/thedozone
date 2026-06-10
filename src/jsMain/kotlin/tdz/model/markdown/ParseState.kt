@@ -1,10 +1,11 @@
 package tdz.model.markdown
 
 import tdz.model.Card
+import tdz.model.ColumnId
 import tdz.model.CardMetadata
 import tdz.model.card.*
 
-data class ParseState(val column: Int,
+data class ParseState(val column: ColumnId,
                       val cards: MutableList<Card> = mutableListOf(),
                       private val segmentsBuffer: MutableList<CardSegment> = mutableListOf(),
                       var prevNewline: Boolean = false,
@@ -97,7 +98,7 @@ data class ParseState(val column: Int,
         inListBlock = false
     }
 
-    fun newColumn(column: Int) {
+    fun newColumn(column: ColumnId) {
         currentColumn = column
         index = 0
     }

@@ -2,7 +2,16 @@ package tdz.model
 
 import tdz.model.card.*
 
-data class CardMetadata(val columnId: Int)
+data class CardMetadata(val columnId: ColumnId)
+
+/**
+ * A card's positional identity: its column and its index within it (its position at last render).
+ * Cards have no stable ids by design — the markdown file is the source of truth and cards are
+ * projections — so a ref is only valid until the column is next rewritten.
+ */
+data class CardRef(val columnId: ColumnId, val index: Int)
+
+val Card.ref: CardRef get() = CardRef(metadata.columnId, index)
 
 data class Card(val segments: List<CardSegment>, val metadata: CardMetadata, val index: Int) {
 
@@ -67,12 +76,5 @@ data class Card(val segments: List<CardSegment>, val metadata: CardMetadata, val
             return drop(h1Index + 1).takeWhile { !it.isH1Only() }
         }
 
-        /**
-         * @return column to card index in column
-         */
-        fun tagIdToCardIndex(tag: String): Pair<Int, Int> {
-            val tokens = tag.split("_")
-            return tokens[1].toInt() to tokens[2].toInt()
-        }
     }
 }

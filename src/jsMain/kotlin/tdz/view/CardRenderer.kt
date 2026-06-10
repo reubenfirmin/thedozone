@@ -8,6 +8,7 @@ import tdz.controller.events.EventBus
 import tdz.controller.events.TaskToggleDone
 import tdz.controller.events.SwitchToCanvas
 import tdz.model.*
+import tdz.model.ref
 import tdz.model.card.*
 import tdz.tdzDragDrop
 import tdz.view.theme.MarkerStyle
@@ -50,7 +51,12 @@ object CardRenderer {
      * which feel cramped at the app's default (dense) spacing.
      */
     fun FlowContent.render(canvasName: CanvasName, cards: List<Card>, eventBus: EventBus, loose: Boolean = false) {
-        console.log("CardRenderer.render called with ${cards.size} cards for canvas $canvasName")
+        // Inject/refresh the shared rules ONCE per render pass — they are theme-keyed, not
+        // card-keyed, and styleSheet() does a DOM write per call.
+        ensureCardStyles()
+        ensureHeadingStyles()
+        ensureTaskStyles()
+        ensureLinkStyles()
         for (card in cards) {
             render(canvasName, card, eventBus, loose)
         }
@@ -72,7 +78,6 @@ object CardRenderer {
         // rule instead of the default hard offset; chromeless title cards never carry a shadow.
         val elevated = !chromeless && t.cardElevation.isNotEmpty()
         div(if (elevated) "tdz-card tdz-card-elev" else "tdz-card") {
-            ensureCardStyles()   // injects only the bits css{} can't express (line-height, elevation, flourish, header)
             css {
                 margin = Margin(t.cardMargin)
                 // Loose mode adds breathing room between stacked cards (e.g. the help overlay).
@@ -96,7 +101,7 @@ object CardRenderer {
                     }
                 }
             }
-            id = DomIds.card(card.metadata.columnId, card.index)
+            id = DomIds.card(card.ref)
             // Marks a section header so drag-and-drop can carry the cards beneath it as a group.
             if (card.isH1Only()) attributes["data-h1only"] = "true"
             if (frameTitle != null) {
@@ -148,7 +153,6 @@ object CardRenderer {
             is CardCodeBlock -> renderRichText(segment)
             is Blockquote -> renderRichText(segment)
             is CardDiagram -> renderSegment(segment, card)
-            is IgnoreMe -> renderSegment() to {}
             else -> throw Exception("No handler for $segment")
         }
     }
@@ -181,7 +185,6 @@ object CardRenderer {
 
     fun FlowContent.renderSegment(canvasName: CanvasName, segment: CardListItem, card: Card, index: Int, eventBus: EventBus) {
         div("tdz-task") {
-            ensureTaskStyles()
             css {
                 cursor = Cursor.pointer
                 // minimal vertical padding for density; the hover highlight still fills the full-width row
@@ -190,13 +193,15 @@ object CardRenderer {
                 borderRadius = 4.px
             }
 
-            label("relative cursor-pointer") {
-                input(classes="absolute opacity-0 cursor-pointer") {
-                    type = InputType.checkBox
+            label {
+                css { position = Position.relative; cursor = Cursor.pointer }
+                input(type = InputType.checkBox) {
+                    css { position = Position.absolute; opacity = 0.0; cursor = Cursor.pointer }
                     value = segment.done.toString()
                 }
 
-                span("inline-block pr-2") {
+                span {
+                    css { display = Display.inlineBlock; paddingRight = 0.5.rem }
                     css {
                         fontWeight = FontWeight.bold
                         if (segment.done) color = ThemeManager.current.checkDone
@@ -221,12 +226,12 @@ object CardRenderer {
                 }
 
                 segment.text.forEach {
-                    renderRichText(it, card.metadata.columnId, eventBus)
+                    renderRichText(it, eventBus)
                 }
             }
 
             onClick { event ->
-                eventBus.fire(TaskToggleDone(event, canvasName, card, segment))
+                eventBus.fire(TaskToggleDone(canvasName, card, segment))
                 event.stopPropagation()
                 event.preventDefault()
             }
@@ -271,7 +276,7 @@ object CardRenderer {
                     color = theme.heading1
                     webkitTextStroke(theme.headingStrokeWidth, theme.heading1)
                     textShadow += TextShadow(theme.headingGlow, 0.px, 0.px, 26.px)
-                    textShadow += TextShadow(Color("rgba(0,0,0,0.35)"), 0.px, 1.px, 1.px)
+                    textShadow += TextShadow(theme.headingDropShadow, 0.px, 1.px, 1.px)
                 }
             }
         }
@@ -359,7 +364,6 @@ object CardRenderer {
     private fun FlowContent.renderSegment(segment: CardHeading) {
         when (segment.level) {
             1 -> {
-                ensureHeadingStyles()
                 h1("tdz-h1") {
                     +segment.text
                 }
@@ -378,11 +382,26 @@ object CardRenderer {
                 +segment.text
             }
 
-            3 -> h3("text-lg bold pb-2") {
+            3 -> h3 {
+                css {
+                    val t = ThemeManager.current
+                    fontFamily = t.headingFont
+                    if (t.headingTransform == "lowercase") textTransform = TextTransform.lowercase
+                    fontSize = 1.125.rem
+                    fontWeight = FontWeight.bold
+                    paddingBottom = 8.px
+                }
                 +segment.text
             }
 
-            4 -> h4("text-lg pb-2") {
+            4 -> h4 {
+                css {
+                    val t = ThemeManager.current
+                    fontFamily = t.headingFont
+                    if (t.headingTransform == "lowercase") textTransform = TextTransform.lowercase
+                    fontSize = 1.125.rem
+                    paddingBottom = 8.px
+                }
                 +segment.text
             }
 
@@ -395,7 +414,7 @@ object CardRenderer {
     private fun FlowContent.renderSegment(segment: CardText, card: Card, eventBus: EventBus) {
         div {
             segment.text.forEach { text ->
-                renderRichText(text, card.metadata.columnId, eventBus)
+                renderRichText(text, eventBus)
             }
         }
     }
@@ -407,8 +426,12 @@ object CardRenderer {
                 paddingLeft = (6 + segment.level * 24).px
             }
             val ascii = ThemeManager.current.markerStyle == MarkerStyle.ASCII
-            span("inline-block pr-2") {
-                css { fontWeight = FontWeight.bold }
+            span {
+                css {
+                    display = Display.inlineBlock
+                    paddingRight = 0.5.rem
+                    fontWeight = FontWeight.bold
+                }
                 +(if (ascii) ">" else when (segment.weight) {
                     1 -> "▷"
                     2 -> "▶"
@@ -416,7 +439,7 @@ object CardRenderer {
                     else -> "☛"
                 })
             }
-            segment.text.forEach { renderRichText(it, card.metadata.columnId, eventBus) }
+            segment.text.forEach { renderRichText(it, eventBus) }
         }
     }
 
@@ -464,9 +487,8 @@ object CardRenderer {
         p {}
     }
 
-    private fun FlowContent.renderRichText(value: RichText, columnId: Int, eventBus: EventBus) {
-        // TODO this is silly
-        when (value) {
+    private fun FlowContent.renderRichText(value: RichText, eventBus: EventBus) {
+            when (value) {
             is CardCodeBlock -> renderRichText(value)
             is Blockquote -> renderRichText(value)
             is LinkText -> renderRichText(value, eventBus)
@@ -492,12 +514,13 @@ object CardRenderer {
                 margin = Margin(8.px, 0.px)
                 padding = Padding(8.px, 40.px, 8.px, 12.px)   // right padding leaves room for the button
                 borderLeft = Border(3.px, BorderStyle.solid, theme.menuBorder)
-                backgroundColor = Color("rgba(127,127,127,0.08)")
+                backgroundColor = theme.blockquoteBg
                 borderRadius = 3.px
                 whiteSpace = WhiteSpace.preWrap
                 fontFamily = "monospace"
             }
             button {
+                attributes["aria-label"] = "Copy"
                 +"⧉"
                 attributes["title"] = "Copy"
                 css {
@@ -520,8 +543,7 @@ object CardRenderer {
     }
 
     private fun FlowContent.renderRichText(linkText: LinkText, eventBus: EventBus) {
-        // TODO this is silly
-        when (linkText) {
+            when (linkText) {
             is CanvasLink -> renderRichText(linkText, eventBus)
             is ExternalLink -> renderRichText(linkText)
             is ImageLink -> renderRichText(linkText)
@@ -566,17 +588,17 @@ object CardRenderer {
     }
 
     private fun FlowContent.renderRichText(link: CanvasLink, eventBus: EventBus) {
-        ensureLinkStyles()
-        // TODO if the whole card is a link, it should be clickable
         val linkId = DomIds.canvasLink(link.canvasName)
 
-        span("canvas-drop-zone inline-block") {
+        span("canvas-drop-zone") {
             attributes["data-canvas-name"] = link.canvasName.normalized()
             id = linkId
+            css { display = Display.inlineBlock }
 
             // Fancy chip: bordered pill in the link color with a nav arrow; hover brightens + arcade shadow.
-            a("tdz-canvas-link cursor-pointer") {
+            a("tdz-canvas-link") {
                 css {
+                    cursor = Cursor.pointer
                     display = Display.inlineBlock
                     margin = Margin(vertical = 10.px, horizontal = 8.px)   // breathing room around the badge
                     marginLeft = 0.px                                      // left-justified (no gap on the left)

@@ -2,6 +2,7 @@ package tdz.sync
 
 import kotlinx.serialization.encodeToString
 import tdz.model.CanvasName
+import tdz.model.ColumnId
 import tdz.model.localstorage.CanvasWire
 import tdz.model.localstorage.storageJson
 
@@ -18,12 +19,12 @@ object ManifestVv {
     fun read(manifestContent: String, root: String, canvas: CanvasName): Map<String, VersionVector> {
         val vv = decodeVv(manifestContent) ?: return emptyMap()
         return vv.entries.associate { (colId, vector) ->
-            SyncPaths.columnPath(root, canvas, colId.toInt()) to vector
+            SyncPaths.columnPath(root, canvas, ColumnId(colId.toInt())) to vector
         }
     }
 
     /** The version vector for a single [columnId] in [manifestContent]'s `vv` (empty if absent/corrupt). */
-    fun readOne(manifestContent: String, columnId: Int): VersionVector =
+    fun readOne(manifestContent: String, columnId: ColumnId): VersionVector =
         decodeVv(manifestContent)?.get(columnId.toString()) ?: emptyMap()
 
     /**

@@ -11,6 +11,10 @@ import web.html.HTMLElement
 import zoned.framework.interop.addToBody
 import zoned.framework.interop.classes
 import zoned.framework.interop.css
+import zoned.framework.interop.animation
+import zoned.framework.interop.conicGradient
+import zoned.framework.interop.keyframes
+import zoned.framework.interop.radialGradient
 import zoned.framework.interop.styleSheet
 import zoned.framework.interop.transformOrigin
 import zoned.framework.routing.Zone.Companion.zone
@@ -121,7 +125,7 @@ object WormholePortal {
             visibility = Visibility.visible
             opacity = 1.0
             pointerEvents = PointerEvents.none
-            zIndex = 1000001   // just above the portal, so the swallow animation reads on top of it
+            zIndex = ZLayer.WORMHOLE_CARD   // just above the portal, so the swallow animation reads on top of it
             transformOrigin("center center")
         }
         document.body?.appendChild(el)
@@ -169,60 +173,122 @@ object WormholePortal {
 
     /** Inject/refresh the CSS for both styles, tinted to the current theme link color. */
     private fun ensureStyles() {
-        val c = ThemeManager.current.link.toString()
-        val css = """
-            /* z-index sits above Sortable's drag mirror (~100000) so the portal glows on top of the
-               dragged card — a large card must not cover the hole it's being dropped into. */
-            #$ID { position: fixed; pointer-events: none; z-index: 1000000; border-radius: 50%;
-                   opacity: 0; transition: opacity 130ms ease; }
-            #$ID.tdz-wh-on { opacity: 1; }
-            #$ID .tdz-wh-swirl, #$ID .tdz-wh-swirl2, #$ID .tdz-wh-core,
-            #$ID .tdz-bh-glow, #$ID .tdz-bh-disk, #$ID .tdz-bh-core, #$ID .tdz-bh-shock {
-                   position: absolute; border-radius: 50%; }
+        val c = ThemeManager.current.link
+        val edge = Color("rgba(0,0,0,0)")
+        val horizon = Color("rgba(0,0,0,0.92)")
+        styleSheet("tdz-wormhole-styles") {
+            val spin = keyframes("tdz-wh-spin") { to { put("transform", "rotate(360deg)") } }
+            val spinReverse = keyframes("tdz-wh-spin-rev") { to { put("transform", "rotate(-360deg)") } }
+            val diskSpin = keyframes("tdz-bh-spin") { to { put("transform", "rotate(360deg)") } }
+            val pulse = keyframes("tdz-wh-pulse") {
+                at(0.pct, 100.pct) { put("transform", "scale(1)") }
+                at(50.pct) { put("transform", "scale(1.07)") }
+            }
+            val vortexFlash = keyframes("tdz-wh-vflash") {
+                at(0.pct) { put("transform", "scale(1)"); put("filter", "brightness(1) drop-shadow(0 0 10px $c)") }
+                at(40.pct) { put("transform", "scale(1.4)"); put("filter", "brightness(2.4) drop-shadow(0 0 28px $c)") }
+                at(100.pct) { put("transform", "scale(0.7)"); opacity = 0.0; put("filter", "brightness(1) drop-shadow(0 0 10px $c)") }
+            }
+            val holeFlash = keyframes("tdz-wh-bhflash") {
+                at(0.pct) { put("transform", "scale(1)"); put("filter", "brightness(1) drop-shadow(0 0 14px $c)") }
+                at(30.pct) { put("transform", "scale(1.18)"); put("filter", "brightness(2.6) drop-shadow(0 0 30px $c)") }
+                at(100.pct) { put("transform", "scale(0.55)"); opacity = 0.0; put("filter", "brightness(1) drop-shadow(0 0 14px $c)") }
+            }
+            val shockwave = keyframes("tdz-bh-shock") {
+                at(0.pct) { opacity = 0.9; put("transform", "scale(0.2)") }
+                at(100.pct) { opacity = 0.0; put("transform", "scale(3)") }
+            }
 
-            /* ---- VORTEX ---- */
-            #$ID.tdz-wh-vortex { filter: drop-shadow(0 0 10px $c); }
-            #$ID.tdz-wh-vortex.tdz-wh-on { animation: tdz-wh-pulse 1.6s ease-in-out infinite; }
-            #$ID .tdz-wh-swirl, #$ID .tdz-wh-core { inset: 0; }
-            #$ID .tdz-wh-swirl {
-                   background: conic-gradient(from 0deg, transparent 0deg, $c 60deg, transparent 140deg, $c 220deg, transparent 320deg);
-                   animation: tdz-wh-spin 1.1s linear infinite; filter: blur(1px); }
-            #$ID .tdz-wh-swirl2 { inset: 16%; opacity: 0.85;
-                   background: conic-gradient(from 90deg, transparent 0deg, $c 50deg, transparent 120deg, $c 200deg, transparent 300deg);
-                   animation: tdz-wh-spin-rev 0.75s linear infinite; }
-            #$ID .tdz-wh-core {
-                   background: radial-gradient(circle at center, #ffffff 0%, $c 12%, rgba(0,0,0,0.92) 46%, rgba(0,0,0,0) 72%); }
-            #$ID.tdz-wh-vortex.tdz-wh-flash { opacity: 1; animation: tdz-wh-vflash 480ms ease-out forwards; }
+            // z-index sits above Sortable's drag mirror (~100000) so the portal glows on top of the
+            // dragged card — a large card must not cover the hole it's being dropped into.
+            rule("#$ID") {
+                position = Position.fixed
+                pointerEvents = PointerEvents.none
+                zIndex = ZLayer.WORMHOLE
+                borderRadius = 50.pct
+                opacity = 0.0
+                transition += Transition("opacity", 130.ms, Timing.ease)
+            }
+            rule("#$ID.tdz-wh-on") { opacity = 1.0 }
+            rule("""#$ID .tdz-wh-swirl, #$ID .tdz-wh-swirl2, #$ID .tdz-wh-core,
+                    #$ID .tdz-bh-glow, #$ID .tdz-bh-disk, #$ID .tdz-bh-core, #$ID .tdz-bh-shock""") {
+                position = Position.absolute
+                borderRadius = 50.pct
+            }
 
-            /* ---- BLACK HOLE ---- */
-            #$ID.tdz-wh-bh { filter: drop-shadow(0 0 14px $c); }
-            #$ID.tdz-wh-bh.tdz-wh-on { animation: tdz-wh-pulse 2.2s ease-in-out infinite; }
-            #$ID .tdz-bh-glow { inset: -22%; filter: blur(7px); opacity: 0.55;
-                   background: radial-gradient(circle, $c 0%, rgba(0,0,0,0) 62%); }
-            #$ID .tdz-bh-disk { inset: 0; filter: blur(2px); animation: tdz-bh-spin 0.9s linear infinite;
-                   background: conic-gradient(from 0deg, rgba(0,0,0,0) 0deg, $c 40deg, #ffffff 70deg, $c 110deg,
-                                              rgba(0,0,0,0) 170deg, $c 250deg, #ffffff 290deg, rgba(0,0,0,0) 340deg); }
-            #$ID .tdz-bh-core { inset: 23%;
-                   background: radial-gradient(circle at center, #000 50%, $c 59%, #ffffff 66%, rgba(0,0,0,0) 76%);
-                   box-shadow: inset 0 0 12px #000, 0 0 16px $c; }
-            #$ID .tdz-bh-shock { inset: 30%; border: 2px solid $c; opacity: 0; transform: scale(0.2); }
-            #$ID.tdz-wh-bh.tdz-wh-flash { opacity: 1; animation: tdz-wh-bhflash 520ms ease-out forwards; }
-            #$ID.tdz-wh-bh.tdz-wh-flash .tdz-bh-shock { animation: tdz-bh-shock 520ms ease-out forwards; }
+            // ---- VORTEX ----
+            rule("#$ID.tdz-wh-vortex") { put("filter", "drop-shadow(0 0 10px $c)") }
+            rule("#$ID.tdz-wh-vortex.tdz-wh-on") {
+                animation(pulse, 1.6.s, Timing.easeInOut, iterationCount = IterationCount.infinite)
+            }
+            rule("#$ID .tdz-wh-swirl, #$ID .tdz-wh-core") { put("inset", "0") }
+            rule("#$ID .tdz-wh-swirl") {
+                backgroundImage = conicGradient(from = 0.deg) {
+                    stop(Color.transparent, 0.deg); stop(c, 60.deg); stop(Color.transparent, 140.deg)
+                    stop(c, 220.deg); stop(Color.transparent, 320.deg)
+                }
+                animation(spin, 1.1.s, Timing.linear, iterationCount = IterationCount.infinite)
+                put("filter", "blur(1px)")
+            }
+            rule("#$ID .tdz-wh-swirl2") {
+                put("inset", "16%")
+                opacity = 0.85
+                backgroundImage = conicGradient(from = 90.deg) {
+                    stop(Color.transparent, 0.deg); stop(c, 50.deg); stop(Color.transparent, 120.deg)
+                    stop(c, 200.deg); stop(Color.transparent, 300.deg)
+                }
+                animation(spinReverse, 0.75.s, Timing.linear, iterationCount = IterationCount.infinite)
+            }
+            rule("#$ID .tdz-wh-core") {
+                backgroundImage = radialGradient(at = "center") {
+                    stop(Color.white, 0.pct); stop(c, 12.pct); stop(horizon, 46.pct); stop(edge, 72.pct)
+                }
+            }
+            rule("#$ID.tdz-wh-vortex.tdz-wh-flash") {
+                opacity = 1.0
+                animation(vortexFlash, 480.ms, Timing.easeOut, fillMode = FillMode.forwards)
+            }
 
-            @keyframes tdz-wh-spin { to { transform: rotate(360deg); } }
-            @keyframes tdz-wh-spin-rev { to { transform: rotate(-360deg); } }
-            @keyframes tdz-bh-spin { to { transform: rotate(360deg); } }
-            @keyframes tdz-wh-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.07); } }
-            @keyframes tdz-wh-vflash {
-                   0% { transform: scale(1); filter: brightness(1) drop-shadow(0 0 10px $c); }
-                   40% { transform: scale(1.4); filter: brightness(2.4) drop-shadow(0 0 28px $c); }
-                   100% { transform: scale(0.7); opacity: 0; filter: brightness(1) drop-shadow(0 0 10px $c); } }
-            @keyframes tdz-wh-bhflash {
-                   0% { transform: scale(1); filter: brightness(1) drop-shadow(0 0 14px $c); }
-                   30% { transform: scale(1.18); filter: brightness(2.6) drop-shadow(0 0 30px $c); }
-                   100% { transform: scale(0.55); opacity: 0; filter: brightness(1) drop-shadow(0 0 14px $c); } }
-            @keyframes tdz-bh-shock { 0% { opacity: 0.9; transform: scale(0.2); } 100% { opacity: 0; transform: scale(3); } }
-        """.trimIndent()
-        styleSheet("tdz-wormhole-styles") { raw(css) }
+            // ---- BLACK HOLE ----
+            rule("#$ID.tdz-wh-bh") { put("filter", "drop-shadow(0 0 14px $c)") }
+            rule("#$ID.tdz-wh-bh.tdz-wh-on") {
+                animation(pulse, 2.2.s, Timing.easeInOut, iterationCount = IterationCount.infinite)
+            }
+            rule("#$ID .tdz-bh-glow") {
+                put("inset", "-22%")
+                put("filter", "blur(7px)")
+                opacity = 0.55
+                backgroundImage = radialGradient { stop(c, 0.pct); stop(edge, 62.pct) }
+            }
+            rule("#$ID .tdz-bh-disk") {
+                put("inset", "0")
+                put("filter", "blur(2px)")
+                animation(diskSpin, 0.9.s, Timing.linear, iterationCount = IterationCount.infinite)
+                backgroundImage = conicGradient(from = 0.deg) {
+                    stop(edge, 0.deg); stop(c, 40.deg); stop(Color.white, 70.deg); stop(c, 110.deg)
+                    stop(edge, 170.deg); stop(c, 250.deg); stop(Color.white, 290.deg); stop(edge, 340.deg)
+                }
+            }
+            rule("#$ID .tdz-bh-core") {
+                put("inset", "23%")
+                backgroundImage = radialGradient(at = "center") {
+                    stop(Color.black, 50.pct); stop(c, 59.pct); stop(Color.white, 66.pct); stop(edge, 76.pct)
+                }
+                put("box-shadow", "inset 0 0 12px #000, 0 0 16px $c")
+            }
+            rule("#$ID .tdz-bh-shock") {
+                put("inset", "30%")
+                border = Border(2.px, BorderStyle.solid, c)
+                opacity = 0.0
+                put("transform", "scale(0.2)")
+            }
+            rule("#$ID.tdz-wh-bh.tdz-wh-flash") {
+                opacity = 1.0
+                animation(holeFlash, 520.ms, Timing.easeOut, fillMode = FillMode.forwards)
+            }
+            rule("#$ID.tdz-wh-bh.tdz-wh-flash .tdz-bh-shock") {
+                animation(shockwave, 520.ms, Timing.easeOut, fillMode = FillMode.forwards)
+            }
+        }
     }
 }

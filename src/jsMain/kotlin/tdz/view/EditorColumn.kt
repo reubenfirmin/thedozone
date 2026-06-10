@@ -10,12 +10,15 @@ import tdz.controller.events.ExitEditor
 import tdz.controller.events.NavigateColumn
 import tdz.model.Canvas
 import tdz.model.CanvasName
+import tdz.model.ColumnId
 import tdz.model.Card
 import tdz.model.Direction
 import tdz.model.markdown.MarkdownService
 import zoned.framework.dom.onMount
 import kotlinx.css.*
+import kotlinx.css.properties.*
 import zoned.framework.interop.css
+import zoned.framework.interop.important
 import zoned.framework.interop.styleSheet
 import zoned.framework.libs.Ace
 import zoned.framework.libs.AceEditor
@@ -30,7 +33,7 @@ import tdz.view.theme.ThemeManager
 class EditorColumn(
     val canvas: Canvas,
     val cards: List<Card>,
-    val columnId: Int,
+    val columnId: ColumnId,
     val eventBus: EventBus
 ) {
 
@@ -172,15 +175,33 @@ class EditorColumn(
      */
     private fun ensureEditorMarkdownStyles() {
         val t = ThemeManager.current
-        val css = """
-            .ace_editor .ace_markup.ace_heading, .ace_editor .ace_heading { color: ${t.heading1} !important; background-color: transparent !important; font-weight: 700; }
-            .ace_editor .ace_markup.ace_list, .ace_editor .ace_list { color: ${t.heading2} !important; background-color: transparent !important; }
-            .ace_editor .ace_string.ace_strong { color: ${t.heading2} !important; font-weight: 700; }
-            .ace_editor .ace_string.ace_emphasis { font-style: italic; }
-            .ace_editor .ace_markup.ace_underline { color: ${t.link} !important; text-decoration: underline; }
-            .ace_editor .ace_string.ace_blockquote { color: ${t.menuTitle} !important; font-style: italic; }
-        """.trimIndent()
-        styleSheet("tdz-editor-md") { raw(css) }
+        styleSheet("tdz-editor-md") {
+            // !important throughout: Ace's own theme stylesheet wins specificity otherwise.
+            rule(".ace_editor .ace_markup.ace_heading, .ace_editor .ace_heading") {
+                important("color", t.heading1)
+                important("background-color", "transparent")
+                fontWeight = FontWeight.w700
+            }
+            rule(".ace_editor .ace_markup.ace_list, .ace_editor .ace_list") {
+                important("color", t.heading2)
+                important("background-color", "transparent")
+            }
+            rule(".ace_editor .ace_string.ace_strong") {
+                important("color", t.heading2)
+                fontWeight = FontWeight.w700
+            }
+            rule(".ace_editor .ace_string.ace_emphasis") {
+                fontStyle = FontStyle.italic
+            }
+            rule(".ace_editor .ace_markup.ace_underline") {
+                important("color", t.link)
+                textDecoration = TextDecoration(setOf(TextDecorationLine.underline))
+            }
+            rule(".ace_editor .ace_string.ace_blockquote") {
+                important("color", t.menuTitle)
+                fontStyle = FontStyle.italic
+            }
+        }
     }
 
     /** Focus the editor (e.g. after the column is repositioned in the DOM, which blurs it). */

@@ -1,5 +1,7 @@
 package tdz.sync
 
+import kotlinx.browser.window
+import tdz.canvasPages
 import tdz.controller.events.EventBus
 import tdz.model.Model
 import tdz.view.sync.LocalFolderModal
@@ -9,6 +11,7 @@ import web.dom.document
 import web.events.EventType
 import web.events.addEventListener
 import web.keyboard.KeyboardEvent
+import zoned.framework.routing.Router
 
 /**
  * Single entry point that assembles the cloud-sync vertical without touching other agents' files.
@@ -27,25 +30,25 @@ object SyncBootstrap {
 
     fun init(model: Model, eventBus: EventBus) {
         controller = SyncController(model, eventBus)
-        val dismiss: () -> Unit = { zoned.framework.routing.Router.navigate(tdz.App.index.resource.currentCanvasUrl()) }
+        val dismiss: () -> Unit = { Router.navigate(canvasPages.resource.currentCanvasUrl()) }
         modal = SyncModal(model, eventBus, controller, onDismiss = dismiss)
         localFolderModal = LocalFolderModal(model, eventBus, controller, onDismiss = dismiss)
-        SyncIndicator(eventBus) {
-            if (kotlinx.browser.window.location.pathname != "/settings/sync") {
-                zoned.framework.routing.Router.navigate("/settings/sync")
-            }
-        }.attach()
+        SyncIndicator(eventBus) { openSyncSettings() }.attach()
 
         document.addEventListener(EventType<KeyboardEvent>("keydown"), { e ->
             if (e.ctrlKey && e.shiftKey && (e.key == "D" || e.key == "d")) {
                 e.preventDefault()
-                if (kotlinx.browser.window.location.pathname != "/settings/sync") {
-                    zoned.framework.routing.Router.navigate("/settings/sync")
-                }
+                openSyncSettings()
             }
         })
 
         controller.start()   // no-ops when not configured
+    }
+
+    private fun openSyncSettings() {
+        if (window.location.pathname != "/settings/sync") {
+            Router.navigate("/settings/sync")
+        }
     }
 
     /** Hide any open sync modal — used by the canvas route when returning from a /settings route. */

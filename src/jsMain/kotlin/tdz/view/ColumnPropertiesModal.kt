@@ -8,10 +8,11 @@ import kotlinx.html.id
 import kotlinx.html.input
 import tdz.controller.events.ColumnEdited
 import tdz.controller.events.EventBus
-import tdz.controller.events.RefreshColumns
 import tdz.model.CanvasName
+import tdz.model.ColumnId
 import tdz.model.ColumnStyle
 import tdz.model.Model
+import tdz.view.modalButton
 import tdz.view.theme.ThemeManager
 import web.dom.ElementId
 import web.dom.document
@@ -38,9 +39,9 @@ class ColumnPropertiesModal(
 ) {
     private var rootEl: HTMLElement? = null
     private var canvasName: CanvasName = CanvasName("")
-    private var columnId: Int = 0
+    private var columnId: ColumnId = ColumnId(0)
 
-    fun show(canvasName: CanvasName, columnId: Int) {
+    fun show(canvasName: CanvasName, columnId: ColumnId) {
         this.canvasName = canvasName
         this.columnId = columnId
         render()
@@ -59,11 +60,11 @@ class ColumnPropertiesModal(
                 css {
                     position = Position.fixed
                     top = 0.px; left = 0.px; right = 0.px; bottom = 0.px
-                    zIndex = 10001
+                    zIndex = ZLayer.MODAL
                     display = Display.flex
                     alignItems = Align.center
                     justifyContent = JustifyContent.center
-                    backgroundColor = Color("rgba(0,0,0,0.45)")
+                    backgroundColor = ThemeManager.current.scrimBg
                 }
                 onClick { e -> if (e.target == r.element) hide() }
                 div {   // dialog
@@ -139,11 +140,10 @@ class ColumnPropertiesModal(
 
     private fun save(style: ColumnStyle) {
         model.setColumnStyle(canvasName, columnId, style)
-        // ColumnEdited persists the rewritten file (Controller) and pushes it (SyncController);
-        // RefreshColumns re-renders the column so the new wallpaper/color is painted.
+        // ColumnEdited persists the rewritten file and emits the change events (Controller);
+        // refresh=true re-renders the column so the new wallpaper/color is painted.
         val raw = model.getCanvasColumnRaw(canvasName, columnId) ?: ""
-        eventBus.fire(ColumnEdited(raw, canvasName, columnId))
-        eventBus.fire(RefreshColumns(canvasName, setOf(columnId)))
+        eventBus.fire(ColumnEdited(raw, canvasName, columnId, refresh = true))
         hide()
     }
 
@@ -172,25 +172,8 @@ class ColumnPropertiesModal(
         }
     }
 
-    private fun FlowContent.button(text: String, primary: Boolean = false, onPress: () -> Unit) {
-        div {
-            css {
-                padding = Padding(vertical = 7.px, horizontal = 14.px)
-                marginRight = 8.px
-                cursor = Cursor.pointer
-                borderRadius = 4.px
-                fontSize = 13.px
-                fontWeight = if (primary) FontWeight.w600 else FontWeight.normal
-                textAlign = TextAlign.center
-                userSelect = UserSelect.none
-                backgroundColor = if (primary) ThemeManager.current.columnFocusBorder else ThemeManager.current.menuBg
-                color = if (primary) Color.white else ThemeManager.current.menuFg
-                border = Border(1.px, BorderStyle.solid, ThemeManager.current.menuBorder)
-            }
-            onClick { onPress() }
-            +text
-        }
-    }
+    private fun FlowContent.button(text: String, primary: Boolean = false, onPress: () -> Unit) =
+        modalButton(text, primary, onPress = onPress)
 
     companion object {
         private const val WALLPAPER_ID = "tdz-col-wallpaper"

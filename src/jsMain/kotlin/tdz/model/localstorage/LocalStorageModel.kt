@@ -52,7 +52,7 @@ class LocalStorageModel {
         remove(Namespace.NEWCANVAS, canvasName.normalized())
     }
 
-    fun deleteColumn(canvasName: CanvasName, column: Int) {
+    fun deleteColumn(canvasName: CanvasName, column: ColumnId) {
         remove(Namespace.COLUMN, ColumnDoc.toKey(canvasName, ColumnDoc.toLabel(column)))
     }
 

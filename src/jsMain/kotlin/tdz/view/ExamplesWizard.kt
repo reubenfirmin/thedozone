@@ -1,5 +1,7 @@
 package tdz.view
 
+import kotlinx.css.*
+import kotlinx.css.properties.*
 import kotlinx.html.ButtonType
 import kotlinx.html.button
 import kotlinx.html.div
@@ -23,7 +25,6 @@ import zoned.framework.routing.Zone.Companion.zone
 object ExamplesWizard {
 
     private val ID get() = Zones.EXAMPLES_WIZARD.elementId
-    private const val SANS = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
     fun show() {
         ensureStyles()
@@ -51,22 +52,50 @@ object ExamplesWizard {
 
     private fun ensureStyles() {
         val t = ThemeManager.current
-        val bg = t.menuBg.toString()
-        val fg = t.menuFg.toString()
-        val border = t.menuBorder.toString()
-        val link = t.link.toString()
         styleSheet("$ID-styles") {
-            raw("""
-                #$ID { position: fixed; inset: 0; z-index: 10050; display: flex; align-items: center;
-                       justify-content: center; background: rgba(0,0,0,0.55); font-family: $SANS; }
-                #$ID .tdz-wiz-dialog { min-width: 360px; max-width: 460px; background: $bg; color: $fg;
-                       border: 1px solid $border; border-radius: 8px; padding: 24px 28px; }
-                #$ID .tdz-wiz-h { font-size: 20px; font-weight: 600; margin-bottom: 12px; }
-                #$ID .tdz-wiz-body { font-size: 14px; line-height: 1.55; opacity: 0.92; margin-bottom: 20px; }
-                #$ID .tdz-wiz-close { cursor: pointer; font-size: 13px; font-weight: 600; background: $link;
-                       color: $bg; border: none; border-radius: 6px; padding: 8px 16px; }
-                #$ID .tdz-wiz-close:hover { filter: brightness(1.08); }
-            """.trimIndent())
+            rule("#$ID") {
+                position = Position.fixed
+                top = 0.px; left = 0.px; right = 0.px; bottom = 0.px
+                zIndex = ZLayer.EXAMPLES_WIZARD
+                display = Display.flex
+                alignItems = Align.center
+                justifyContent = JustifyContent.center
+                backgroundColor = t.scrimBg
+                fontFamily = t.fontFamily
+            }
+            rule("#$ID .tdz-wiz-dialog") {
+                minWidth = 360.px
+                maxWidth = 460.px
+                backgroundColor = t.menuBg
+                color = t.menuFg
+                border = Border(1.px, BorderStyle.solid, t.menuBorder)
+                borderRadius = 8.px
+                padding = Padding(vertical = 24.px, horizontal = 28.px)
+            }
+            rule("#$ID .tdz-wiz-h") {
+                fontSize = 20.px
+                fontWeight = FontWeight.w600
+                marginBottom = 12.px
+            }
+            rule("#$ID .tdz-wiz-body") {
+                fontSize = 14.px
+                lineHeight = LineHeight("1.55")
+                opacity = 0.92
+                marginBottom = 20.px
+            }
+            rule("#$ID .tdz-wiz-close") {
+                cursor = Cursor.pointer
+                fontSize = 13.px
+                fontWeight = FontWeight.w600
+                backgroundColor = t.link
+                color = t.menuBg
+                borderStyle = BorderStyle.none
+                borderRadius = 6.px
+                padding = Padding(vertical = 8.px, horizontal = 16.px)
+            }
+            rule("#$ID .tdz-wiz-close:hover") {
+                put("filter", "brightness(1.08)")
+            }
         }
     }
 }

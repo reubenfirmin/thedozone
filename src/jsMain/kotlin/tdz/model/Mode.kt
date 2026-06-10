@@ -1,9 +1,9 @@
 package tdz.model
 
 /** A column's display mode: rendered cards, or the raw-markdown editor. Persisted per column. */
-enum class Mode(val tagIdPrefix: String) {
-    CARD("cardcol_"),
-    EDITOR("editorcol_");
+enum class Mode {
+    CARD,
+    EDITOR;
 
     fun invert() =
         when (this) {

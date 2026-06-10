@@ -66,7 +66,7 @@ jobs:
         working-directory: thedozone2
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon build-style build jsBrowserDistribution
+          ./gradlew --no-daemon build jsBrowserDistribution
 
       - name: Upload site artifact
         uses: actions/upload-artifact@v4

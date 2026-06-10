@@ -1,6 +1,7 @@
 package tdz.view
 
 import tdz.model.CanvasName
+import tdz.model.CardRef
 import tdz.model.ColumnId
 
 /**
@@ -23,19 +24,19 @@ object DomIds {
 
     /** The columnId encoded in a column element id, or null if [elementId] isn't one. */
     fun columnId(elementId: String): ColumnId? =
-        elementId.takeIf { it.startsWith(COLUMN) }?.removePrefix(COLUMN)?.toIntOrNull()
+        elementId.takeIf { it.startsWith(COLUMN) }?.removePrefix(COLUMN)?.toIntOrNull()?.let(::ColumnId)
 
     /** Positional card id: the card's column and its index within it (pre-render order). */
-    fun card(columnId: ColumnId, index: Int) = "$CARD$columnId-$index"
+    fun card(ref: CardRef) = "$CARD${ref.columnId}-${ref.index}"
 
-    /** The (columnId, index) encoded in a card element id, or null if [elementId] isn't one. */
-    fun cardId(elementId: String): Pair<ColumnId, Int>? {
+    /** The [CardRef] encoded in a card element id, or null if [elementId] isn't one. */
+    fun cardId(elementId: String): CardRef? {
         if (!isCard(elementId)) return null
         val parts = elementId.removePrefix(CARD).split("-")
         if (parts.size != 2) return null
         val column = parts[0].toIntOrNull() ?: return null
         val index = parts[1].toIntOrNull() ?: return null
-        return column to index
+        return CardRef(ColumnId(column), index)
     }
 
     fun isCard(elementId: String) = elementId.startsWith(CARD)

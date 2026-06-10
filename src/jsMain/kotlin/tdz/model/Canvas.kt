@@ -12,7 +12,16 @@ data class CanvasName(private val orig: String) {
     fun display() = normalized().replace("-", " ")
 }
 
-typealias ColumnId = Int
+/**
+ * A column's identity within a canvas. A value class (not a typealias) so a column id can never
+ * be confused with a card index — or any other Int — at a call site. Prints as the bare number,
+ * so the persisted formats (comma lists, sync paths, DOM ids) are unchanged.
+ */
+value class ColumnId(val value: Int) {
+    /** The next id after this one (allocation walks `columns.last() + 1`; ids may have gaps). */
+    fun next() = ColumnId(value + 1)
+    override fun toString() = value.toString()
+}
 
 data class Canvas(
     val name: CanvasName,
