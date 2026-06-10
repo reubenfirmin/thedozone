@@ -2,12 +2,26 @@ package tdz.sync
 
 import kotlinx.browser.window
 import kotlinx.coroutines.await
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import org.w3c.fetch.Headers
+import org.w3c.fetch.RequestInit
+import tdz.model.localstorage.storageJson
 import kotlin.js.Date
-import kotlin.js.Promise
-import kotlin.js.json
 
 /** Result of a successful Drive connect: the account email for display (no persisted secret). */
 data class DriveCredentials(val accountEmail: String)
+
+/** Persisted shape of the short-lived access token (survives reloads while still valid). */
+@Serializable
+private data class StoredDriveToken(val accessToken: String, val expiresAtMs: Double)
+
+/** The `about?fields=user` response — only the email is read. */
+@Serializable
+private data class DriveAbout(val user: DriveUser? = null)
+
+@Serializable
+private data class DriveUser(val emailAddress: String? = null)
 
 /**
  * Google Drive auth over the GIS token model. Unlike Dropbox there is NO refresh token: access tokens
@@ -75,10 +89,10 @@ object DriveAuth {
         accessToken = r.accessToken
         expiresAtMs = Date.now() + r.expiresInSec * 1000.0
         runCatching {
-            window.localStorage.setItem(STORE_KEY, JSON.stringify(json(
-                "accessToken" to r.accessToken,
-                "expiresAtMs" to expiresAtMs,
-            )))
+            window.localStorage.setItem(
+                STORE_KEY,
+                storageJson.encodeToString(StoredDriveToken(r.accessToken, expiresAtMs)),
+            )
         }
     }
 
@@ -86,28 +100,26 @@ object DriveAuth {
     private fun restore() {
         runCatching {
             val raw = window.localStorage.getItem(STORE_KEY) ?: return
-            val obj = JSON.parse<dynamic>(raw)
-            val tok = obj.accessToken as? String
-            val exp = (obj.expiresAtMs as? Number)?.toDouble() ?: 0.0
-            if (!tok.isNullOrEmpty() && Date.now() < exp - SKEW_MS) {
-                accessToken = tok
-                expiresAtMs = exp
+            val stored = storageJson.decodeFromString<StoredDriveToken>(raw)
+            if (stored.accessToken.isNotEmpty() && Date.now() < stored.expiresAtMs - SKEW_MS) {
+                accessToken = stored.accessToken
+                expiresAtMs = stored.expiresAtMs
                 console.log("[sync/auth] restored persisted Drive token (${remainingSec()}s left)")
-            } else if (!tok.isNullOrEmpty()) {
+            } else if (stored.accessToken.isNotEmpty()) {
                 console.log("[sync/auth] persisted Drive token had expired")
             }
         }
     }
 
     private suspend fun fetchAccountEmail(token: String): String {
-        val init = js("({})")
-        init.headers = js("({})")
-        init.headers["Authorization"] = "Bearer $token"
-        val resp = (window.asDynamic().fetch(
-            "https://www.googleapis.com/drive/v3/about?fields=user", init
-        ) as Promise<dynamic>).await()
-        if (resp.ok != true) throw Exception("about failed: ${resp.status}")
-        val body = (resp.json() as Promise<dynamic>).await()
-        return body.user.emailAddress as String
+        val headers = Headers()
+        headers.append("Authorization", "Bearer $token")
+        val resp = window.fetch(
+            "https://www.googleapis.com/drive/v3/about?fields=user",
+            RequestInit(headers = headers),
+        ).await()
+        if (!resp.ok) throw Exception("about failed: ${resp.status}")
+        val about = storageJson.decodeFromString<DriveAbout>(resp.text().await())
+        return about.user?.emailAddress ?: throw Exception("about response had no user email")
     }
 }

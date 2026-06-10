@@ -36,7 +36,7 @@ class SyncController(
 ) {
     private val scope = CoroutineScope(Dispatchers.Main)
     private var engine: SyncEngine? = null
-    private var localHandle: dynamic = null   // the granted FileSystemDirectoryHandle, once loaded/picked
+    private var localHandle: tdz.sync.local.FileSystemDirectoryHandle? = null   // the granted handle, once loaded/picked
     private val pushTimers = mutableMapOf<String, Int>()   // path -> window timeout handle
     private val PUSH_DEBOUNCE_MS = 1500
 
@@ -123,7 +123,7 @@ class SyncController(
         if (SyncPaths.isManifest(path)) {
             val canvas = manifestCanvas(path) ?: return null
             val c = model.getCanvas(canvas) ?: return null
-            return JSON.stringify(CanvasDoc(c.name, c.parent, c.columns, c.layouts).toJson())
+            return CanvasDoc(c.name, c.parent, c.columns, c.layouts).encode()
         }
         return null
     }
@@ -135,7 +135,7 @@ class SyncController(
             return
         }
         if (SyncPaths.isManifest(path)) {
-            val doc = CanvasDoc.fromJson(JSON.parse(content))
+            val doc = CanvasDoc.decode(content)
             model.addCanvas(Canvas(doc.name, doc.parentName, doc.columns, doc.layouts))
             eventBus.fire(RefreshCanvas(doc.name))
         }
@@ -157,13 +157,12 @@ class SyncController(
     /**
      * Serialized manifest WITH its version-vector section attached from [s]. The single source of truth
      * for manifest bytes on every push path — never serialize a manifest any other way (a plain
-     * CanvasDoc.toJson() drops `vv` and would wipe the vectors). Null if the canvas no longer exists.
+     * CanvasDoc.encode() drops `vv` and would wipe the vectors). Null if the canvas no longer exists.
      */
     private fun manifestContent(name: CanvasName, s: SyncStateDoc): String? {
         val canvas = model.getCanvas(name) ?: return null
-        val j = CanvasDoc(canvas.name, canvas.parent, canvas.columns, canvas.layouts).toJson()
-        ManifestVv.write(j, root(), name, s.entries.mapValues { it.value.vv })
-        return JSON.stringify(j)
+        val doc = CanvasDoc(canvas.name, canvas.parent, canvas.columns, canvas.layouts).encode()
+        return ManifestVv.write(doc, root(), name, s.entries.mapValues { it.value.vv })
     }
 
     // ---- push side ----
@@ -240,7 +239,7 @@ class SyncController(
     fun reconcile() {
         val eng = engine ?: return
         if (reconciling) return   // one pull in flight is enough; also keeps the echo guard stable
-        if (window.asDynamic().navigator.onLine == false) {
+        if (!web.navigator.navigator.onLine) {
             SyncStateStore.set(SyncState.Offline, eventBus)
             return
         }

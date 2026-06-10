@@ -37,8 +37,5 @@ class VersionVectorTest {
         assertEquals(mapOf("a" to 2L, "b" to 1L), bump(mapOf("a" to 2L), "b"))
     }
 
-    @Test fun jsonRoundTrip() {
-        val vv = mapOf("a" to 2L, "b" to 5L)
-        assertEquals(vv, vvFromJson(vvToJson(vv)))
-    }
+    // (vv json round-trips are covered by SyncStateDocTest / ManifestVvTest via kotlinx.serialization)
 }

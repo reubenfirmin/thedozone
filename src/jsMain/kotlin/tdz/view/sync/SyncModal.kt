@@ -69,6 +69,9 @@ class SyncModal(
     fun hide() { rootEl?.remove(); rootEl = null }
 
     private fun render() {
+        // A rebuild (provider click, connect/disconnect flip) replaces the folder input; carry the
+        // user's in-progress text across, falling back to the stored folder on first paint.
+        val pendingFolder = (document.getElementById(ElementId(ROOT_ID)) as? HTMLInputElement)?.value
         hide()
         val cfg = model.readSyncConfig()
         shownConnected = cfg.cloudConnected
@@ -118,7 +121,7 @@ class SyncModal(
 
                     // Folder: editable before connect or while changing it; read-only otherwise.
                     if (!shownConnected || editingFolder) {
-                        field(folderHint(), ROOT_ID, cfg.rootFolder)
+                        field(folderHint(), ROOT_ID, pendingFolder ?: cfg.rootFolder)
                     } else {
                         div {
                             css { marginBottom = 8.px; fontSize = 13.px }

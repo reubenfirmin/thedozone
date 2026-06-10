@@ -51,9 +51,9 @@ internal object MarkdownListElement {
             }
         }
 
-        if (type == null) return null
+        if (type == null || text == null) return null
 
-        val trimmed = text!!.trim()
+        val trimmed = text.trim()
         if (trimmed.isEmpty()) return null
 
         var done = false

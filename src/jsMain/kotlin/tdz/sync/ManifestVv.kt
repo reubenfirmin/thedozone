@@ -1,42 +1,47 @@
 package tdz.sync
 
+import kotlinx.serialization.encodeToString
 import tdz.model.CanvasName
-import kotlin.js.Json
-import kotlin.js.json
+import tdz.model.localstorage.CanvasWire
+import tdz.model.localstorage.storageJson
 
 /**
- * Reads/writes the sync-owned `"vv"` section of a canvas manifest JSON ([CanvasDoc] handles the rest).
- * Shape: `"vv": { "<columnId>": { "<deviceId>": <count> } }`. Exposed keyed by full column sync path so
- * the engine/controller can line it up with [SyncEntry] without knowing the manifest layout.
+ * Reads/writes the sync-owned `"vv"` section of a canvas manifest ([tdz.model.localstorage.CanvasDoc]
+ * handles the rest; both speak [CanvasWire] so the formats cannot drift). Shape:
+ * `"vv": { "<columnId>": { "<deviceId>": <count> } }`. Exposed keyed by full column sync path so
+ * the engine/controller can line it up with [tdz.model.localstorage.SyncEntry] without knowing the
+ * manifest layout.
  */
 object ManifestVv {
 
-    /** column path -> version vector, parsed from [manifest]'s `vv` (empty if absent). */
-    fun read(manifest: Json, root: String, canvas: CanvasName): Map<String, VersionVector> {
-        val vvObj = (manifest["vv"] as Json?) ?: return emptyMap()
-        val out = HashMap<String, VersionVector>()
-        (js("Object").keys(vvObj) as Array<String>).forEach { colId ->
-            val path = SyncPaths.columnPath(root, canvas, colId.toInt())
-            out[path] = vvFromJson(vvObj[colId] as Json)
+    /** column path -> version vector, parsed from [manifestContent]'s `vv` (empty if absent/corrupt). */
+    fun read(manifestContent: String, root: String, canvas: CanvasName): Map<String, VersionVector> {
+        val vv = decodeVv(manifestContent) ?: return emptyMap()
+        return vv.entries.associate { (colId, vector) ->
+            SyncPaths.columnPath(root, canvas, colId.toInt()) to vector
         }
-        return out
     }
 
-    /** The version vector for a single [columnId] in [manifest]'s `vv` (empty if absent). */
-    fun readOne(manifest: Json, columnId: Int): VersionVector {
-        val vvObj = (manifest["vv"] as Json?) ?: return emptyMap()
-        val one = (vvObj.asDynamic()[columnId.toString()] as Json?) ?: return emptyMap()
-        return vvFromJson(one)
+    /** The version vector for a single [columnId] in [manifestContent]'s `vv` (empty if absent/corrupt). */
+    fun readOne(manifestContent: String, columnId: Int): VersionVector =
+        decodeVv(manifestContent)?.get(columnId.toString()) ?: emptyMap()
+
+    /**
+     * Returns [manifestContent] with a `vv` section built from [byPath] (only paths under this
+     * canvas are used). Throws on an unparseable manifest — the caller produced it.
+     */
+    fun write(manifestContent: String, root: String, canvas: CanvasName, byPath: Map<String, VersionVector>): String {
+        val wire = storageJson.decodeFromString<CanvasWire>(manifestContent)
+        val vv = buildMap {
+            byPath.forEach { (path, vector) ->
+                val parsed = SyncPaths.parseColumn(path) ?: return@forEach
+                if (parsed.first.normalized() != canvas.normalized()) return@forEach
+                put(parsed.second.toString(), vector)
+            }
+        }
+        return storageJson.encodeToString(wire.copy(vv = vv))
     }
 
-    /** Attach a `vv` object to [manifest] built from [byPath] (only paths under this canvas are used). */
-    fun write(manifest: Json, root: String, canvas: CanvasName, byPath: Map<String, VersionVector>) {
-        val vvObj = json()
-        byPath.forEach { (path, vv) ->
-            val parsed = SyncPaths.parseColumn(path) ?: return@forEach
-            if (parsed.first.normalized() != canvas.normalized()) return@forEach
-            vvObj[parsed.second.toString()] = vvToJson(vv)
-        }
-        manifest["vv"] = vvObj
-    }
+    private fun decodeVv(manifestContent: String): Map<String, Map<String, Long>>? =
+        runCatching { storageJson.decodeFromString<CanvasWire>(manifestContent).vv }.getOrNull()
 }

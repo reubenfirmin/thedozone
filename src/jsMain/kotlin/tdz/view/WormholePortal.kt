@@ -3,14 +3,17 @@ package tdz.view
 import kotlinx.browser.window
 import kotlinx.css.*
 import kotlinx.css.properties.*
+import kotlinx.html.div
 import tdz.view.theme.ThemeManager
-import web.dom.ElementId
+import web.cssom.ClassName
 import web.dom.document
 import web.html.HTMLElement
-import web.html.HTMLStyleElement
+import zoned.framework.interop.addToBody
+import zoned.framework.interop.classes
 import zoned.framework.interop.css
-import zoned.framework.interop.getHtmlElement
+import zoned.framework.interop.styleSheet
 import zoned.framework.interop.transformOrigin
+import zoned.framework.routing.Zone.Companion.zone
 
 /** The two drop visuals for canvas links. Flip [WormholePortal.style] to A/B them. */
 enum class PortalStyle { VORTEX, BLACK_HOLE }
@@ -32,28 +35,33 @@ object WormholePortal {
     /** Flip this (and reload) to compare the two drop visuals. */
     var style: PortalStyle = PortalStyle.BLACK_HOLE
 
-    private const val ID = "tdz-wormhole"
+    private val ID get() = Zones.WORMHOLE.elementId
 
-    private fun structureFor(s: PortalStyle) = when (s) {
-        PortalStyle.VORTEX ->
-            "<div class='tdz-wh-swirl'></div><div class='tdz-wh-swirl2'></div><div class='tdz-wh-core'></div>"
-        PortalStyle.BLACK_HOLE ->
-            "<div class='tdz-bh-glow'></div><div class='tdz-bh-disk'></div><div class='tdz-bh-core'></div><div class='tdz-bh-shock'></div>"
-    }
-
-    /** The overlay element, built (or rebuilt) for the active [style]. */
+    /** The overlay element, built (or rebuilt with a typed zone swap) for the active [style]. */
     private fun ensureElement(): HTMLElement {
         ensureStyles()
-        val el = getHtmlElement(ID) ?: run {
-            val created = document.createElement("div") as HTMLElement
-            created.id = ElementId(ID)
-            document.body?.appendChild(created)
-            created
+        val el = Zones.WORMHOLE.resolve() ?: run {
+            addToBody { div { zone(Zones.WORMHOLE) } }
+            Zones.WORMHOLE.resolve() ?: error("wormhole zone failed to mount")
         }
         if (el.getAttribute("data-style") != style.name) {
             el.setAttribute("data-style", style.name)
-            el.asDynamic().className = if (style == PortalStyle.VORTEX) "tdz-wh-vortex" else "tdz-wh-bh"
-            el.asDynamic().innerHTML = structureFor(style)
+            el.classes(if (style == PortalStyle.VORTEX) "tdz-wh-vortex" else "tdz-wh-bh")
+            Zones.WORMHOLE.swap {
+                when (style) {
+                    PortalStyle.VORTEX -> {
+                        div("tdz-wh-swirl")
+                        div("tdz-wh-swirl2")
+                        div("tdz-wh-core")
+                    }
+                    PortalStyle.BLACK_HOLE -> {
+                        div("tdz-bh-glow")
+                        div("tdz-bh-disk")
+                        div("tdz-bh-core")
+                        div("tdz-bh-shock")
+                    }
+                }
+            }
         }
         return el
     }
@@ -71,8 +79,8 @@ object WormholePortal {
             width = size.px
             height = size.px
         }
-        portal.asDynamic().classList.remove("tdz-wh-flash")
-        portal.asDynamic().classList.add("tdz-wh-on")
+        portal.classList.remove(ClassName("tdz-wh-flash"))
+        portal.classList.add(ClassName("tdz-wh-on"))
     }
 
     /**
@@ -80,7 +88,7 @@ object WormholePortal {
      * the pulse class, not the flash, so a drop climax that just started still plays to completion.
      */
     fun hide() {
-        (getHtmlElement(ID))?.asDynamic()?.classList?.remove("tdz-wh-on")
+        Zones.WORMHOLE.resolve()?.classList?.remove(ClassName("tdz-wh-on"))
     }
 
     /**
@@ -92,18 +100,16 @@ object WormholePortal {
     fun swallow(linkEl: HTMLElement, cardEl: HTMLElement, startCx: Double, startCy: Double, w: Double, h: Double) {
         val portal = ensureElement()
         showOver(linkEl)
-        portal.asDynamic().classList.remove("tdz-wh-on")
-        portal.asDynamic().classList.add("tdz-wh-flash")
+        portal.classList.remove(ClassName("tdz-wh-on"))
+        portal.classList.add(ClassName("tdz-wh-flash"))
 
         val pr = linkEl.getBoundingClientRect()
         val pcx = pr.left + pr.width / 2
         val pcy = pr.top + pr.height / 2
 
-        val clone = cardEl.asDynamic().cloneNode(true)
-        clone.removeAttribute("id")
-        clone.classList.remove("tdz-card-ghost")
-        clone.classList.remove("sortable-ghost")
-        val el = clone.unsafeCast<HTMLElement>()
+        val el = cardEl.cloneNode(true) as HTMLElement
+        el.removeAttribute("id")
+        el.classList.remove(ClassName("tdz-card-ghost"), ClassName("sortable-ghost"))
         el.css {
             position = Position.fixed
             left = (startCx - w / 2).px
@@ -217,11 +223,6 @@ object WormholePortal {
                    100% { transform: scale(0.55); opacity: 0; filter: brightness(1) drop-shadow(0 0 14px $c); } }
             @keyframes tdz-bh-shock { 0% { opacity: 0.9; transform: scale(0.2); } 100% { opacity: 0; transform: scale(3); } }
         """.trimIndent()
-        val styleEl = (getHtmlElement("tdz-wormhole-styles") as? HTMLStyleElement)
-            ?: (document.createElement("style") as HTMLStyleElement).also {
-                it.id = ElementId("tdz-wormhole-styles")
-                document.head.appendChild(it)
-            }
-        styleEl.textContent = css
+        styleSheet("tdz-wormhole-styles") { raw(css) }
     }
 }

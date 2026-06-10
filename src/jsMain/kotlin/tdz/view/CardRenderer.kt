@@ -3,7 +3,6 @@ package tdz.view
 import kotlinx.css.*
 import kotlinx.css.properties.*
 import kotlinx.html.*
-import tdz.App
 import tdz.controller.DragDrop
 import tdz.controller.events.EventBus
 import tdz.controller.events.TaskToggleDone
@@ -97,7 +96,7 @@ object CardRenderer {
                     }
                 }
             }
-            id = "card-${card.metadata.columnId}-${card.index}"
+            id = DomIds.card(card.metadata.columnId, card.index)
             // Marks a section header so drag-and-drop can carry the cards beneath it as a group.
             if (card.isH1Only()) attributes["data-h1only"] = "true"
             if (frameTitle != null) {
@@ -512,7 +511,7 @@ object CardRenderer {
                     fontSize = 15.px
                 }
                 onClick {
-                    kotlinx.browser.window.navigator.asDynamic().clipboard.writeText(blockquote.text)
+                    web.navigator.navigator.clipboard.writeTextAsync(blockquote.text)
                     Unit
                 }
             }
@@ -569,7 +568,7 @@ object CardRenderer {
     private fun FlowContent.renderRichText(link: CanvasLink, eventBus: EventBus) {
         ensureLinkStyles()
         // TODO if the whole card is a link, it should be clickable
-        val linkId = "canvas-link-${link.canvasName.normalized()}"
+        val linkId = DomIds.canvasLink(link.canvasName)
 
         span("canvas-drop-zone inline-block") {
             attributes["data-canvas-name"] = link.canvasName.normalized()
@@ -602,10 +601,7 @@ object CardRenderer {
 
             // Set up as drop zone after DOM insertion
             onMount {
-                // Get current canvas from App to pass to setupCanvasLinkDropZone
-                App.index.resource.canvas?.let { canvas ->
-                    tdzDragDrop.setupCanvasLinkDropZone(linkId, canvas.name)
-                }
+                tdzDragDrop.setupCanvasLinkDropZone(linkId)
             }
         }
     }

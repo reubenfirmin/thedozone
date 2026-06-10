@@ -14,13 +14,13 @@ class SyncStateDocTest {
                 "/notes/_/_canvas.json" to SyncEntry(rev = null, localUpdatedAt = 200.0),
             )
         )
-        val back = SyncStateDoc.fromJson(doc.toJson())
+        val back = SyncStateDoc.decode(doc.encode())
         assertEquals(doc.entries, back.entries)
     }
 
     @Test
     fun emptyRoundTrips() {
-        val back = SyncStateDoc.fromJson(SyncStateDoc(emptyMap()).toJson())
+        val back = SyncStateDoc.decode(SyncStateDoc(emptyMap()).encode())
         assertEquals(emptyMap(), back.entries)
     }
 
@@ -35,7 +35,7 @@ class SyncStateDocTest {
     @Test
     fun roundTripsBaseContent() {
         val doc = SyncStateDoc.EMPTY.with("/n/_/col-0.md", SyncEntry("rev1", 123.0, base = "# Card\nbody\n"))
-        val restored = SyncStateDoc.fromJson(doc.toJson())
+        val restored = SyncStateDoc.decode(doc.encode())
         assertEquals("# Card\nbody\n", restored.entries["/n/_/col-0.md"]?.base)
         assertEquals("rev1", restored.entries["/n/_/col-0.md"]?.rev)
     }
@@ -43,24 +43,40 @@ class SyncStateDocTest {
     @Test
     fun toleratesLegacyEntriesWithoutBase() {
         // A doc serialized before `base` existed: deserializing must yield base == null, not crash.
-        val legacy = kotlin.js.json("/n/_/col-0.md" to kotlin.js.json("rev" to "r", "localUpdatedAt" to 5.0))
-        val restored = SyncStateDoc.fromJson(legacy)
+        val legacy = """{"/n/_/col-0.md":{"rev":"r","localUpdatedAt":5}}"""
+        val restored = SyncStateDoc.decode(legacy)
         assertEquals(null, restored.entries["/n/_/col-0.md"]?.base)
         assertEquals("r", restored.entries["/n/_/col-0.md"]?.rev)
+    }
+
+    @Test
+    fun toleratesLegacyExplicitNulls() {
+        // The old serializer wrote nulls explicitly; both shapes must decode.
+        val legacy = """{"/p.md":{"rev":null,"localUpdatedAt":5,"base":null}}"""
+        val restored = SyncStateDoc.decode(legacy)
+        assertEquals(null, restored.entries["/p.md"]?.rev)
+        assertEquals(5.0, restored.entries["/p.md"]?.localUpdatedAt)
     }
 
     @Test
     fun roundTripsVersionVector() {
         val doc = SyncStateDoc.EMPTY.with("/n/_/col-0.md",
             SyncEntry("r", 1.0, base = "b\n", vv = mapOf("dev1" to 3L)))
-        val restored = SyncStateDoc.fromJson(doc.toJson())
+        val restored = SyncStateDoc.decode(doc.encode())
         assertEquals(mapOf("dev1" to 3L), restored.entries["/n/_/col-0.md"]?.vv)
     }
 
     @Test
     fun legacyEntryHasEmptyVv() {
-        val legacy = kotlin.js.json("/n/_/col-0.md" to kotlin.js.json("rev" to "r", "localUpdatedAt" to 5.0))
-        val restored = SyncStateDoc.fromJson(legacy)
+        val legacy = """{"/n/_/col-0.md":{"rev":"r","localUpdatedAt":5}}"""
+        val restored = SyncStateDoc.decode(legacy)
         assertEquals(emptyMap(), restored.entries["/n/_/col-0.md"]?.vv)
+    }
+
+    @Test
+    fun unknownFieldsAreIgnored() {
+        // Forward compatibility: a newer build's extra field must not break this one.
+        val future = """{"/p.md":{"rev":"r","localUpdatedAt":5,"someFutureField":true}}"""
+        assertEquals("r", SyncStateDoc.decode(future).entries["/p.md"]?.rev)
     }
 }

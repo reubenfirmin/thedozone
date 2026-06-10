@@ -23,7 +23,9 @@ val tdzDragDrop = DragDrop(tdzModel, eventBus)
 class App {
 
         object index: Routes<Index>(Index(tdzModel, eventBus), "/") {
-            val home = route { "/" to {
+            // Every route is PARTIAL: the body hosts permanent sibling layers (canvas shell, sync
+            // badge, portals), and Index swaps the canvas ZONE itself — nothing may clear the body.
+            val home = route(mode = RenderMode.PARTIAL) { "/" to {
                 index(tdzModel.currentCanvas())
             }
         }.title { "The Do Zone" }

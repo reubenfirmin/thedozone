@@ -1,10 +1,46 @@
 package tdz.sync
 
+import kotlinx.browser.window
 import kotlinx.coroutines.await
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import org.w3c.fetch.Headers
+import org.w3c.fetch.RequestInit
+import org.w3c.fetch.Response
+import tdz.model.localstorage.storageJson
+import zoned.framework.interop.encodeURIComponent
 import kotlin.js.Date
-import kotlin.js.Promise
+
+// ---- Drive REST wire types (decoded with kotlinx.serialization; unknown fields ignored) ----
+// NOTE: plain `fetch` from org.w3c.fetch is used deliberately: it is fully typed (Headers/
+// RequestInit/Response), and this file touches no DOM types, so the org.w3c-vs-web.* split
+// (which matters when ELEMENT types cross) doesn't arise. The web.http equivalents work too
+// (their constants/suspend helpers are top-level EXTENSIONS — import web.http.GET / web.http.text)
+// but offer nothing extra here.
+
+@Serializable
+internal data class DriveFileMeta(
+    val id: String,
+    val name: String? = null,
+    val mimeType: String? = null,
+    val version: String? = null,
+    val modifiedTime: String? = null,
+)
+
+@Serializable
+private data class DriveFileList(
+    val files: List<DriveFileMeta> = emptyList(),
+    val nextPageToken: String? = null,
+)
+
+@Serializable
+private data class DriveCreateRequest(
+    val name: String,
+    val parents: List<String>,
+    val mimeType: String? = null,
+)
 
 /**
  * [RemoteStorage] backed by the Google Drive v3 REST API (plain `fetch`; no SDK). Access tokens come
@@ -40,17 +76,17 @@ class DriveStorage : RemoteStorage {
         val token = DriveAuth.token()
         val id = resolveFileId(path, token) ?: throw Exception("Drive download: not found: $path")
         val content = reqText(token, "GET", "$api/files/$id?alt=media")
-        val meta = reqJson(token, "GET", "$api/files/$id?fields=id,version,modifiedTime")
+        val meta = reqMeta(token, "GET", "$api/files/$id?fields=id,version,modifiedTime")
         return content to toFile(path, meta)
     }
 
     override suspend fun upload(path: String, content: String, ifMatchRev: String?): RemoteFile {
         val token = DriveAuth.token()
         val parentPath = "/" + DrivePaths.folderSegments(path).joinToString("/")
-        val parentId = resolveFolderId(parentPath, create = true, token)!!
+        val parentId = resolveFolderId(parentPath, create = true, token)
+            ?: error("Drive upload: folder '$parentPath' could not be created")
         val name = DrivePaths.fileName(path)
-        val existing = findChild(parentId, name, token)
-        val existingId: String? = if (existing != null && existing != undefined) existing.id as String else null
+        val existingId = findChild(parentId, name, token)?.id
 
         if (existingId == null) {
             val meta = createFile(parentId, name, content, token)
@@ -58,10 +94,10 @@ class DriveStorage : RemoteStorage {
         }
         // Optimistic concurrency: compare the known rev to Drive's current `version` before overwriting.
         if (ifMatchRev != null) {
-            val current = reqJson(token, "GET", "$api/files/$existingId?fields=version").version as String
+            val current = reqMeta(token, "GET", "$api/files/$existingId?fields=id,version").version
             if (current != ifMatchRev) throw RevConflictException(path)
         }
-        val meta = reqJson(
+        val meta = reqMeta(
             token, "PATCH", "$upload/files/$existingId?uploadType=media&fields=id,version,modifiedTime",
             body = content, contentType = "text/plain; charset=UTF-8",
         )
@@ -72,7 +108,7 @@ class DriveStorage : RemoteStorage {
         val token = DriveAuth.token()
         val id = resolveFileId(path, token) ?: return   // missing = not an error
         val resp = req(token, "DELETE", "$api/files/$id")
-        if (resp.ok != true && resp.status != 404) throw Exception("Drive delete failed: ${resp.status}")
+        if (!resp.ok && resp.status.toInt() != 404) throw Exception("Drive delete failed: ${resp.status}")
     }
 
     override suspend fun revoke() = DriveAuth.revoke()
@@ -89,7 +125,7 @@ class DriveStorage : RemoteStorage {
                 val cached = folderCache[acc]
                 if (cached != null) { parentId = cached; continue }
                 val found = findChild(parentId, seg, token, foldersOnly = true)
-                val id = (found?.id as String?) ?: if (create) createFolder(parentId, seg, token) else return@withLock null
+                val id = found?.id ?: if (create) createFolder(parentId, seg, token) else return@withLock null
                 folderCache[acc] = id
                 parentId = id
             }
@@ -99,32 +135,26 @@ class DriveStorage : RemoteStorage {
     private suspend fun resolveFileId(path: String, token: String): String? {
         val parentPath = "/" + DrivePaths.folderSegments(path).joinToString("/")
         val parentId = resolveFolderId(parentPath, create = false, token) ?: return null
-        return findChild(parentId, DrivePaths.fileName(path), token)?.id as String?
+        return findChild(parentId, DrivePaths.fileName(path), token)?.id
     }
 
     /** Find a single child by exact name under [parentId]. Returns its metadata or null. */
-    private suspend fun findChild(parentId: String, name: String, token: String, foldersOnly: Boolean = false): dynamic {
+    private suspend fun findChild(parentId: String, name: String, token: String, foldersOnly: Boolean = false): DriveFileMeta? {
         val folderClause = if (foldersOnly) " and mimeType = '$folderMime'" else ""
         val q = "name = '${escape(name)}' and '$parentId' in parents and trashed = false$folderClause"
-        val url = "$api/files?q=${encode(q)}&fields=files(id,name,mimeType,version,modifiedTime)&spaces=drive&pageSize=10"
-        val files = reqJson(token, "GET", url).files as Array<dynamic>
-        return files.firstOrNull()
+        val url = "$api/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,version,modifiedTime)&spaces=drive&pageSize=10"
+        return storageJson.decodeFromString<DriveFileList>(reqJson(token, "GET", url)).files.firstOrNull()
     }
 
     private suspend fun createFolder(parentId: String, name: String, token: String): String {
-        val obj: dynamic = js("({})")
-        obj.name = name
-        obj.mimeType = folderMime
-        obj.parents = arrayOf(parentId)
-        return reqJson(token, "POST", "$api/files?fields=id", JSON.stringify(obj), "application/json").id as String
+        val body = storageJson.encodeToString(DriveCreateRequest(name, listOf(parentId), folderMime))
+        val resp = reqJson(token, "POST", "$api/files?fields=id", body, "application/json")
+        return storageJson.decodeFromString<DriveFileMeta>(resp).id
     }
 
-    private suspend fun createFile(parentId: String, name: String, content: String, token: String): dynamic {
+    private suspend fun createFile(parentId: String, name: String, content: String, token: String): DriveFileMeta {
         val boundary = "tdz-${Date.now().toString().replace(".", "")}-boundary"
-        val metaObj: dynamic = js("({})")
-        metaObj.name = name
-        metaObj.parents = arrayOf(parentId)
-        val meta = JSON.stringify(metaObj)
+        val meta = storageJson.encodeToString(DriveCreateRequest(name, listOf(parentId)))
         val multipart = buildString {
             append("--$boundary\r\n")
             append("Content-Type: application/json; charset=UTF-8\r\n\r\n")
@@ -134,7 +164,7 @@ class DriveStorage : RemoteStorage {
             append(content).append("\r\n")
             append("--$boundary--")
         }
-        return reqJson(
+        return reqMeta(
             token, "POST", "$upload/files?uploadType=multipart&fields=id,version,modifiedTime",
             body = multipart, contentType = "multipart/related; boundary=$boundary",
         )
@@ -144,62 +174,59 @@ class DriveStorage : RemoteStorage {
     private suspend fun listInto(folderId: String, folderPath: String, token: String, out: MutableList<RemoteFile>) {
         var pageToken: String? = null
         do {
-            val pageClause = pageToken?.let { "&pageToken=${encode(it)}" } ?: ""
+            val pageClause = pageToken?.let { "&pageToken=${encodeURIComponent(it)}" } ?: ""
             val q = "'$folderId' in parents and trashed = false"
-            val url = "$api/files?q=${encode(q)}&fields=nextPageToken,files(id,name,mimeType,version,modifiedTime)" +
+            val url = "$api/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType,version,modifiedTime)" +
                 "&spaces=drive&pageSize=1000$pageClause"
-            val resp = reqJson(token, "GET", url)
-            val files = resp.files as Array<dynamic>
-            for (f in files) {
-                val name = f.name as String
+            val listing = storageJson.decodeFromString<DriveFileList>(reqJson(token, "GET", url))
+            for (f in listing.files) {
+                val name = f.name ?: continue
                 val childPath = DrivePaths.childPath(folderPath, name)
                 if (f.mimeType == folderMime) {
-                    folderCache[childPath] = f.id as String
-                    listInto(f.id as String, childPath, token, out)
+                    folderCache[childPath] = f.id
+                    listInto(f.id, childPath, token, out)
                 } else {
                     out += toFile(childPath, f)
                 }
             }
-            pageToken = resp.nextPageToken as String?
+            pageToken = listing.nextPageToken
         } while (pageToken != null)
     }
 
-    private fun toFile(path: String, meta: dynamic): RemoteFile = RemoteFile(
+    private fun toFile(path: String, meta: DriveFileMeta): RemoteFile = RemoteFile(
         path = path,
-        rev = meta.version.toString(),
-        serverModified = Date(meta.modifiedTime as String).getTime(),
+        rev = meta.version ?: error("Drive metadata for '$path' is missing `version`"),
+        serverModified = Date(meta.modifiedTime ?: error("Drive metadata for '$path' is missing `modifiedTime`")).getTime(),
     )
 
     private fun normalize(folder: String): String = "/" + DrivePaths.segments(folder).joinToString("/")
 
     // ---- HTTP ----
 
-    private suspend fun req(token: String, method: String, url: String, body: String? = null, contentType: String? = null): dynamic {
-        val init = js("({})")
-        init.method = method
-        val headers = js("({})")
-        headers["Authorization"] = "Bearer $token"
-        if (contentType != null) headers["Content-Type"] = contentType
-        init.headers = headers
-        if (body != null) init.body = body
-        return (kotlinx.browser.window.asDynamic().fetch(url, init) as Promise<dynamic>).await()
+    private suspend fun req(token: String, method: String, url: String, body: String? = null, contentType: String? = null): Response {
+        val headers = Headers()
+        headers.append("Authorization", "Bearer $token")
+        if (contentType != null) headers.append("Content-Type", contentType)
+        return window.fetch(url, RequestInit(method = method, headers = headers, body = body)).await()
     }
 
-    private suspend fun reqJson(token: String, method: String, url: String, body: String? = null, contentType: String? = null): dynamic {
+    /** Request whose response body is JSON; returned raw for kotlinx.serialization decoding. */
+    private suspend fun reqJson(token: String, method: String, url: String, body: String? = null, contentType: String? = null): String {
         val resp = req(token, method, url, body, contentType)
-        if (resp.ok != true) throw Exception("Drive ${method} ${pathOf(url)} failed: ${resp.status}")
-        return (resp.json() as Promise<dynamic>).await()
+        if (!resp.ok) throw Exception("Drive $method ${pathOf(url)} failed: ${resp.status}")
+        return resp.text().await()
     }
+
+    private suspend fun reqMeta(token: String, method: String, url: String, body: String? = null, contentType: String? = null): DriveFileMeta =
+        storageJson.decodeFromString(reqJson(token, method, url, body, contentType))
 
     private suspend fun reqText(token: String, method: String, url: String): String {
         val resp = req(token, method, url)
-        if (resp.ok != true) throw Exception("Drive $method ${pathOf(url)} failed: ${resp.status}")
-        return (resp.text() as Promise<String>).await()
+        if (!resp.ok) throw Exception("Drive $method ${pathOf(url)} failed: ${resp.status}")
+        return resp.text().await()
     }
 
     private fun pathOf(url: String): String = url.substringBefore('?').substringAfter(".com")
 
     private fun escape(name: String): String = name.replace("\\", "\\\\").replace("'", "\\'")
-
-    private fun encode(s: String): String = js("encodeURIComponent")(s) as String
 }

@@ -1,15 +1,8 @@
 package tdz.view
 
-enum class Mode(val tagIdPrefix: String) {
-    CARD("cardcol_"),
-    EDITOR("editorcol_");
-
-    fun invert() =
-        when (this) {
-            CARD -> EDITOR
-            EDITOR -> CARD
-        }
-
-    /** Sentence-case label for menus etc. ("Card", "Editor") rather than the uppercase enum name. */
-    fun displayName() = name.lowercase().replaceFirstChar { it.uppercase() }
-}
+/**
+ * [tdz.model.Mode] moved to the model layer (it is persisted state, see
+ * [tdz.model.localstorage.LocalStorageModel.storeColumnMode]); this alias keeps existing
+ * view-layer imports working.
+ */
+typealias Mode = tdz.model.Mode

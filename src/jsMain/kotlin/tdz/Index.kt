@@ -1,10 +1,7 @@
 package tdz
 
-import kotlinx.browser.document
 import kotlinx.css.*
-import kotlinx.html.TagConsumer
 import kotlinx.html.div
-import kotlinx.html.id
 import tdz.controller.Controller
 import tdz.controller.Downloader
 import tdz.controller.Uploader
@@ -24,19 +21,21 @@ import tdz.model.LayoutTemplates.canvasFromTemplate
 import tdz.model.Model
 import tdz.view.CanvasColumns
 import tdz.view.Mode
+import tdz.view.Zones
 import tdz.view.canvasMenu
 import tdz.view.showCanvasSwitcher
 import tdz.view.menu.attachContextMenu
-import org.w3c.dom.events.KeyboardEvent
+import web.dom.document
+import web.events.EventType
+import web.events.addEventListener
 import web.html.HTMLElement
+import web.keyboard.KeyboardEvent
 import tdz.view.theme.ThemeManager
 import zoned.framework.interop.classes
 import zoned.framework.interop.css
-import zoned.framework.interop.getHtmlElement
-import zoned.framework.interop.clear
-import zoned.framework.interop.appendTo
 import zoned.framework.interop.addToBody
 import zoned.framework.routing.Router
+import zoned.framework.routing.Zone.Companion.zone
 
 /** Build a canvas URL from a resolved hierarchy path. Pure; unit-tested. */
 fun canvasUrlFromPath(path: List<CanvasName>): String =
@@ -47,25 +46,25 @@ class Index(val model: Model, val eventBus: EventBus) {
     fun canvasUrl(name: CanvasName): String = canvasUrlFromPath(model.path(name))
     fun currentCanvasUrl(): String = canvasUrl(model.currentCanvas().name)
 
-    /** Render the current canvas into the body if nothing is mounted (e.g. cold deep-link). */
+    /** Render the current canvas if nothing is mounted (e.g. cold deep-link to an overlay route). */
     private fun ensureCanvasMounted() {
-        if (getHtmlElement("app-container") == null) {
-            addToBody { index(model.currentCanvas()) }
+        if (currentColumns == null || Zones.CANVAS.resolve() == null) {
+            index(model.currentCanvas())
         }
     }
 
-    /**
-     * Render a help topic as read-only cards in the overlay. Uses [helpEventBus] (inert) so the
-     * help content's interactive affordances never mutate real state. NOTE: help markdown must not
-     * use bare canvas-link syntax outside code fences — CardRenderer's canvas-link onMount registers
-     * a drop zone against the LIVE canvas regardless of the bus, so such links would be a latent trap.
-     */
     /** Dismiss any overlay/modal layered on the canvas (the #overlay layer and the sync modals). */
     private fun closeOverlays() {
         tdz.view.Overlay.clear()
         tdz.sync.SyncBootstrap.dismissModals()
     }
 
+    /**
+     * Render a help topic as read-only cards in the overlay. Uses [helpEventBus] (inert) so the
+     * help content's interactive affordances never mutate real state. NOTE: help markdown must not
+     * use bare canvas-link syntax outside code fences — CardRenderer's canvas-link onMount still
+     * registers a Sortable drop zone regardless of the bus, so such links would be a latent trap.
+     */
     fun openHelp(topic: tdz.view.help.HelpTopic) {
         ensureCanvasMounted()
         closeOverlays()
@@ -118,13 +117,16 @@ class Index(val model: Model, val eventBus: EventBus) {
         }
     }
 
-    /** Re-render the whole current canvas in place (e.g. after a layout split). */
+    /** Re-render the current canvas in place (e.g. after a layout split). */
     private fun setupRefreshHandler() {
         eventBus.on<RefreshCanvas> {
-            (document.body as? HTMLElement)?.let { body ->
-                body.clear()
-                body.appendTo().apply { index(model.currentCanvas()) }
-            }
+            // Zone-granular: dispose the outgoing columns (saves any open editor buffer, prunes the
+            // stale subscription), then swap ONLY the canvas zone. Body-level siblings — the sync
+            // badge, portals, overlays — are never torn down by a canvas refresh.
+            currentColumns?.dispose()
+            currentColumns = null
+            currentCanvas = null
+            index(model.currentCanvas())
         }
     }
 
@@ -147,8 +149,7 @@ class Index(val model: Model, val eventBus: EventBus) {
     }
 
     private fun setupKeyboardHandlers() {
-        document.addEventListener("keydown", { event ->
-            val keyEvent = event as KeyboardEvent
+        document.addEventListener(EventType<KeyboardEvent>("keydown"), { keyEvent ->
             var handled = false
 
             // Ctrl+' toggles editor mode for focused column
@@ -224,7 +225,7 @@ class Index(val model: Model, val eventBus: EventBus) {
             }
 
             if (handled) {
-                event.preventDefault()
+                keyEvent.preventDefault()
             }
         })
     }
@@ -235,11 +236,31 @@ class Index(val model: Model, val eventBus: EventBus) {
         val ae = document.activeElement ?: return false
         val tag = ae.tagName.uppercase()
         if (tag == "INPUT" || tag == "TEXTAREA") return true
-        return ae.asDynamic().isContentEditable == true   // isContentEditable lives on HTMLElement
+        return (ae as? HTMLElement)?.isContentEditable == true
     }
 
-    fun TagConsumer<*>.index(canvas: Canvas) {
-        (document.body as? HTMLElement)?.let { body ->
+    /**
+     * Build the stable canvas shell — the swap target — once. Routes and refreshes swap its
+     * CONTENTS ([Zones.CANVAS]); the shell element itself (and every body-level sibling layer)
+     * stays put for the life of the app.
+     */
+    private fun ensureShell() {
+        if (Zones.CANVAS.resolve() != null) return
+        addToBody {
+            div {
+                zone(Zones.CANVAS)
+                // Resolve menu sections against the LIVE columns at right-click time, so the menu
+                // never closes over a stale CanvasColumns after a canvas switch or refresh.
+                attachContextMenu { event ->
+                    currentColumns?.let { canvasMenu(it, model, eventBus, downloader, uploader)(event) }
+                        ?: emptyList()
+                }
+            }
+        }
+    }
+
+    fun index(canvas: Canvas) {
+        document.body.let { body ->
             body.classes("min-h-screen")
             val theme = ThemeManager.current
             body.css {
@@ -253,35 +274,33 @@ class Index(val model: Model, val eventBus: EventBus) {
         }
         // Returning to a canvas route always dismisses any open overlay/modal layered on top.
         closeOverlays()
+        ensureShell()
 
         // Idempotent: if this exact canvas is already mounted, don't tear down and rebuild the
         // board (that would lose scroll/focus). Opening/closing an overlay reuses the live board.
-        val existing = getHtmlElement("app-container")
-        if (existing != null && currentCanvas?.name == canvas.name) {
+        if (currentCanvas?.name == canvas.name && currentColumns != null) {
             return
         }
 
+        // Dispose the outgoing columns first: saves open editors, prunes their subscription.
+        currentColumns?.dispose()
         currentCanvas = canvas
 
-        // The canvas route is PARTIAL (zoned appends rather than clearing the body), so remove any
-        // existing canvas first — otherwise navigating stacks the new canvas below the old one.
-        getHtmlElement("app-container")?.remove()
-
-        div {
-            id = "app-container"
+        // The shell is permanent, so its theme-dependent chrome is re-applied on every render.
+        Zones.CANVAS.resolve()?.css {
+            width = 100.vw
+            height = 100.vh
+            overflow = Overflow.hidden
+            boxSizing = BoxSizing.borderBox
             // columnGap also pads the screen edge, so panels gap away from the window border too
-            css {
-                width = 100.vw
-                height = 100.vh
-                overflow = Overflow.hidden
-                boxSizing = BoxSizing.borderBox
-                padding = Padding(ThemeManager.current.columnGap)
-            }
-            val columns = CanvasColumns(canvas, eventBus, model, { id -> model.cards(canvas.name, id) })
-            currentColumns = columns
-            attachContextMenu(canvasMenu(columns, model, eventBus, downloader, uploader))
-            with(columns) {
-                this@div.render(canvas.columns)
+            padding = Padding(ThemeManager.current.columnGap)
+        }
+
+        val columns = CanvasColumns(canvas, eventBus, model) { id -> model.cards(canvas.name, id) }
+        currentColumns = columns
+        Zones.CANVAS.swap {
+            div("w-full h-full") {
+                with(columns) { render(canvas.columns) }
             }
         }
     }

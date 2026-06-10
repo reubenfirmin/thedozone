@@ -113,7 +113,7 @@ fun canvasSections(
     MenuSection(
         items = listOf(
             MenuItem(
-                label = "Documentation",
+                label = "Help",
                 submenu = listOf(
                     MenuItem(label = "Release Notes",
                         onSelect = { actions.openDoc("/help/release-notes") }),

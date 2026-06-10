@@ -20,16 +20,15 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
 
     private var currentCanvas: Canvas? = null
 
-    fun currentCanvas(): Canvas = if (currentCanvas == null) {
-        val currentCanvasName = initialCanvasName
-        if (currentCanvasName == rootCanvas && !exists(currentCanvasName)) {
+    fun currentCanvas(): Canvas = currentCanvas ?: run {
+        if (initialCanvasName == rootCanvas && !exists(initialCanvasName)) {
             // if we're creating from scratch, main is a canvas with one column
             addCanvas(canvasFromTemplate(rootCanvas, null, SINGLE_PANE))
         }
-        currentCanvas = getCanvas(currentCanvasName)
-        currentCanvas!!
-    } else {
-        currentCanvas!!
+        val loaded = getCanvas(initialCanvasName)
+            ?: error("Canvas '${initialCanvasName.normalized()}' is missing from storage (corrupt or deleted?)")
+        currentCanvas = loaded
+        loaded
     }
 
     /**
@@ -67,7 +66,9 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
     }
 
     fun allCards(canvasName: CanvasName): List<List<Card>> {
-        return getCanvas(canvasName)!!.columns.map {
+        val canvas = getCanvas(canvasName)
+            ?: error("Canvas '${canvasName.normalized()}' not found")
+        return canvas.columns.map {
             cards(canvasName, it)
         }
     }
@@ -134,7 +135,7 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
         val destCanvas = fs.getCanvas(toCanvas) ?: run {
             // TODO change this to just return in single operation
             fs.storeCanvas(canvasFromTemplate(name = toCanvas, parent = fromCanvas, SINGLE_PANE))
-            fs.getCanvas(toCanvas)!!
+            fs.getCanvas(toCanvas) ?: error("Canvas '${toCanvas.normalized()}' failed to persist")
         }
 
         val intendedColumn = srcCard.metadata.columnId
@@ -255,11 +256,11 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
 
     override fun exists(canvasName: CanvasName) = fs.getCanvas(canvasName) != null
 
-    fun getColumnMode(canvasName: CanvasName, columnId: ColumnId): String? {
+    fun getColumnMode(canvasName: CanvasName, columnId: ColumnId): Mode? {
         return fs.getColumnMode(canvasName, columnId)
     }
 
-    fun setColumnMode(canvasName: CanvasName, columnId: ColumnId, mode: String) {
+    fun setColumnMode(canvasName: CanvasName, columnId: ColumnId, mode: Mode) {
         fs.storeColumnMode(canvasName, columnId, mode)
     }
 

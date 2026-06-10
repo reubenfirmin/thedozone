@@ -4,7 +4,6 @@ import tdz.model.Canvas
 import tdz.model.Card
 import tdz.model.localstorage.CanvasDoc
 import tdz.model.markdown.MarkdownService
-import kotlin.js.Json
 
 /**
  * The `.tdz` file format: a single JSON line describing the canvas structure, a newline, then the
@@ -20,9 +19,7 @@ data class TdzDocument(val prototype: Canvas?, val cards: List<Card>) {
     companion object {
 
         fun encode(canvas: Canvas, cards: List<Card>): String {
-            val header = JSON.stringify(
-                CanvasDoc(canvas.name, canvas.parent, canvas.columns, canvas.layouts).toJson()
-            )
+            val header = CanvasDoc(canvas.name, canvas.parent, canvas.columns, canvas.layouts).encode()
             return header + "\n" + MarkdownService.toMd(cards)
         }
 
@@ -39,7 +36,7 @@ data class TdzDocument(val prototype: Canvas?, val cards: List<Card>) {
         private fun parseHeader(firstLine: String): Canvas? {
             if (!firstLine.startsWith("{")) return null
             return try {
-                val doc = CanvasDoc.fromJson(JSON.parse<Json>(firstLine))
+                val doc = CanvasDoc.decode(firstLine)
                 Canvas(doc.name, doc.parentName, doc.columns, doc.layouts)
             } catch (e: Throwable) {
                 null  // unparseable header → treat the whole file as header-less markdown

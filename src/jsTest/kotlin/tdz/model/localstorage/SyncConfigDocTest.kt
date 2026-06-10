@@ -14,7 +14,7 @@ class SyncConfigDocTest {
             provider = SyncProvider.LOCAL_FOLDER, enabled = true, rootFolder = "",
             refreshToken = null, accountEmail = null, localFolderName = "Projects",
         )
-        val back = SyncConfigDoc.fromJson(cfg.toJson())
+        val back = SyncConfigDoc.decode(cfg.encode())
         assertEquals(SyncProvider.LOCAL_FOLDER, back.provider)
         assertEquals("Projects", back.localFolderName)
     }
@@ -26,7 +26,18 @@ class SyncConfigDocTest {
             refreshToken = "tok", accountEmail = null,
         )
         // Round-trip drops nothing, but a missing key must decode to null, not crash.
-        assertEquals(null, SyncConfigDoc.fromJson(legacy.toJson()).localFolderName)
+        assertEquals(null, SyncConfigDoc.decode(legacy.encode()).localFolderName)
+    }
+
+    @Test
+    fun legacyConfigWithoutProviderIsDropbox() {
+        // Configs predating `provider` (the only provider then) must still decode. This is the exact
+        // shape the old hand-rolled serializer wrote, explicit nulls included.
+        val legacy = """{"enabled":true,"rootFolder":"","refreshToken":"tok","accountEmail":null}"""
+        val back = SyncConfigDoc.decode(legacy)
+        assertEquals(SyncProvider.DROPBOX, back.provider)
+        assertEquals("tok", back.refreshToken)
+        assertTrue(back.enabled)
     }
 
     @Test

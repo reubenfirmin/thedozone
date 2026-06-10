@@ -1,19 +1,24 @@
 package tdz.model.localstorage
 
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import tdz.model.CanvasName
-import kotlin.js.Json
-import kotlin.js.json
+
+@Serializable
+private data class ColumnWire(
+    @SerialName("column") val columnLabel: String,
+    @SerialName("canvas") val canvasName: String,
+    val value: String,
+)
 
 internal data class ColumnDoc(val columnLabel: String, val canvasName: CanvasName, val value: String): HasKey {
 
     override val key: String
         get() = toKey(canvasName, columnLabel)
 
-    override fun toJson(): Json {
-        return json("column" to columnLabel,
-            "canvas" to canvasName.normalized(),
-            "value" to value)
-    }
+    override fun encode(): String =
+        storageJson.encodeToString(ColumnWire(columnLabel, canvasName.normalized(), value))
 
     companion object {
         fun toLabel(columnId: Int): String {
@@ -22,11 +27,9 @@ internal data class ColumnDoc(val columnLabel: String, val canvasName: CanvasNam
 
         fun toKey(canvas: CanvasName, columnLabel: String) = canvas.normalized() + "_" + columnLabel
 
-        fun fromJson(json: Json): ColumnDoc {
-            return ColumnDoc(
-                json["column"] as String,
-                CanvasName(json["canvas"] as String),
-                json["value"] as String)
+        fun decode(raw: String): ColumnDoc {
+            val wire = storageJson.decodeFromString<ColumnWire>(raw)
+            return ColumnDoc(wire.columnLabel, CanvasName(wire.canvasName), wire.value)
         }
     }
 }

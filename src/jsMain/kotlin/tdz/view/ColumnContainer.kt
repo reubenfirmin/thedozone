@@ -52,12 +52,12 @@ class ColumnContainer(
         }
         when (mode) {
             CARD -> div("w-full h-full mx-4 overflow-y-auto") {
-                id = "column-${columnId}"
+                id = DomIds.column(columnId)
                 css(columnCss)
                 paint()
             }
             EDITOR -> div("w-full h-full mx-4") {
-                id = "column-${columnId}"
+                id = DomIds.column(columnId)
                 css { columnCss(); overflow = Overflow.hidden }
                 paint()
             }
@@ -65,7 +65,7 @@ class ColumnContainer(
     }
 
     fun setupDragDrop(dragDrop: DragDrop) {
-        dragDrop.setupColumn("column-$columnId", canvas.name)
+        dragDrop.setupColumn(DomIds.column(columnId), canvas.name)
     }
 
     /** Focus this column's editor, if it is in editor mode. No-op otherwise. */
@@ -97,12 +97,15 @@ class ColumnContainer(
 
     fun beforeRemoval() {
         editorColumn?.destroy()
+        // The per-column accent <style> (see CanvasColumns.setColumnHeaderAccent) is re-injected on
+        // (re)mount, so dropping it here keeps deleted columns from orphaning rules in <head>.
+        document.getElementById(accentStyleId(columnId))?.remove()
     }
 
     fun setFocused(isFocused: Boolean) {
         focused = isFocused
         val t = ThemeManager.current
-        val element = getHtmlElement("column-$columnId") ?: return
+        val element = getHtmlElement(DomIds.column(columnId)) ?: return
         // A per-column accent color (Poodle Rocks: set via the column-properties color) overrides
         // the theme focus color, so the hover highlight matches the column's own color. Absent on
         // other themes/columns → the theme default.
@@ -125,12 +128,12 @@ class ColumnContainer(
                 else t.columnBorder.toString()
         }
         // Optional decorative focus sprite (Nyan, in Rainbow Gaps); no-op when the theme has none.
-        ColumnFocusSprite.update("column-$columnId", t.columnFocusSprite, isFocused)
+        ColumnFocusSprite.update(DomIds.column(columnId), t.columnFocusSprite, isFocused)
     }
 
     /** Debug aid: tile this column's id faintly across its background, to identify columns. */
     fun showDebugBackground() {
-        val element = getHtmlElement("column-$columnId") ?: return
+        val element = getHtmlElement(DomIds.column(columnId)) ?: return
         // The SVG data-URI needs a literal color string; take it from the typed theme token.
         val fill = ThemeManager.current.watermark
         val svg = "<svg xmlns='http://www.w3.org/2000/svg' width='110' height='64'>" +
@@ -144,7 +147,7 @@ class ColumnContainer(
      * (Ace focuses its textarea and `focusin` bubbles). Typed listeners, no `asDynamic`.
      */
     fun setupFocusHandler(onFocus: () -> Unit) {
-        val element = getHtmlElement("column-$columnId") ?: return
+        val element = getHtmlElement(DomIds.column(columnId)) ?: return
         val handler: (Event) -> Unit = { onFocus() }
         element.addEventListener(EventType("mouseenter"), handler)
         element.addEventListener(EventType("focusin"), handler)
@@ -152,8 +155,12 @@ class ColumnContainer(
 
     /** Double-click the column to act on it (used to open a card column in the editor). */
     fun setupDoubleClickHandler(onDoubleClick: () -> Unit) {
-        val element = getHtmlElement("column-$columnId") ?: return
+        val element = getHtmlElement(DomIds.column(columnId)) ?: return
         element.addEventListener(EventType("dblclick"), { onDoubleClick() })
     }
 
+    companion object {
+        /** Id of the injected <style> carrying a column's header-accent rule. */
+        fun accentStyleId(columnId: Int) = "tdz-col-accent-$columnId"
+    }
  }

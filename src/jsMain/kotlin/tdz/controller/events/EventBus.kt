@@ -5,15 +5,9 @@ import tdz.eventLog
 import web.html.HTMLElement
 import web.mutation.MutationObserver
 import web.mutation.MutationObserverInit
-import web.mutation.MutationRecordType
 import zoned.framework.Debugger.debug
 import kotlin.reflect.KClass
 
-// Helper to access MutationRecordType.childList - works around Kotlin/JS type inference issues
-// with kotlin-wrappers string-enum companion constants.
-@PublishedApi
-internal val CHILD_LIST: MutationRecordType
-    get() = "childList".asDynamic().unsafeCast<MutationRecordType>()
 
 class EventBus {
 
@@ -36,8 +30,9 @@ class EventBus {
      * A global event. Use this to subscribe to events if the subscriber is in global state,
      * i.e. will never be removed during the lifetime of the application.
      *
-     * Once subscribed, always subscribed. I.e. you should not delete components that re subscribe to
-     * events.
+     * Once subscribed, stays subscribed unless explicitly removed via [off]. A component that can
+     * be replaced (e.g. a view rebuilt on re-render) must either subscribe through the
+     * element-scoped [HTMLElement.on] overload or detach itself with [off] when abandoned.
      *
      * Do not rely on matches firing in any particular order.
      */
@@ -47,6 +42,15 @@ class EventBus {
         @Suppress("UNCHECKED_CAST")
         eventRegistry.getOrPut(eventType) { mutableListOf() }.add(action as (Event) -> Unit)
         return this
+    }
+
+    /**
+     * Remove a global subscription added via [on]. Pass the same [action] reference that was
+     * registered; unknown references are a no-op.
+     */
+    inline fun <reified T : Event> off(noinline action: (T) -> Unit) {
+        @Suppress("UNCHECKED_CAST")
+        eventRegistry[T::class]?.remove(action as (Event) -> Unit)
     }
 
     /**
@@ -60,14 +64,14 @@ class EventBus {
         componentRegistry.getOrPut(eventType) { mutableMapOf() }[this] = action as (Event) -> Unit
 
         val observer = MutationObserver { mutations, observer ->
+            // The observer registers childList-only (below), so every record here IS a childList
+            // record — no type check needed.
             for (mutation in mutations) {
-                if (mutation.type == CHILD_LIST) {
-                    mutation.removedNodes.asList().find { it == this }?.let {
-                        // Element was removed from the DOM
-                        componentRegistry[eventType]?.remove(this)
-                        observer.disconnect()
-                        observers.remove(this)
-                    }
+                mutation.removedNodes.asList().find { it == this }?.let {
+                    // Element was removed from the DOM
+                    componentRegistry[eventType]?.remove(this)
+                    observer.disconnect()
+                    observers.remove(this)
                 }
             }
         }

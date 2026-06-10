@@ -13,13 +13,10 @@ import tdz.model.CanvasName
 import tdz.model.Card
 import tdz.model.Direction
 import tdz.model.markdown.MarkdownService
-import web.dom.ElementId
-import web.dom.document
-import web.html.HTMLStyleElement
 import zoned.framework.dom.onMount
 import kotlinx.css.*
 import zoned.framework.interop.css
-import zoned.framework.interop.getHtmlElement
+import zoned.framework.interop.styleSheet
 import zoned.framework.libs.Ace
 import zoned.framework.libs.AceEditor
 import zoned.framework.libs.aceCommand
@@ -40,7 +37,7 @@ class EditorColumn(
     private var aceEditor: AceEditor? = null
 
     fun FlowContent.render() {
-        val editorId = "editor-$columnId"
+        val editorId = DomIds.editor(columnId)
 
         div {
             id = editorId
@@ -183,12 +180,7 @@ class EditorColumn(
             .ace_editor .ace_markup.ace_underline { color: ${t.link} !important; text-decoration: underline; }
             .ace_editor .ace_string.ace_blockquote { color: ${t.menuTitle} !important; font-style: italic; }
         """.trimIndent()
-        val style = (getHtmlElement("tdz-editor-md") as? HTMLStyleElement)
-            ?: (document.createElement("style") as HTMLStyleElement).also {
-                it.id = ElementId("tdz-editor-md")
-                document.head.appendChild(it)
-            }
-        style.textContent = css
+        styleSheet("tdz-editor-md") { raw(css) }
     }
 
     /** Focus the editor (e.g. after the column is repositioned in the DOM, which blurs it). */
@@ -206,6 +198,9 @@ class EditorColumn(
     fun destroy() {
         save()
         aceEditor?.destroy()
+        // Idempotent: beforeRemoval can run more than once (column re-render + canvas dispose);
+        // a second destroy/save against the torn-down Ace instance must be a no-op.
+        aceEditor = null
     }
 }
 

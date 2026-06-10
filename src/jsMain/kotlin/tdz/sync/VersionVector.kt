@@ -1,8 +1,5 @@
 package tdz.sync
 
-import kotlin.js.Json
-import kotlin.js.json
-
 /** A version vector: deviceId -> number of edits that device applied to a column. Absent == 0. */
 typealias VersionVector = Map<String, Long>
 
@@ -36,16 +33,3 @@ fun pointwiseMax(a: VersionVector, b: VersionVector): VersionVector {
 /** Increment [self]'s component (a local edit/event by this device). */
 fun bump(vv: VersionVector, self: String): VersionVector =
     vv + (self to ((vv[self] ?: 0L) + 1L))
-
-fun vvToJson(vv: VersionVector): Json {
-    val o = json()
-    vv.forEach { (k, v) -> o[k] = v.toDouble() }   // JSON numbers are doubles in JS
-    return o
-}
-
-fun vvFromJson(j: Json): VersionVector {
-    val out = HashMap<String, Long>()
-    val keys = js("Object").keys(j) as Array<String>
-    keys.forEach { k -> out[k] = (j[k] as Number).toLong() }
-    return out
-}

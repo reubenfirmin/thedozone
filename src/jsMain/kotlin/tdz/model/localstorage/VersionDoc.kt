@@ -1,28 +1,22 @@
 package tdz.model.localstorage
 
-import kotlin.js.Json
-import kotlin.js.json
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import kotlinx.serialization.encodeToString
 
+@Serializable
 data class VersionDoc(val major: Int,
                       val minor: Int,
                       val patch: Int): HasKey {
 
-    override val key: String
-        get() = singletonKey()
+    @Transient
+    override val key: String = singletonKey()
 
-    override fun toJson() = json(
-        "major" to major,
-        "minor" to minor,
-        "patch" to patch)
+    override fun encode(): String = storageJson.encodeToString(this)
 
     companion object {
         fun singletonKey() = "version"
 
-        fun fromJson(json: Json) = VersionDoc(
-            json["major"] as Int,
-            json["minor"] as Int,
-            json["patch"] as Int
-        )
+        fun decode(raw: String): VersionDoc = storageJson.decodeFromString(raw)
     }
 }
-

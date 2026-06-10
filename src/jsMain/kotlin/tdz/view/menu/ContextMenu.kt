@@ -14,7 +14,6 @@ import web.events.EventType
 import web.events.addEventListener
 import web.events.removeEventListener
 import web.html.HTMLElement
-import web.html.HTMLStyleElement
 import web.keyboard.KeyboardEvent
 import web.mouse.MouseEvent
 import web.window.window
@@ -26,6 +25,7 @@ import zoned.framework.dom.onMouseLeave
 import zoned.framework.dom.ref
 import zoned.framework.interop.addToBody
 import zoned.framework.interop.css
+import zoned.framework.interop.styleSheet
 import tdz.view.theme.ThemeManager
 
 /**
@@ -44,12 +44,12 @@ object ContextMenu {
     private const val ITEM_CLASS = "tdz-ctx-item"
     private const val SUBMENU_CLASS = "tdz-ctx-submenu"
     private const val SUBMENU_PARENT_CLASS = "tdz-ctx-submenu-parent"
+    private const val STYLE_ID = "tdz-ctx-styles"
 
     /** Transparent hit-area (px) around the menu so a small mouse-out doesn't dismiss it. */
     private const val MENU_BUFFER = 20
 
 
-    private var stylesInjected = false
     private var menuEl: HTMLElement? = null
     private var outsideHandler: ((MouseEvent) -> Unit)? = null
     private var keyHandler: ((KeyboardEvent) -> Unit)? = null
@@ -257,21 +257,19 @@ object ContextMenu {
         }
     }
 
-    /** Inject the hover rule once. Pure CSS :hover (typed body), applied via [ITEM_CLASS]. */
+    /**
+     * (Re)write the menu rules into a single fixed-id <style>. The hover color is themed, so this
+     * runs on every show — a one-shot injection would go stale after an in-session theme switch.
+     */
     private fun ensureStyles() {
-        if (stylesInjected) return
-        stylesInjected = true
-        val hoverBody = CssBuilder().apply {
-            backgroundColor = ThemeManager.current.menuHover
-            fontWeight = FontWeight.bold
-        }.toString().trim()
-        val styleEl = document.createElement("style") as HTMLStyleElement
-        styleEl.textContent = """
-            .$ITEM_CLASS:hover { $hoverBody }
-            .$SUBMENU_CLASS { display: none; }
-            .$SUBMENU_PARENT_CLASS:hover > .$SUBMENU_CLASS { display: block; }
-        """.trimIndent()
-        document.head.appendChild(styleEl)
+        styleSheet(STYLE_ID) {
+            rule(".$ITEM_CLASS:hover") {
+                backgroundColor = ThemeManager.current.menuHover
+                fontWeight = FontWeight.bold
+            }
+            rule(".$SUBMENU_CLASS") { display = Display.none }
+            rule(".$SUBMENU_PARENT_CLASS:hover > .$SUBMENU_CLASS") { display = Display.block }
+        }
     }
 
     /** Nudge the menu fully on-screen after it's measured. Dynamic position => element.style. */

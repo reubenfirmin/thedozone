@@ -179,12 +179,12 @@ class CanvasMenuTest {
     }
 
     @Test
-    fun backupsAndDocumentationAreSubmenus() {
+    fun backupsAndHelpAreSubmenus() {
         val top = canvasSections(Mode.CARD, RecordingActions()).flatMap { it.items }
         val backups = assertNotNull(top.firstOrNull { it.label == "Backups & Export" }?.submenu)
         assertTrue(backups.any { it.label == "Download" && it.enabled }, "Download stays wired inside the submenu")
-        val docs = assertNotNull(top.firstOrNull { it.label == "Documentation" }?.submenu)
-        assertTrue(docs.any { it.label == "Release Notes" }, "Documentation submenu holds its entries")
+        val docs = assertNotNull(top.firstOrNull { it.label == "Help" }?.submenu)
+        assertTrue(docs.any { it.label == "Release Notes" }, "Help submenu holds its entries")
     }
 
     @Test

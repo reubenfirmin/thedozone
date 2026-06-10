@@ -1,17 +1,20 @@
 package tdz.sync
 
-import kotlinx.browser.document
-import org.w3c.dom.events.KeyboardEvent
 import tdz.controller.events.EventBus
 import tdz.model.Model
 import tdz.view.sync.LocalFolderModal
 import tdz.view.sync.SyncModal
 import tdz.view.sync.SyncIndicator
+import web.dom.document
+import web.events.EventType
+import web.events.addEventListener
+import web.keyboard.KeyboardEvent
 
 /**
  * Single entry point that assembles the cloud-sync vertical without touching other agents' files.
- * Builds the controller, modal, and self-healing indicator; starts reconcile; and installs an
- * interim Ctrl+Shift+D trigger to open the modal alongside the context-menu entry.
+ * Builds the controller, modal, and indicator (a permanent body-level zone — canvas refreshes swap
+ * only the canvas zone, so it needs no self-healing); starts reconcile; and installs an interim
+ * Ctrl+Shift+D trigger to open the modal alongside the context-menu entry.
  */
 object SyncBootstrap {
 
@@ -33,8 +36,7 @@ object SyncBootstrap {
             }
         }.attach()
 
-        document.addEventListener("keydown", { event ->
-            val e = event as KeyboardEvent
+        document.addEventListener(EventType<KeyboardEvent>("keydown"), { e ->
             if (e.ctrlKey && e.shiftKey && (e.key == "D" || e.key == "d")) {
                 e.preventDefault()
                 if (kotlinx.browser.window.location.pathname != "/settings/sync") {

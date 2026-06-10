@@ -4,7 +4,6 @@ import kotlinx.css.*
 import kotlinx.html.FlowContent
 import kotlinx.html.button
 import kotlinx.html.div
-import kotlinx.html.id
 import tdz.App
 import tdz.view.theme.ThemeManager
 import web.html.HTMLElement
@@ -13,8 +12,8 @@ import zoned.framework.dom.onClick
 import zoned.framework.dom.ref
 import zoned.framework.interop.addToBody
 import zoned.framework.interop.css
-import zoned.framework.interop.getHtmlElement
 import zoned.framework.routing.Router
+import zoned.framework.routing.Zone.Companion.zone
 
 /**
  * A single full-screen overlay layer ("#overlay") rendered ON TOP of the live canvas
@@ -23,10 +22,9 @@ import zoned.framework.routing.Router
  * this layer and leaves the board untouched.
  */
 object Overlay {
-    const val ID = "overlay"
 
     fun clear() {
-        getHtmlElement(ID)?.remove()
+        Zones.OVERLAY.resolve()?.remove()
     }
 
     fun close() {
@@ -39,7 +37,7 @@ object Overlay {
         val scrim = Ref<HTMLElement>()
         addToBody {
             div {
-                id = ID
+                zone(Zones.OVERLAY)
                 ref(scrim)
                 css {
                     position = Position.fixed
