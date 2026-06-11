@@ -2,11 +2,11 @@
 
 To run in watch mode for development:
 
-./gradlew watch
+./watch.sh
 
 To build for production deploy:
 
-./gradlew clean jsBrowserProductionWebpack
+./gradlew clean build-production
 
 ## CI / Deploy
 
