@@ -7,7 +7,8 @@ import kotlinx.html.div
 import kotlinx.html.id
 import kotlinx.html.input
 import tdz.controller.events.ColumnEdited
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event as TdzEvent
+import zoned.framework.events.EventBus
 import tdz.model.CanvasName
 import tdz.model.ColumnId
 import tdz.model.ColumnStyle
@@ -35,7 +36,7 @@ import zoned.framework.interop.css
  */
 class ColumnPropertiesModal(
     private val model: Model,
-    private val eventBus: EventBus,
+    private val eventBus: EventBus<TdzEvent>,
 ) {
     private var rootEl: HTMLElement? = null
     private var canvasName: CanvasName = CanvasName("")

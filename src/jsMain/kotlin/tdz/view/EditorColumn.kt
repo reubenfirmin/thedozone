@@ -5,7 +5,8 @@ import kotlinx.html.div
 import kotlinx.html.id
 import tdz.ACE_TAB_SIZE
 import tdz.controller.events.ColumnEdited
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.ExitEditor
 import tdz.controller.events.NavigateColumn
 import tdz.model.Canvas
@@ -34,7 +35,7 @@ class EditorColumn(
     val canvas: Canvas,
     val cards: List<Card>,
     val columnId: ColumnId,
-    val eventBus: EventBus
+    val eventBus: EventBus<Event>
 ) {
 
     private var aceEditor: AceEditor? = null

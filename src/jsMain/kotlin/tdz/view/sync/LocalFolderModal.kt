@@ -2,7 +2,8 @@ package tdz.view.sync
 
 import kotlinx.css.*
 import kotlinx.html.div
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.SyncConflict
 import tdz.controller.events.SyncStatusChanged
 import tdz.model.Model
@@ -29,7 +30,7 @@ import zoned.framework.interop.css
  */
 class LocalFolderModal(
     private val model: Model,
-    private val eventBus: EventBus,
+    private val eventBus: EventBus<Event>,
     private val controller: SyncController,
     private val onDismiss: (() -> Unit)? = null,
 ) {

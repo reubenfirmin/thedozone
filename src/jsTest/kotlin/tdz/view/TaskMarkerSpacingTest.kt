@@ -1,7 +1,8 @@
 package tdz.view
 
 import kotlinx.html.div
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.model.CanvasName
 import tdz.model.Card
 import tdz.model.CardMetadata
@@ -37,7 +38,7 @@ class TaskMarkerSpacingTest {
         addToBody {
             div {
                 with(CardRenderer) {
-                    render(CanvasName("test"), listOf(card), EventBus())
+                    render(CanvasName("test"), listOf(card), EventBus<Event>())
                 }
             }
         }

@@ -2,7 +2,8 @@ package tdz
 
 import kotlinx.html.div
 import kotlinx.html.id
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.RefreshCanvas
 import tdz.model.Model
 import tdz.view.Zones
@@ -17,7 +18,7 @@ class IndexZoneTest {
 
     @Test
     fun refreshCanvasSwapsOnlyTheCanvasZone() {
-        val bus = EventBus()
+        val bus = EventBus<Event>()
         val model = Model(rootCanvas)
         val index = Index(model, bus)
         try {

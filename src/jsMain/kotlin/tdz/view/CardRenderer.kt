@@ -4,7 +4,8 @@ import kotlinx.css.*
 import kotlinx.css.properties.*
 import kotlinx.html.*
 import tdz.controller.DragDrop
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.TaskToggleDone
 import tdz.controller.events.SwitchToCanvas
 import tdz.model.*
@@ -47,7 +48,7 @@ object CardRenderer {
      * between the segments within a card — for reading-oriented surfaces like the help overlay,
      * which feel cramped at the app's default (dense) spacing.
      */
-    fun FlowContent.render(canvasName: CanvasName, cards: List<Card>, eventBus: EventBus, loose: Boolean = false) {
+    fun FlowContent.render(canvasName: CanvasName, cards: List<Card>, eventBus: EventBus<Event>, loose: Boolean = false) {
         // Inject/refresh the shared rules ONCE per render pass — they are theme-keyed, not
         // card-keyed, and styleSheet() does a DOM write per call.
         ensureCardStyles()
@@ -59,7 +60,7 @@ object CardRenderer {
         }
     }
 
-    private fun FlowContent.render(canvasName: CanvasName, card: Card, eventBus: EventBus, loose: Boolean) {
+    private fun FlowContent.render(canvasName: CanvasName, card: Card, eventBus: EventBus<Event>, loose: Boolean) {
         val t = ThemeManager.current
         // TUI: a non-title card's leading heading becomes the panel's title, sitting in the top
         // border line (┌─ title ─┐). h1-only cards are excluded — they get the chromeless label
@@ -140,7 +141,7 @@ object CardRenderer {
         }
     }
 
-    private fun FlowContent.renderSegment(canvasName: CanvasName, segment: CardSegment, card: Card, eventBus: EventBus) {
+    private fun FlowContent.renderSegment(canvasName: CanvasName, segment: CardSegment, card: Card, eventBus: EventBus<Event>) {
         when (segment) {
             is ListGroup -> renderSegment(canvasName, segment, card, eventBus)
             is CardListItem -> throw Exception("Didn't expect ungrouped list item")
@@ -154,7 +155,7 @@ object CardRenderer {
         }
     }
 
-    fun FlowContent.renderSegment(canvasName: CanvasName, segment: ListGroup, card: Card, eventBus: EventBus) {
+    fun FlowContent.renderSegment(canvasName: CanvasName, segment: ListGroup, card: Card, eventBus: EventBus<Event>) {
 
         var index = 0
 
@@ -180,7 +181,7 @@ object CardRenderer {
         }
     }
 
-    fun FlowContent.renderSegment(canvasName: CanvasName, segment: CardListItem, card: Card, index: Int, eventBus: EventBus) {
+    fun FlowContent.renderSegment(canvasName: CanvasName, segment: CardListItem, card: Card, index: Int, eventBus: EventBus<Event>) {
         div("tdz-task") {
             css {
                 cursor = Cursor.pointer
@@ -411,7 +412,7 @@ object CardRenderer {
         }
     }
 
-    private fun FlowContent.renderSegment(segment: CardText, card: Card, eventBus: EventBus) {
+    private fun FlowContent.renderSegment(segment: CardText, card: Card, eventBus: EventBus<Event>) {
         div {
             segment.text.forEach { text ->
                 renderRichText(text, eventBus)
@@ -419,7 +420,7 @@ object CardRenderer {
         }
     }
 
-    private fun FlowContent.renderSegment(segment: Callout, card: Card, eventBus: EventBus) {
+    private fun FlowContent.renderSegment(segment: Callout, card: Card, eventBus: EventBus<Event>) {
         div("tdz-callout") {
             css {
                 padding = Padding(vertical = 1.px, horizontal = 6.px)
@@ -487,7 +488,7 @@ object CardRenderer {
         p {}
     }
 
-    private fun FlowContent.renderRichText(value: RichText, eventBus: EventBus) {
+    private fun FlowContent.renderRichText(value: RichText, eventBus: EventBus<Event>) {
             when (value) {
             is CardCodeBlock -> renderRichText(value)
             is Blockquote -> renderRichText(value)
@@ -542,7 +543,7 @@ object CardRenderer {
         }
     }
 
-    private fun FlowContent.renderRichText(linkText: LinkText, eventBus: EventBus) {
+    private fun FlowContent.renderRichText(linkText: LinkText, eventBus: EventBus<Event>) {
             when (linkText) {
             is CanvasLink -> renderRichText(linkText, eventBus)
             is ExternalLink -> renderRichText(linkText)
@@ -587,7 +588,7 @@ object CardRenderer {
         }
     }
 
-    private fun FlowContent.renderRichText(link: CanvasLink, eventBus: EventBus) {
+    private fun FlowContent.renderRichText(link: CanvasLink, eventBus: EventBus<Event>) {
         val linkId = DomIds.canvasLink(link.canvasName)
 
         span("canvas-drop-zone") {

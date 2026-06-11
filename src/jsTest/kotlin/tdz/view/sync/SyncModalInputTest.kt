@@ -4,7 +4,8 @@ import kotlinx.browser.document
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLInputElement
 import org.w3c.dom.asList
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.model.CanvasName
 import tdz.model.Model
 import tdz.model.localstorage.SyncConfigDoc
@@ -22,7 +23,7 @@ class SyncModalInputTest {
         model.writeSyncConfig(
             SyncConfigDoc(SyncProvider.DROPBOX, enabled = false, rootFolder = "", refreshToken = null, accountEmail = null),
         )
-        val bus = EventBus()
+        val bus = EventBus<Event>()
         val modal = SyncModal(model, bus, SyncController(model, bus))
         try {
             modal.show()
@@ -57,7 +58,7 @@ class SyncModalReconnectTest {
             SyncProvider.GOOGLE_DRIVE, enabled = true, rootFolder = "/x",
             refreshToken = null, accountEmail = "rf@test",
         ))
-        val bus = EventBus()
+        val bus = EventBus<Event>()
         val modal = SyncModal(model, bus, SyncController(model, bus))
         try {
             tdz.sync.SyncStateStore.set(tdz.sync.SyncState.Synced, bus)

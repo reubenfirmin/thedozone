@@ -7,7 +7,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlin.js.Date
 import tdz.controller.events.ColumnsChanged
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.RefreshCanvas
 import tdz.controller.events.RefreshColumns
 import tdz.controller.events.SyncConflict
@@ -34,7 +35,7 @@ import web.window.window
  */
 class SyncController(
     private val model: Model,
-    private val eventBus: EventBus,
+    private val eventBus: EventBus<Event>,
     /** Test seam: bypasses [SyncProviders.storage] so suites can run against an in-memory remote. */
     private val storageOverride: RemoteStorage? = null,
 ) {

@@ -2,7 +2,8 @@ package tdz.view
 
 import kotlinx.html.div
 import kotlinx.html.id
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.RefreshColumns
 import tdz.model.CanvasName
 import tdz.model.ColumnId
@@ -20,7 +21,7 @@ class CanvasColumnsRenderTest {
 
     @Test
     fun refreshColumnRebuildsInPlaceWithModeStyling() {
-        val bus = EventBus()
+        val bus = EventBus<Event>()
         val model = Model(CanvasName("_rr-test"))
         val canvas = canvasFromTemplate(CanvasName("_rr-test"), null, TWO_COLUMNS_VERTICAL)
         val columns = CanvasColumns(canvas, bus, model) { emptyList() }

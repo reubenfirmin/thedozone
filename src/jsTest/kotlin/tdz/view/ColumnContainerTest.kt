@@ -1,7 +1,8 @@
 package tdz.view
 
 import kotlinx.browser.document
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.model.ColumnId
 import tdz.model.CanvasName
 import tdz.model.LayoutTemplate.SINGLE_PANE
@@ -22,7 +23,7 @@ class ColumnContainerTest {
 
         val canvas = canvasFromTemplate(CanvasName("_accent-test"), null, SINGLE_PANE)
         val container = ColumnContainer(
-            canvas, Mode.CARD, emptyList(), Boundary(0, 0, 100, 100), columnId, EventBus(),
+            canvas, Mode.CARD, emptyList(), Boundary(0, 0, 100, 100), columnId, EventBus<Event>(),
         )
         container.beforeRemoval()
 

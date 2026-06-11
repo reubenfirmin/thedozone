@@ -10,7 +10,8 @@ import kotlinx.html.id
 import kotlinx.html.span
 import tdz.controller.events.CardsReordered
 import tdz.controller.events.CardsSentToCanvas
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.model.CanvasName
 import tdz.model.Card
 import tdz.model.ColumnId
@@ -115,7 +116,7 @@ class WormholeDropRoutingTest {
         val model = buildModel()
         val cards = model.cards(source, column)
         buildDom(cards)
-        val eventBus = EventBus()
+        val eventBus = EventBus<Event>()
         val dragDrop = DragDrop(model, eventBus)
 
         var sent: CardsSentToCanvas? = null
@@ -157,7 +158,7 @@ class WormholeDropRoutingTest {
         val model = buildModel()
         val cards = model.cards(source, column)
         buildDom(cards)
-        val dragDrop = DragDrop(model, EventBus())
+        val dragDrop = DragDrop(model, EventBus<Event>())
 
         val cardB = el(DomIds.card(cards[1].ref))
         val chip = el(DomIds.canvasLink(target))
@@ -186,7 +187,7 @@ class WormholeDropRoutingTest {
         val model = buildModel()
         val cards = model.cards(source, column)
         buildDom(cards)
-        val dragDrop = DragDrop(model, EventBus())
+        val dragDrop = DragDrop(model, EventBus<Event>())
 
         val cardB = el(DomIds.card(cards[1].ref))
         val chip = el(DomIds.canvasLink(target))
@@ -222,7 +223,7 @@ class WormholeDropRoutingTest {
         val model = buildModel()
         val cards = model.cards(source, column)
         buildDom(cards)
-        val eventBus = EventBus()
+        val eventBus = EventBus<Event>()
         val dragDrop = DragDrop(model, eventBus)
 
         var sent = false

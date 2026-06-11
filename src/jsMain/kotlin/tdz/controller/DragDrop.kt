@@ -2,7 +2,8 @@ package tdz.controller
 
 import tdz.controller.events.CardsReordered
 import tdz.controller.events.CardsSentToCanvas
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.model.CanvasName
 import tdz.model.Card
 import tdz.model.Card.Companion.cardsUnderH1
@@ -33,7 +34,7 @@ import zoned.framework.libs.sortableDeselect
 /**
  * Manages drag and drop functionality for cards using Sortable.js
  */
-class DragDrop(private val model: Model, private val eventBus: EventBus) {
+class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) {
 
     /**
      * Elements we put into the MultiDrag selection for the current grab. Tracked so a header that

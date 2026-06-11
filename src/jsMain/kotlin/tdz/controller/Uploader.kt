@@ -1,6 +1,7 @@
 package tdz.controller
 
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.RefreshCanvas
 import tdz.controller.io.CanvasImporter
 import tdz.controller.io.FilePicker
@@ -13,7 +14,7 @@ import tdz.model.Model
  * across testable pieces: [FilePicker] (DOM file dialog), [TdzDocument.decode] (format), and
  * [CanvasImporter] (placement). This class just wires them together and refreshes the view.
  */
-class Uploader(val model: Model, val eventBus: EventBus) {
+class Uploader(val model: Model, val eventBus: EventBus<Event>) {
 
     fun upload(mode: ImportMode) {
         FilePicker.pick(".tdz") { name, content ->

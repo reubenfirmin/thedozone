@@ -7,7 +7,8 @@ import tdz.controller.events.ClearDone
 import tdz.controller.events.ColumnEdited
 import tdz.controller.events.ColumnsChanged
 import tdz.controller.events.DeleteColumn
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.RefreshCanvas
 import tdz.controller.events.RefreshColumns
 import tdz.controller.events.SplitColumn
@@ -15,7 +16,7 @@ import tdz.controller.events.TaskToggleDone
 import tdz.model.Model
 import tdz.model.markdown.MarkdownService
 
-class Controller(eventBus: EventBus, model: Model) {
+class Controller(eventBus: EventBus<Event>, model: Model) {
 
     init {
         eventBus.on<TaskToggleDone> { event ->
@@ -102,7 +103,7 @@ class Controller(eventBus: EventBus, model: Model) {
     /** Apply a layout transform to a canvas, persist it (overwrites), and re-render. */
     private fun applyLayout(
         model: Model,
-        eventBus: EventBus,
+        eventBus: EventBus<Event>,
         canvasName: tdz.model.CanvasName,
         transform: (tdz.model.Canvas) -> tdz.model.Canvas,
     ) {

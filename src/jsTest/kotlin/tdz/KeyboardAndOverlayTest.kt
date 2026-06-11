@@ -2,7 +2,8 @@ package tdz
 
 import kotlinx.browser.window
 import tdz.controller.events.ClearDone
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.model.Model
 import tdz.view.Overlay
 import tdz.view.Zones
@@ -43,7 +44,7 @@ class KeyboardAndOverlayTest {
 
     @Test
     fun ctrlSemicolonFiresClearDone() {
-        val bus = EventBus()
+        val bus = EventBus<Event>()
         val index = Index(Model(rootCanvas), bus)
         index.index(Model(rootCanvas).currentCanvas())
         var cleared = false
@@ -57,7 +58,7 @@ class KeyboardAndOverlayTest {
     @Test
     fun helpShortcutOpensTheOverlayAndEscapeClosesIt() {
         Router.mount(canvasPages, helpPages, settingsPages)
-        val bus = EventBus()
+        val bus = EventBus<Event>()
         val index = Index(Model(rootCanvas), bus)
         index.index(Model(rootCanvas).currentCanvas())
 
@@ -74,7 +75,7 @@ class KeyboardAndOverlayTest {
     @Test
     fun scrimClickClosesButPanelClickDoesNot() {
         Router.mount(canvasPages, helpPages, settingsPages)
-        val bus = EventBus()
+        val bus = EventBus<Event>()
         val index = Index(Model(rootCanvas), bus)
         index.index(Model(rootCanvas).currentCanvas())
         Router.navigate(helpPages.shortcuts.path())

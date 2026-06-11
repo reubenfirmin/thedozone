@@ -5,7 +5,8 @@ import tdz.controller.events.CardsReordered
 import tdz.controller.events.ClearDone
 import tdz.controller.events.ColumnEdited
 import tdz.controller.events.ColumnsChanged
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.RefreshColumns
 import tdz.controller.events.TaskToggleDone
 import tdz.model.CanvasName
@@ -26,7 +27,7 @@ import kotlin.test.assertTrue
  */
 class ControllerEventCycleTest {
 
-    private class Captured(bus: EventBus) {
+    private class Captured(bus: EventBus<Event>) {
         val changed = mutableListOf<ColumnsChanged>()
         val refreshed = mutableListOf<RefreshColumns>()
         init {
@@ -35,8 +36,8 @@ class ControllerEventCycleTest {
         }
     }
 
-    private fun setup(name: String): Triple<EventBus, Model, Captured> {
-        val bus = EventBus()
+    private fun setup(name: String): Triple<EventBus<Event>, Model, Captured> {
+        val bus = EventBus<Event>()
         val model = Model(CanvasName(name))
         Controller(bus, model)
         return Triple(bus, model, Captured(bus))

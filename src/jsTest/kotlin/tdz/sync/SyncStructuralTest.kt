@@ -5,7 +5,8 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.promise
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.RefreshCanvas
 import tdz.model.CanvasName
 import tdz.model.LayoutTemplate.SINGLE_PANE
@@ -54,7 +55,7 @@ class SyncStructuralTest {
 
     private class Setup(name: String) {
         val model = Model(CanvasName(name))
-        val bus = EventBus()
+        val bus = EventBus<Event>()
         val storage = GatedStorage()
         val root = "/$name"
         init {

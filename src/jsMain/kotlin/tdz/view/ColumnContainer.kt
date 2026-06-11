@@ -6,7 +6,8 @@ import kotlinx.html.FlowContent
 import kotlinx.html.div
 import kotlinx.html.id
 import tdz.controller.DragDrop
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event as TdzEvent
+import zoned.framework.events.EventBus
 import tdz.model.Canvas
 import tdz.model.Card
 import tdz.model.ColumnId
@@ -32,7 +33,7 @@ class ColumnContainer(
     val cards: List<Card>,
     val boundary: Boundary,
     private val columnId: ColumnId,
-    val eventBus: EventBus) {
+    val eventBus: EventBus<TdzEvent>) {
 
     private var focused = false
     private var editorColumn: EditorColumn? = null

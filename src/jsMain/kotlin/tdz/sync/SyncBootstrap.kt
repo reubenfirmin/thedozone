@@ -2,7 +2,8 @@ package tdz.sync
 
 import kotlinx.browser.window
 import tdz.canvasPages
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.model.Model
 import tdz.view.sync.LocalFolderModal
 import tdz.view.sync.SyncModal
@@ -28,7 +29,7 @@ object SyncBootstrap {
     lateinit var localFolderModal: LocalFolderModal
         private set
 
-    fun init(model: Model, eventBus: EventBus) {
+    fun init(model: Model, eventBus: EventBus<Event>) {
         controller = SyncController(model, eventBus)
         val dismiss: () -> Unit = { Router.navigate(canvasPages.resource.currentCanvasUrl()) }
         modal = SyncModal(model, eventBus, controller, onDismiss = dismiss)

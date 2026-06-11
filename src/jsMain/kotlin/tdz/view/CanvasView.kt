@@ -7,7 +7,7 @@ import kotlinx.html.TagConsumer
 import kotlinx.html.div
 import zoned.framework.interop.css
 import tdz.controller.events.Event
-import tdz.controller.events.EventBus
+import zoned.framework.events.EventBus
 import tdz.controller.events.RefreshColumns
 import tdz.model.Canvas
 import tdz.model.Model
@@ -19,7 +19,7 @@ import zoned.framework.routing.ZoneView
  * [swap] first saves the previous render's open editors and detaches its [RefreshColumns]
  * subscription, so stale renders can never fire against a DOM they no longer own.
  */
-class CanvasView(bus: EventBus, private val model: Model) : ZoneView<Canvas, Event>(Zones.CANVAS, bus) {
+class CanvasView(bus: EventBus<Event>, private val model: Model) : ZoneView<Canvas, Event>(Zones.CANVAS, bus) {
 
     /** The live render's column controller (keyboard/menu target), or null between renders. */
     var columns: CanvasColumns? = null

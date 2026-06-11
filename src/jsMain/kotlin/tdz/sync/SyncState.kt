@@ -1,6 +1,7 @@
 package tdz.sync
 
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.SyncStatusChanged
 
 /** The single source of truth for sync UI. `locked` marks the "don't edit yet" window. */
@@ -34,7 +35,7 @@ object SyncStateStore {
     var current: SyncState = SyncState.NotConfigured
         private set
 
-    fun set(state: SyncState, bus: EventBus) {
+    fun set(state: SyncState, bus: EventBus<Event>) {
         current = state
         bus.fire(SyncStatusChanged(state))
     }

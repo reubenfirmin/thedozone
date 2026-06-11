@@ -3,7 +3,8 @@ package tdz
 import kotlinx.css.Color
 import tdz.controller.Controller
 import tdz.controller.DragDrop
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.model.CanvasName
 import tdz.model.Model
 import tdz.view.Zones
@@ -18,7 +19,7 @@ import zoned.framework.routing.Routes
 
 val rootCanvas = CanvasName("_")
 val tdzModel = Model(rootCanvas)
-val eventBus = EventBus()
+val eventBus = EventBus<Event>()
 val tdzController = Controller(eventBus, tdzModel)
 val tdzDragDrop = DragDrop(tdzModel, eventBus)
 val tdzIndex = Index(tdzModel, eventBus)

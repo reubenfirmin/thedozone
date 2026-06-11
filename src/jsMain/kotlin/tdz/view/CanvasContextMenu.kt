@@ -10,7 +10,8 @@ import tdz.controller.events.DeleteColumn
 import tdz.helpPages
 import tdz.settingsPages
 import zoned.framework.routing.Router
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.RefreshCanvas
 import tdz.controller.events.SplitColumn
 import tdz.model.Model
@@ -137,7 +138,7 @@ fun canvasSections(
 fun canvasMenu(
     columns: CanvasColumns,
     model: Model,
-    eventBus: EventBus,
+    eventBus: EventBus<Event>,
     downloader: Downloader,
     uploader: Uploader,
 ): (MouseEvent) -> List<MenuSection> = { event ->

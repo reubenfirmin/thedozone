@@ -7,7 +7,8 @@ import tdz.controller.Controller
 import tdz.controller.Downloader
 import tdz.controller.Uploader
 import tdz.controller.events.ClearDone
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.ExitEditor
 import tdz.controller.events.NavigateColumn
 import tdz.controller.events.RefreshCanvas
@@ -53,7 +54,7 @@ import zoned.framework.dom.onClick
 fun canvasUrlFromPath(path: List<CanvasName>): String =
     if (path.isEmpty()) "/" else "/" + path.joinToString("/") { it.normalized() }
 
-class Index(val model: Model, val eventBus: EventBus) {
+class Index(val model: Model, val eventBus: EventBus<Event>) {
 
     fun canvasUrl(name: CanvasName): String = canvasUrlFromPath(model.path(name))
     fun currentCanvasUrl(): String = canvasUrl(model.currentCanvas().name)
@@ -89,7 +90,7 @@ class Index(val model: Model, val eventBus: EventBus) {
     // Help content is read-only: render its cards through an inert bus with no subscribers, so
     // interactions (task-toggle, canvas-link navigation) fired by CardRenderer never reach the
     // live controller/model (which would mutate or throw against the synthetic "_help" canvas).
-    private val helpEventBus = EventBus()
+    private val helpEventBus = EventBus<Event>()
 
     fun openSyncSettings() {
         ensureCanvasMounted()

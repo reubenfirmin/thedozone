@@ -4,7 +4,8 @@ import kotlinx.css.*
 import kotlinx.html.FlowContent
 import kotlinx.html.div
 import kotlinx.html.id
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.RefreshColumns
 import tdz.model.Canvas
 import tdz.model.Card
@@ -35,7 +36,7 @@ import zoned.framework.interop.styleSheet
  * wires drag-drop. Created fresh by [CanvasView] on every swap; [saveEditors] runs before teardown.
  */
 class CanvasColumns(val canvas: Canvas,
-                    val eventBus: EventBus,
+                    val eventBus: EventBus<Event>,
                     val model: Model,
                     val cards: (columnId: ColumnId) -> List<Card>) {
 

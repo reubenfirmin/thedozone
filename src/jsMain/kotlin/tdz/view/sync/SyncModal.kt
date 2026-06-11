@@ -8,7 +8,8 @@ import kotlinx.html.InputType
 import kotlinx.html.div
 import kotlinx.html.id
 import kotlinx.html.input
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.SyncConflict
 import tdz.controller.events.SyncStatusChanged
 import tdz.model.Model
@@ -44,7 +45,7 @@ import zoned.framework.interop.css
  */
 class SyncModal(
     private val model: Model,
-    private val eventBus: EventBus,
+    private val eventBus: EventBus<Event>,
     private val controller: SyncController,
     private val onDismiss: (() -> Unit)? = null,
 ) {

@@ -3,7 +3,8 @@ package tdz.view
 import kotlinx.browser.window
 import kotlinx.html.div
 import kotlinx.html.id
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.model.CanvasName
 import tdz.model.LayoutTemplate.TWO_COLUMNS_VERTICAL
 import tdz.model.LayoutTemplates.canvasFromTemplate
@@ -24,7 +25,7 @@ class CanvasColumnsFocusTest {
      */
     @Test
     fun sharedCornerProbeResolvesInsteadOfCrashing() {
-        val bus = EventBus()
+        val bus = EventBus<Event>()
         val model = Model(CanvasName("_focus-test"))
         val canvas = canvasFromTemplate(CanvasName("_focus-test"), null, TWO_COLUMNS_VERTICAL)
         val columns = CanvasColumns(canvas, bus, model) { emptyList() }
