@@ -10,14 +10,11 @@ import tdz.controller.events.SwitchToCanvas
 import tdz.model.*
 import tdz.model.ref
 import tdz.model.card.*
-import tdz.tdzDragDrop
 import tdz.view.theme.MarkerStyle
 import tdz.view.theme.ThemeManager
-import web.dom.ElementId
 import web.dom.document
 import web.html.HTMLCanvasElement
 import web.html.HTMLDivElement
-import web.html.HTMLStyleElement
 import web.window.window
 import zoned.framework.dom.Ref
 import zoned.framework.dom.onClick
@@ -201,8 +198,11 @@ object CardRenderer {
                 }
 
                 span {
-                    css { display = Display.inlineBlock; paddingRight = 0.5.rem }
+                    // single css{} block: css{} replaces the whole style attribute, so a second
+                    // call on the same element silently wipes the first
                     css {
+                        display = Display.inlineBlock
+                        paddingRight = 0.5.rem
                         fontWeight = FontWeight.bold
                         if (segment.done) color = ThemeManager.current.checkDone
                     }
@@ -619,11 +619,6 @@ object CardRenderer {
                     event.preventDefault()
                     event.stopPropagation()
                 }
-            }
-
-            // Set up as drop zone after DOM insertion
-            onMount {
-                tdzDragDrop.setupCanvasLinkDropZone(linkId)
             }
         }
     }

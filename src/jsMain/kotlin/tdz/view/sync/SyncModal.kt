@@ -50,15 +50,25 @@ class SyncModal(
 ) {
     private var rootEl: HTMLElement? = null
     private var shownConnected = false
+    private var shownNeedsAuth = false
     private var editingFolder = false
     private var selectedProvider: SyncProvider =
         model.readSyncConfig().provider.coerceCloud()
 
     init {
+        // The status LINE updates live (statusRef below); the BUTTON ROW must re-render whenever
+        // either input it depends on changes: connectedness, or auth lapsing (NeedsReconnect/Error
+        // swaps "Sync now" for a primary "Reconnect").
         eventBus.on<SyncStatusChanged> {
-            if (rootEl != null && connected() != shownConnected) { editingFolder = false; render() }
+            if (rootEl != null && (connected() != shownConnected || needsAuth() != shownNeedsAuth)) {
+                editingFolder = false
+                render()
+            }
         }
     }
+
+    private fun needsAuth(): Boolean =
+        SyncStateStore.current is SyncState.Error || SyncStateStore.current == SyncState.NeedsReconnect
 
     private fun connected(): Boolean = model.readSyncConfig().cloudConnected
 
@@ -77,6 +87,7 @@ class SyncModal(
         hide()
         val cfg = model.readSyncConfig()
         shownConnected = cfg.cloudConnected
+        shownNeedsAuth = needsAuth()
         val connecting = SyncStateStore.current == SyncState.Connecting
         val r = Ref<HTMLElement>()
         val statusRef = Ref<HTMLElement>()
@@ -180,8 +191,7 @@ class SyncModal(
                                 // Reconnect is the primary action whenever auth lapsed: an expected Google
                                 // session timeout (NeedsReconnect) or a genuine Error (e.g. a revoked
                                 // Dropbox refresh token). The user gesture drives the consent popup.
-                                val needsAuth = SyncStateStore.current is SyncState.Error ||
-                                    SyncStateStore.current == SyncState.NeedsReconnect
+                                val needsAuth = needsAuth()
                                 if (needsAuth) {
                                     button("Reconnect", primary = true) { controller.connect() }
                                 }
@@ -190,7 +200,11 @@ class SyncModal(
                                 }
                                 button("Change folder") { editingFolder = true; render() }
                                 button("Disconnect") { controller.disconnect() }
-                                button("Restore last backup") {
+                                // The pre-pull safety net: LocalBackup snapshots all local data
+                                // before every reconcile; this rolls back to the newest snapshot.
+                                button("Restore last backup", hint =
+                                    "Roll local data back to the snapshot taken automatically " +
+                                    "before the last sync — recovers from a bad merge or pull.") {
                                     if (controller.restoreLastBackup())
                                         window.alert("Restored the most recent pre-sync backup.")
                                     else
@@ -290,8 +304,8 @@ class SyncModal(
     }
 
     private fun FlowContent.button(
-        text: String, primary: Boolean = false, enabled: Boolean = true, onPress: () -> Unit,
-    ) = modalButton(text, primary, enabled, onPress)
+        text: String, primary: Boolean = false, enabled: Boolean = true, hint: String? = null, onPress: () -> Unit,
+    ) = modalButton(text, primary, enabled, hint, onPress)
 
     companion object {
         private const val ROOT_ID = "tdz-sync-root"

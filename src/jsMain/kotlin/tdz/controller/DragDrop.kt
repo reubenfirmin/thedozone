@@ -23,7 +23,6 @@ import tdz.view.DomIds
 import tdz.view.WormholePortal
 import tdz.view.theme.ThemeManager
 import zoned.framework.interop.clear
-import zoned.framework.interop.getHtmlElement
 import zoned.framework.interop.important
 import zoned.framework.interop.styleSheet
 import zoned.framework.libs.SortableConfig
@@ -107,6 +106,8 @@ class DragDrop(private val model: Model, private val eventBus: EventBus) {
             // floating mirror and the drop placeholder are just the header. Decorate them to reflect
             // the whole group: a stacked mirror with a count, and a placeholder sized to the group.
             onStart = { el -> decorateGroupDrag(); beginPortalTracking(el) },
+            // Freeze the layout while the wormhole is open — see [placeholderMovesAllowed].
+            onMove = { placeholderMovesAllowed() },
             onEnd = { event ->
                 handleDrop(event, canvasName)
                 stopPortalTracking()
@@ -204,30 +205,18 @@ class DragDrop(private val model: Model, private val eventBus: EventBus) {
         selected.clear()
     }
 
-    /**
-     * Set up a canvas link as a drop zone for cards. It must be a Sortable container so the link is a
-     * valid drop target (Sortable then reports `event.to` = this link to the source column's onEnd) —
-     * but its own onEnd never fires for a card dragged in from a column (Sortable dispatches onEnd on
-     * the *source* list). So the actual move is handled in [handleDrop] (which detects a canvas-link
-     * target); this onEnd is intentionally a no-op.
-     */
-    fun setupCanvasLinkDropZone(elementId: String) {
-        makeSortable(SortableConfig(
-            elementId = ElementId(elementId),
-            group = "cards",
-            animation = 150,
-            forceFallback = true,
-            fallbackOnBody = true,
-            fallbackTolerance = 4,
-            emptyInsertThreshold = 12,   // small enough that stacked columns' accept-zones don't overlap (no top/bottom flicker)
-            onEnd = { /* handled by the source column's onEnd → handleDrop; see kdoc */ }
-        ))
-    }
-
     // --- Wormhole portal: hover detection + lifecycle -----------------------------------------
+    //
+    // Canvas-link chips are NOT Sortable containers. They used to be (so Sortable could report
+    // `event.to` = chip), but Sortable parking its hidden ghost in the tiny chip collapsed the
+    // column gap and shifted the link card on every approach — the chip "dodged" the pointer, and
+    // the drop routed by where the ghost happened to sit, not by what the user saw. Instead the
+    // pointer hit-test below is the single source of truth: it lights the portal AND routes the
+    // drop ([handleDrop] checks [activeLink]), so the visual and the behavior cannot disagree.
 
-    /** A drag started: record the dragged card's size, start tracking, install the pointer hit-test. */
-    private fun beginPortalTracking(dragged: Element) {
+    /** A drag started: record the dragged card's size, start tracking, install the pointer hit-test.
+     *  (internal for tests — production entry is Sortable's onStart) */
+    internal fun beginPortalTracking(dragged: Element) {
         dragActive = true
         val r = dragged.getBoundingClientRect()
         if (r.width > 0) dragCardW = r.width
@@ -235,8 +224,9 @@ class DragDrop(private val model: Model, private val eventBus: EventBus) {
         installPortalHook()
     }
 
-    /** Drag ended: stop tracking and fade the hover vortex (a drop-swallow flash plays on regardless). */
-    private fun stopPortalTracking() {
+    /** Drag ended: stop tracking and fade the hover vortex (a drop-swallow flash plays on regardless).
+     *  (internal for tests — production entry is Sortable's onEnd) */
+    internal fun stopPortalTracking() {
         dragActive = false
         activeLink = null
         WormholePortal.hide()
@@ -254,31 +244,60 @@ class DragDrop(private val model: Model, private val eventBus: EventBus) {
     }
 
     /**
+     * Sortable's onMove veto for every column: placeholder relocations are allowed only while no
+     * wormhole is open. The moment the portal lights up, the drop is routed to the linked canvas
+     * ([handleDrop]), so further placeholder shuffling is pointless — and actively harmful: each
+     * relocation reflows the column and shifts the link card out from under the pointer (the
+     * "dodge"), closing the very portal the user is aiming at. Frozen = nothing moves = stable aim.
+     */
+    internal fun placeholderMovesAllowed(): Boolean = activeLink == null
+
+    /** Open the portal when the pointer comes this close to a chip. */
+    private val enterMargin = 16.0
+    /** Once open, keep it until the pointer is this far away — a relocation animation already in
+     *  flight when the freeze engages can still slide the chip a little past [enterMargin], and
+     *  that drift must not flicker the portal off mid-aim. */
+    private val releaseMargin = 48.0
+
+    /**
      * While a card is being dragged, light the vortex over whichever canvas-link the pointer is within
      * (a small catch-margin past the chip), and clear it when the pointer leaves. Pure hit-testing —
      * independent of where Sortable has parked its ghost — so the visual is reliable and self-contained.
+     * Asymmetric margins (enter close, release far) latch the open portal against small chip drift.
      */
     private fun onPortalPointerMove(event: PointerEvent) {
         if (!dragActive) return
         lastPointerX = event.clientX.toDouble()
         lastPointerY = event.clientY.toDouble()
-        val zones = document.querySelectorAll(".canvas-drop-zone")
-        val margin = 16.0
-        var hit: Element? = null
-        for (i in 0 until zones.length) {
-            val z = zones[i]
+
+        fun within(z: Element, margin: Double): Boolean {
             val r = z.getBoundingClientRect()
-            if (lastPointerX in (r.left - margin)..(r.right + margin) &&
-                lastPointerY in (r.top - margin)..(r.bottom + margin)) {
-                hit = z
-                break
-            }
+            return lastPointerX in (r.left - margin)..(r.right + margin) &&
+                lastPointerY in (r.top - margin)..(r.bottom + margin)
         }
+
+        // Latched: the active link holds (no rescan) while the pointer stays within the release range.
+        val held = activeLink?.takeIf { it.isConnected && within(it, releaseMargin) }
+        val hit = held ?: run {
+            val zones = document.querySelectorAll(".canvas-drop-zone")
+            var found: Element? = null
+            for (i in 0 until zones.length) {
+                if (within(zones[i], enterMargin)) {
+                    found = zones[i]
+                    break
+                }
+            }
+            found
+        }
+
         if (hit !== activeLink) {
             activeLink = hit
-            val el = hit as? HTMLElement
-            if (el != null) WormholePortal.showOver(el) else WormholePortal.hide()
+            if (hit == null) WormholePortal.hide()
         }
+        // Reposition on EVERY move, not just on change: an in-flight reflow can still drift the chip
+        // a little, and the vortex must stay glued to it — an "open" portal sitting over empty space
+        // would lie about where the drop goes.
+        (hit as? HTMLElement)?.let { WormholePortal.showOver(it) }
     }
 
     /**
@@ -334,17 +353,19 @@ class DragDrop(private val model: Model, private val eventBus: EventBus) {
                 important("background-color", theme.dragMirrorBg)
                 important("background-image", "none")
             }
-            // Canvas-link drop zone: Sortable parks the dragged card inside the inline link chip while
-            // hovering. Hide it so the small chip doesn't balloon — the wormhole vortex is the feedback.
-            rule(".canvas-drop-zone .tdz-card-ghost") { important("display", "none") }
         }
     }
 
-    private fun handleDrop(event: zoned.framework.libs.SortableDropEvent, canvasName: CanvasName) {
-        // Dropped onto a canvas link → wormhole the card(s) into that canvas. Detected here (not in the
-        // link zone's own onEnd) because Sortable fires onEnd on the *source* column, never the target.
-        DomIds.canvasLinkName(event.toId.asString())?.let { targetCanvas ->
-            handleWormholeDrop(event, canvasName, targetCanvas)
+    /** (internal for tests — production entry is Sortable's onEnd) */
+    internal fun handleDrop(event: zoned.framework.libs.SortableDropEvent, canvasName: CanvasName) {
+        // Dropped while the wormhole is open → send the card(s) into the linked canvas. Routed by
+        // the SAME pointer hit-test that lights the portal ([activeLink], still set: onEnd calls
+        // this before stopPortalTracking) — NOT by Sortable's drop target, which reflects wherever
+        // the placeholder happened to sit after shuffling cards around. Wormhole open = card goes in.
+        val linkEl = activeLink as? HTMLElement
+        val targetCanvas = linkEl?.let { DomIds.canvasLinkName(it.id.asString()) }
+        if (linkEl != null && targetCanvas != null) {
+            handleWormholeDrop(event, canvasName, targetCanvas, linkEl)
             return
         }
 
@@ -412,9 +433,11 @@ class DragDrop(private val model: Model, private val eventBus: EventBus) {
     }
 
     /**
-     * Move the dragged card(s) into the canvas the dropped-on link points to, with the wormhole
-     * "swallow" visual. The dragged element(s) are now sitting in the link drop zone (MultiDrag carries
-     * a selected section there), so the set to move is read straight from the zone's DOM order.
+     * Move the dragged card(s) into the canvas [linkEl] points to, with the wormhole "swallow"
+     * visual. The set to move is the elements that were actually dragged — the MultiDrag group when
+     * a header grab selected one, else the single item — decoded from their ids (pre-drop refs).
+     * It is NOT read from `event.to`'s children: that is wherever Sortable parked the drop (usually
+     * a column), and the column's other cards must not be swept along.
      *
      * Per the design the user stays on the current canvas (no SwitchToCanvas) — the cards just vanish
      * into the portal.
@@ -423,38 +446,31 @@ class DragDrop(private val model: Model, private val eventBus: EventBus) {
         event: zoned.framework.libs.SortableDropEvent,
         sourceCanvas: CanvasName,
         targetCanvas: CanvasName,
+        linkEl: HTMLElement,
     ) {
-        val dragged = cardsInDomOrder(event.to, sourceCanvas)
+        val draggedEls = if (selected.isNotEmpty()) selected.toList() else listOf(event.item)
+        val dragged = draggedEls
+            .mapNotNull { DomIds.cardId(it.id.asString()) }
+            .map { model.getCardByIndex(sourceCanvas, it) }
         if (dragged.isEmpty()) {
             clearSelection()
             return
         }
 
         // Cosmetic: flash the vortex and spiral a clone of the primary card into its core. Started
-        // before the model move/refresh below (which detaches the real element); the clone is independent.
-        (getHtmlElement(event.toId.asString()))?.let { linkEl ->
-            val cx = if (lastPointerX != 0.0) lastPointerX else linkEl.getBoundingClientRect().let { it.left + it.width / 2 }
-            val cy = if (lastPointerY != 0.0) lastPointerY else linkEl.getBoundingClientRect().let { it.top + it.height / 2 }
-            (event.item as? HTMLElement)?.let { card ->
-                WormholePortal.swallow(linkEl, card, cx, cy, dragCardW, dragCardH)
-            }
+        // before the removal/refresh below detaches the real element; the clone is independent.
+        val cx = if (lastPointerX != 0.0) lastPointerX else linkEl.getBoundingClientRect().let { it.left + it.width / 2 }
+        val cy = if (lastPointerY != 0.0) lastPointerY else linkEl.getBoundingClientRect().let { it.top + it.height / 2 }
+        (event.item as? HTMLElement)?.let { card ->
+            WormholePortal.swallow(linkEl, card, cx, cy, dragCardW, dragCardH)
         }
 
         clearSelection()
-        // Sortable parked the dragged element(s) inside the link chip. Remove them so they don't linger
-        // hidden there — the source columns re-render via the Controller, but the link's own column may
-        // not be in the refreshed set.
-        removeParkedCards(event.to)
+        // Sortable parked the dragged element(s) wherever its placeholder last sat — possibly a
+        // column the Controller won't re-render (it refreshes only the cards' SOURCE columns).
+        // Remove them so no stale element lingers there.
+        draggedEls.forEach { it.remove() }
         // The Controller moves the cards and emits the change events for both canvases.
         eventBus.fire(CardsSentToCanvas(sourceCanvas, targetCanvas, dragged))
-    }
-
-    /** Remove any dragged card elements Sortable left inside [container] (a canvas-link drop zone). */
-    private fun removeParkedCards(container: Element) {
-        // querySelectorAll is a static snapshot, so removing while iterating is safe.
-        val parked = container.querySelectorAll(DomIds.CARD_SELECTOR)
-        for (i in 0 until parked.length) {
-            parked[i].remove()
-        }
     }
 }

@@ -9,10 +9,10 @@ import tdz.model.markdown.MarkdownService
 import tdz.rootCanvas
 import zoned.framework.Debugger.debug
 
-val version = VersionDoc(0, 8, 0)
-
 /**
- * Model must be created first so that it can register its event hooks at the top
+ * The app's persistent state: canvases, columns (markdown), cards (projections of that markdown),
+ * and per-column metadata, all backed by localStorage via [LocalStorageModel]. Pure storage —
+ * mutation ORCHESTRATION (events, ordering, sync notification) lives in [tdz.controller.Controller].
  */
 class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io.CanvasStore {
 
@@ -65,19 +65,6 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
         }
     }
 
-    /**
-     * @return true if "someVersion" is less than current version
-     */
-    fun greaterThan(observed: VersionDoc): Boolean {
-        return (observed.major < version.major)
-            || (observed.major == version.major && observed.minor < version.minor)
-            || (observed.major == version.major && observed.minor == version.minor && observed.patch < version.patch)
-    }
-
-    fun readVersion() = fs.readVersion()
-
-    fun writeVersion() = fs.writeVersion(version)
-
     fun getCardByIndex(canvasName: CanvasName, ref: CardRef): Card {
         val cards = cards(canvasName, ref.columnId)
         require(ref.index in cards.indices) {
@@ -91,11 +78,6 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
 
     override fun addCanvas(canvas: Canvas) {
         fs.storeCanvas(canvas)
-    }
-
-    fun addCanvas(canvasName: CanvasName, parentName: CanvasName?,
-                  columns: List<ColumnId>, layouts: List<ColumnLayoutSpec>) {
-        fs.storeCanvas(Canvas(canvasName, parentName, columns, layouts))
     }
 
     override fun saveCards(canvasName: CanvasName, column: ColumnId, cards: List<Card>) {
@@ -151,33 +133,6 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
         return destColumn
     }
 
-    /**
-     * @param beforeCard if null, add to end
-     */
-    fun moveCardToColumn(canvasName: CanvasName,
-                         movedCard: Card,
-                         beforeCard: Card? = null,
-                         destColumn: ColumnId) {
-
-        if (beforeCard == null) { // goes at end
-            val size = size(canvasName, destColumn)
-            moveCardToColumn(canvasName, movedCard, size, destColumn)
-        } else {
-            moveCardToColumn(canvasName, movedCard, beforeCard.index, destColumn)
-        }
-    }
-
-    fun moveCardToColumn(canvasName: CanvasName,
-                         movedCard: Card,
-                         toIndex: Int,
-                         destColumn: ColumnId) {
-        replace(canvasName, movedCard, movedCard.copy(metadata = CardMetadata(destColumn)), toIndex)
-    }
-
-    fun delete(canvasName: CanvasName, column: ColumnId, card: Card) {
-        remove(canvasName, column, card.index)
-    }
-
     fun deleteColumn(canvasName: CanvasName, columnId: ColumnId) {
         // NOTE does not change canvas metadata
         fs.deleteColumn(canvasName, columnId)
@@ -200,15 +155,6 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
                 else -> member
             }
         })
-
-    fun deleteCanvas(canvasName: CanvasName) {
-        getCanvas(canvasName)?.let { canvas ->
-            canvas.columns.forEach {
-                fs.deleteColumn(canvasName, it)
-            }
-            fs.deleteCanvas(canvasName)
-        }
-    }
 
     fun clearDone(canvasName: CanvasName): List<ColumnId> {
         val changedCols = mutableSetOf<ColumnId>()

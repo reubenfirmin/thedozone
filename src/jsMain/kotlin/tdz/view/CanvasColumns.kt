@@ -28,7 +28,12 @@ import zoned.framework.interop.important
 import zoned.framework.interop.styleSheet
 
 
-/** Encapsulated model/view of current columns */
+/**
+ * One canvas render's layout-and-focus controller: builds the column grid from the canvas's layout
+ * tree, owns per-column containers/modes/geometry ([Boundary]s for keyboard navigation), re-renders
+ * individual columns in place ([refreshColumns] via Zone.rebuild), applies per-column styles, and
+ * wires drag-drop. Created fresh by [CanvasView] on every swap; [saveEditors] runs before teardown.
+ */
 class CanvasColumns(val canvas: Canvas,
                     val eventBus: EventBus,
                     val model: Model,

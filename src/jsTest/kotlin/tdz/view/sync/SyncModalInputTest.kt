@@ -42,3 +42,37 @@ class SyncModalInputTest {
         }
     }
 }
+
+class SyncModalReconnectTest {
+
+    /**
+     * The beta bug: the status line updates live (statusRef), but the BUTTON ROW only re-rendered
+     * when connectedness flipped — so when Google's session lapsed mid-session the modal said
+     * "Reconnection needed" while still offering "Sync now" instead of "Reconnect".
+     */
+    @Test
+    fun lapsedAuthSwapsTheButtonRowToReconnect() {
+        val model = Model(CanvasName("_syncmodal-reconnect"))
+        model.writeSyncConfig(SyncConfigDoc(
+            SyncProvider.GOOGLE_DRIVE, enabled = true, rootFolder = "/x",
+            refreshToken = null, accountEmail = "rf@test",
+        ))
+        val bus = EventBus()
+        val modal = SyncModal(model, bus, SyncController(model, bus))
+        try {
+            tdz.sync.SyncStateStore.set(tdz.sync.SyncState.Synced, bus)
+            modal.show()
+            fun buttons() = document.body!!.querySelectorAll("div").asList()
+                .filterIsInstance<HTMLElement>().map { it.textContent }
+            assertEquals(false, buttons().contains("Reconnect"), "healthy session: no Reconnect button")
+
+            tdz.sync.SyncStateStore.set(tdz.sync.SyncState.NeedsReconnect, bus)
+
+            assertEquals(true, buttons().contains("Reconnect"),
+                "a lapsed session must swap the button row to offer Reconnect")
+        } finally {
+            modal.hide()
+            tdz.sync.SyncStateStore.set(tdz.sync.SyncState.NotConfigured, bus)
+        }
+    }
+}

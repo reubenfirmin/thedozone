@@ -34,9 +34,20 @@ class LocalFolderModal(
     private val onDismiss: (() -> Unit)? = null,
 ) {
     private var rootEl: HTMLElement? = null
+    private var shownConnected = false
+    private var shownNeedsReconnect = false
 
     init {
-        eventBus.on<SyncStatusChanged> { if (rootEl != null) render() }
+        // Rebuild only when the button row's inputs change — NOT on every state tick. A blanket
+        // re-render replaced the open dialog under the user (killing e.g. an in-flight OS folder
+        // picker) every time a background sync changed state.
+        eventBus.on<SyncStatusChanged> {
+            if (rootEl != null &&
+                (model.readSyncConfig().localConnected != shownConnected ||
+                 (SyncStateStore.current == SyncState.NeedsReconnect) != shownNeedsReconnect)) {
+                render()
+            }
+        }
     }
 
     fun show() = render()
@@ -49,6 +60,8 @@ class LocalFolderModal(
         val state = SyncStateStore.current
         val needsReconnect = state == SyncState.NeedsReconnect
         val connected = cfg.localConnected
+        shownConnected = connected
+        shownNeedsReconnect = needsReconnect
         val r = Ref<HTMLElement>()
         val statusRef = Ref<HTMLElement>()
         addToBody {
@@ -126,5 +139,5 @@ class LocalFolderModal(
     // --- button helper (kotlinx.html receiver), copied from SyncModal's style ---
     private fun kotlinx.html.FlowContent.button(
         text: String, primary: Boolean = false, enabled: Boolean = true, onPress: () -> Unit,
-    ) = modalButton(text, primary, enabled, onPress)
+    ) = modalButton(text, primary, enabled, onPress = onPress)
 }

@@ -178,7 +178,7 @@ class Index(val model: Model, val eventBus: EventBus) {
                 handled = true
             }
             // Arrow keys navigate between columns (without ctrl/alt modifiers)
-            else if (!keyEvent.ctrlKey && !keyEvent.altKey && keyEvent.key in listOf("ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown")) {
+            else if (!keyEvent.ctrlKey && !keyEvent.altKey && !keyEvent.metaKey && keyEvent.key in listOf("ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown")) {
                 val direction = when (keyEvent.key) {
                     "ArrowLeft" -> Direction.LEFT
                     "ArrowRight" -> Direction.RIGHT

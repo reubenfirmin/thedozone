@@ -2,12 +2,15 @@ package tdz.controller
 
 import tdz.model.ColumnId
 import tdz.controller.events.CardsReordered
+import tdz.controller.events.ClearDone
 import tdz.controller.events.ColumnEdited
 import tdz.controller.events.ColumnsChanged
 import tdz.controller.events.EventBus
 import tdz.controller.events.RefreshColumns
 import tdz.controller.events.TaskToggleDone
 import tdz.model.CanvasName
+import tdz.model.LayoutTemplate.SINGLE_PANE
+import tdz.model.LayoutTemplates.canvasFromTemplate
 import tdz.model.Model
 import tdz.model.card.CardListItem
 import tdz.model.card.ListGroup
@@ -85,5 +88,22 @@ class ControllerEventCycleTest {
         assertEquals(listOf("B", "A"), after.map { (it.segments.first() as tdz.model.card.CardHeading).text.trim() })
         assertEquals(listOf(setOf(ColumnId(1))), captured.changed.map { it.columnIds })
         assertEquals(listOf(setOf(ColumnId(1))), captured.refreshed.map { it.columnIds })
+    }
+
+    @Test
+    fun clearDoneFiresEventsOnlyWhenSomethingActuallyCleared() {
+        val (bus, model, captured) = setup("_cycle-cleardone")
+        val canvas = CanvasName("_cycle-cleardone")
+        model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))
+        model.updateColumn(canvas, ColumnId(1), "# T\n* /finished\n* open\n")
+
+        bus.fire(ClearDone(canvas))
+
+        assertEquals(listOf(setOf(ColumnId(1))), captured.changed.map { it.columnIds }, "clearing dones must reach sync")
+        assertEquals(listOf(setOf(ColumnId(1))), captured.refreshed.map { it.columnIds })
+
+        bus.fire(ClearDone(canvas))   // nothing left to clear
+        assertEquals(1, captured.changed.size, "an all-clean canvas fires no events")
+        assertEquals(1, captured.refreshed.size)
     }
 }

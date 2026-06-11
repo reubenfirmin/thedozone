@@ -71,9 +71,10 @@ internal object MarkdownWriter {
     private fun listItemLine(segment: CardListItem, lastSegment: CardListItem?, numbering: Numbering) =
         "${"  ".repeat(segment.level)}${bulletText(segment, lastSegment, numbering)} ${doneText(segment)}${renderRichText(segment.text)}"
 
-    private fun renderRichText(values: List<RichText>): String {
-        return values.joinToString(" ") { text -> text.toMarkdown().trim() }
-    }
+    private fun renderRichText(values: List<RichText>): String =
+        // Verbatim, no separator: Text tokens carry their own spacing, so trimming-and-rejoining
+        // invented a space between a link and immediately-adjacent text on every save.
+        values.joinToString("") { it.toMarkdown() }
 
     private fun bulletText(segment: CardListItem, lastSegment: CardListItem?, numbering: Numbering) = when(segment.type) {
         ListMemberType.BULLET -> {

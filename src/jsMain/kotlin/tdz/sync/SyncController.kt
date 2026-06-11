@@ -35,16 +35,19 @@ import web.window.window
 class SyncController(
     private val model: Model,
     private val eventBus: EventBus,
+    /** Test seam: bypasses [SyncProviders.storage] so suites can run against an in-memory remote. */
+    private val storageOverride: RemoteStorage? = null,
 ) {
     private val scope = CoroutineScope(Dispatchers.Main)
     private var engine: SyncEngine? = null
     private var localHandle: tdz.sync.local.FileSystemDirectoryHandle? = null   // the granted handle, once loaded/picked
     private val pushTimers = mutableMapOf<String, Int>()   // path -> window timeout handle
-    private val pushDebounceMs = 1500   // quiet period after a local edit before pushing
+    internal var pushDebounceMs = 1500   // quiet period after a local edit before pushing
 
-    // True while a pull is applying remote changes. A pulled manifest fires RefreshCanvas (so the UI
-    // re-renders), but onCanvasStructure also listens to RefreshCanvas — without this guard a pull
-    // would immediately re-push what it just pulled (redundant write + cross-device rev churn).
+    // True while a reconcile is in flight — rejects re-entrant reconcile() calls. (Echo protection
+    // for pulled manifests is ORIGIN-based, not time-based: writeLocal fires RefreshCanvas with
+    // remote = true and the structural subscriber skips those — so user actions that land during
+    // a reconcile are still pushed instead of silently dropped.)
     private var reconciling = false
 
     private fun config() = model.readSyncConfig()
@@ -62,7 +65,7 @@ class SyncController(
         eventBus.on<ColumnsChanged> { e ->
             if (!e.remote) e.columnIds.forEach { onColumnChanged(e.canvasName, it) }
         }
-        eventBus.on<RefreshCanvas> { e -> if (e.structural) onCanvasStructure(e.canvasName) }
+        eventBus.on<RefreshCanvas> { e -> if (e.structural && !e.remote) onCanvasStructure(e.canvasName) }
         val onlineHandler: (web.events.Event) -> Unit = { reconcile() }
         val offlineHandler: (web.events.Event) -> Unit = {
             if (config().enabled) SyncStateStore.set(SyncState.Offline, eventBus)
@@ -80,7 +83,7 @@ class SyncController(
             return
         }
         if (cfg.provider == SyncProvider.LOCAL_FOLDER) { startLocalFolder(); return }
-        val storage = SyncProviders.storage(cfg)
+        val storage = storageOverride ?: SyncProviders.storage(cfg)
         if (storage == null) {
             SyncStateStore.set(SyncState.NotConfigured, eventBus)
             engine = null
@@ -147,7 +150,8 @@ class SyncController(
         if (SyncPaths.isManifest(path)) {
             val doc = CanvasDoc.decode(content)
             model.addCanvas(Canvas(doc.name, doc.parentName, doc.columns, doc.layouts))
-            eventBus.fire(RefreshCanvas(doc.name))
+            // remote=true: this manifest came FROM the remote — re-render, but never push it back.
+            eventBus.fire(RefreshCanvas(doc.name, remote = true))
         }
     }
 
@@ -191,7 +195,9 @@ class SyncController(
             // structural path handles remote deletions.
             val content = model.getCanvasColumnRaw(canvasName, columnId) ?: return@debouncePush
             SyncStateStore.set(SyncState.Syncing, eventBus)
-            val (newState, winner) = eng.push(path, content, now, state())
+            // Fresh timestamp: the captured `now` is up to pushDebounceMs stale by the time this
+            // runs, which would understate the edit's recency in last-write-wins comparison.
+            val (newState, winner) = eng.push(path, content, Date.now(), state())
             saveState(newState)
             // Re-push the manifest so the remote carries this column's updated version vector. If this
             // fails (the column already uploaded, so the remote vector would otherwise lag the column),
@@ -215,16 +221,23 @@ class SyncController(
 
     private fun onCanvasStructure(canvasName: CanvasName) {
         val eng = engine ?: return
-        if (reconciling) return   // this RefreshCanvas came from a pull importing a manifest — don't echo
-        val canvas = model.getCanvas(canvasName) ?: return
-        scope.launch {
+        val manifestPath = SyncPaths.manifestPath(root(), canvasName)
+        // Durability: mark the manifest pending NOW, synchronously. If the debounced push below
+        // never runs (tab close, crash, offline), the next reconcile's pending sweep retries it —
+        // a structural change can be delayed but never silently lost.
+        val now = Date.now()
+        val prev = state().entries[manifestPath]
+        saveState(state().with(manifestPath,
+            (prev ?: SyncEntry(rev = null, localUpdatedAt = now)).copy(rev = null, localUpdatedAt = now)))
+        // Debounced per canvas: a burst of structural events (split + delete + import) coalesces
+        // into one manifest push + orphan sweep, and this canvas's state writes serialize.
+        debouncePush(manifestPath) {
+            val canvas = model.getCanvas(canvasName) ?: return@debouncePush
             SyncStateStore.set(SyncState.Syncing, eventBus)
-            // push manifest
-            val manifestPath = SyncPaths.manifestPath(root(), canvasName)
             var s = state()
-            val manifest = manifestContent(canvasName, s) ?: return@launch
+            val manifest = manifestContent(canvasName, s) ?: return@debouncePush
             s = eng.push(manifestPath, manifest, Date.now(), s).first
-            // reconcile column files: delete orphans not in canvas.columns (concurrently)
+            // reconcile column files: delete orphans not in canvas.columns
             val live = canvas.columns.map { SyncPaths.columnPath(root(), canvasName, it) }.toSet()
             val folder = SyncPaths.canvasFolder(root(), canvasName)
             val orphans = s.entries.keys.filter {
@@ -258,9 +271,9 @@ class SyncController(
             // try/finally, not just runCatching: if ANYTHING here escapes (snapshot, fail() itself),
             // a stuck reconciling=true would silently freeze every future reconcile this session.
             try {
-            LocalBackup.snapshot()   // recoverable safety net before any pull can overwrite/delete local
             SyncStateStore.set(SyncState.Reconciling, eventBus)
             runCatching {
+                LocalBackup.snapshot()   // recoverable safety net before any pull can overwrite/delete local
                 val result = eng.pull(root(), state())
                 var s = result.state
                 Debugger.debug("[sync] pull: ${result.changedPaths.size} changed, ${result.keptLocalPaths.size} kept-local")

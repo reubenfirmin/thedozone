@@ -36,18 +36,6 @@ class LocalStorageModel {
         }
     }
 
-    /** Corrupt/legacy-unreadable version info reads as null (treated as a fresh install). */
-    fun readVersion(): VersionDoc? =
-        retrieve(Namespace.VERSION, VersionDoc.singletonKey())?.let {
-            runCatching { VersionDoc.decode(it) }
-                .onFailure { e -> console.error("Corrupt version doc ignored: ${e.message}") }
-                .getOrNull()
-        }
-
-    fun writeVersion(doc: VersionDoc) {
-        store(Namespace.VERSION, doc)
-    }
-
     fun deleteCanvas(canvasName: CanvasName) {
         remove(Namespace.NEWCANVAS, canvasName.normalized())
     }
@@ -62,7 +50,7 @@ class LocalStorageModel {
 
     /** A corrupt config falls back to [SyncConfigDoc.DISABLED] (sync off) rather than crashing the app. */
     fun readSyncConfig(): SyncConfigDoc =
-        retrieve(Namespace.DROPBOX_CONFIG, SyncConfigDoc.singletonKey())
+        retrieve(Namespace.SYNC_CONFIG, SyncConfigDoc.singletonKey())
             ?.let {
                 runCatching { SyncConfigDoc.decode(it) }
                     .onFailure { e -> console.error("Corrupt sync config ignored: ${e.message}") }
@@ -70,7 +58,7 @@ class LocalStorageModel {
             }
             ?: SyncConfigDoc.DISABLED
 
-    fun writeSyncConfig(doc: SyncConfigDoc) = store(Namespace.DROPBOX_CONFIG, doc)
+    fun writeSyncConfig(doc: SyncConfigDoc) = store(Namespace.SYNC_CONFIG, doc)
 
     /** Corrupt sync state falls back to empty bookkeeping (a full re-reconcile, never a crash). */
     fun readSyncState(): SyncStateDoc =

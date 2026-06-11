@@ -13,9 +13,10 @@ import zoned.framework.interop.css
  * which is near-white on some themes and made primary buttons unreadable).
  */
 fun FlowContent.modalButton(
-    text: String, primary: Boolean = false, enabled: Boolean = true, onPress: () -> Unit,
+    text: String, primary: Boolean = false, enabled: Boolean = true, hint: String? = null, onPress: () -> Unit,
 ) {
     div {
+        hint?.let { attributes["title"] = it }
         css {
             padding = Padding(vertical = 7.px, horizontal = 14.px)
             marginRight = 8.px

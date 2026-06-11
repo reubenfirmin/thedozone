@@ -70,7 +70,11 @@ data class ExitEditor(val columnId: ColumnId): Event
  * actually changed and should be pushed to sync; false means a pure UI re-render (theme switch, or
  * restoring images after a PNG capture) that must NOT trigger a sync push.
  */
-data class RefreshCanvas(val canvasName: CanvasName, val structural: Boolean = true): Event
+/**
+ * Re-render [canvasName] (when current) and — if [structural] — push its manifest to sync.
+ * [remote] = true marks a canvas sync itself just pulled; subscribers must not push it back.
+ */
+data class RefreshCanvas(val canvasName: CanvasName, val structural: Boolean = true, val remote: Boolean = false): Event
 
 /** Broadcasts the current sync lifecycle state to badge / overlay / modal. */
 data class SyncStatusChanged(val state: tdz.sync.SyncState) : Event

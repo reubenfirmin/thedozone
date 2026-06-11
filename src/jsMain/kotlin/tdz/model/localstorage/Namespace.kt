@@ -1,12 +1,12 @@
 package tdz.model.localstorage
 
-// namespace for storing data - keep consistent otherwise storage will need migration
+// Namespaces prefix localStorage keys (no separator) — renaming a value orphans stored data,
+// so once there are real users a rename needs a read-through migration.
 enum class Namespace {
     NEWCANVAS,
     COLUMN,
     COLUMN_MODE,
-    VERSION,
-    DROPBOX_CONFIG,
+    SYNC_CONFIG,
     SYNC_STATE,
     THEME
 }
