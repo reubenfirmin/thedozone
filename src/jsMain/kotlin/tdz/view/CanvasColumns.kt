@@ -7,8 +7,15 @@ import kotlinx.html.id
 import tdz.controller.events.Event
 import zoned.framework.events.EventBus
 import tdz.controller.events.RefreshColumns
+import tdz.controller.events.TaskToggleDone
+import tdz.model.Card.Companion.taskItems
+import web.events.EventType
+import web.events.addEventListener
+import web.dom.Element
+import js.string.asString
 import tdz.model.Canvas
 import tdz.model.Card
+import tdz.model.CardRef
 import tdz.model.ColumnId
 import tdz.model.Direction
 import tdz.model.Model
@@ -24,6 +31,7 @@ import zoned.framework.Debugger
 import zoned.framework.dom.onMount
 import zoned.framework.interop.css
 import zoned.framework.interop.getHtmlElement
+import zoned.framework.interop.rebuildInPlace
 import zoned.framework.routing.Zone
 import zoned.framework.interop.important
 import zoned.framework.interop.styleSheet
@@ -55,12 +63,19 @@ class CanvasColumns(val canvas: Canvas,
         }
     }
 
+    /** Live Ace editors, kept across mode toggles (init is ~100ms; re-adopting the parked DOM is
+     *  ~free). Real teardown happens in [saveEditors] when this canvas render is disposed.
+     *  (internal for tests) */
+    internal val editorCache = mutableMapOf<ColumnId, EditorColumn>()
+
     /**
      * Save any open editor buffers and tear down their Ace instances. [CanvasView] calls this
      * before each swap — without it, unsaved edits would be silently discarded with the old DOM.
      */
     fun saveEditors() {
         columnContainers.values.forEach { it.beforeRemoval() }
+        editorCache.values.forEach { it.destroy() }
+        editorCache.clear()
     }
 
     private fun loadModeFromStorage(columnId: ColumnId): Mode? =
@@ -203,14 +218,41 @@ class CanvasColumns(val canvas: Canvas,
         val colCards = cards(columnId)
         val mode = columnModes[columnId] ?: Mode.CARD
         val boundary = boundaries[columnId] ?: rootBoundary()
-        val columnContainer = ColumnContainer(canvas, mode, colCards, boundary, columnId, eventBus)
+        val columnContainer = ColumnContainer(canvas, mode, colCards, boundary, columnId, eventBus) { id ->
+            editorCache.getOrPut(id) { EditorColumn(canvas, id, eventBus) }
+        }
         columnContainers[columnId] = columnContainer
 
         return columnContainer
     }
 
     // Set up event handlers after the column's DOM element is inserted
+    /**
+     * ONE delegated click listener per column toggles task checkboxes — task rows carry no
+     * per-row closures. The clicked row resolves to its model segment positionally: its ordinal
+     * among the enclosing card's task-row elements equals the ordinal in [taskItems] (both are
+     * render order). The listener dies with the column element on rebuild, so no detach needed.
+     * Inner links/buttons keep working: their own handlers stopPropagation before this sees them.
+     */
+    private fun wireTaskToggleDelegate(columnId: ColumnId) {
+        val columnEl = getHtmlElement(DomIds.column(columnId)) ?: return
+        columnEl.addEventListener(EventType("click"), { event ->
+            val target = event.target as? Element ?: return@addEventListener
+            val row = target.closest(".${CssClasses.TASK}") ?: return@addEventListener
+            val cardEl = row.closest(DomIds.CARD_SELECTOR) ?: return@addEventListener
+            val ref = DomIds.cardId(cardEl.id.asString()) ?: return@addEventListener
+            val rows = cardEl.querySelectorAll(".${CssClasses.TASK}")
+            val ordinal = (0 until rows.length).indexOfFirst { rows[it] === row }
+            val card = model.getCardByIndex(canvas.name, ref)
+            val segment = card.taskItems().getOrNull(ordinal) ?: return@addEventListener
+            eventBus.fire(TaskToggleDone(canvas.name, card, segment))
+            event.stopPropagation()
+            event.preventDefault()
+        })
+    }
+
     private fun setupColumnHandlers(columnId: ColumnId, columnContainer: ColumnContainer) {
+        wireTaskToggleDelegate(columnId)
         columnContainer.setupDragDrop(tdzDragDrop)
         columnContainer.setupFocusHandler {
             focus(columnId)
@@ -269,7 +311,7 @@ class CanvasColumns(val canvas: Canvas,
         styleSheet(ColumnContainer.accentStyleId(columnId)) {
             if (color != null) {
                 // !important: must beat the theme's global .tdz-card-header rule.
-                rule("#${DomIds.column(columnId)} .tdz-card-header") { important("background", color) }
+                rule("#${DomIds.column(columnId)} .${CssClasses.CARD_HEADER}") { important("background", color) }
             }
         }
     }
@@ -322,6 +364,21 @@ class CanvasColumns(val canvas: Canvas,
         columnIds.forEach { columnId ->
             reRenderColumn(columnId)
         }
+    }
+
+    /**
+     * Rebuild a single card element in place from the model — the column around it (sibling cards,
+     * scroll position, Sortable wiring) is untouched. Falls back to a full column re-render when
+     * the ref no longer resolves to an element + card (a stale ref after a structural change).
+     */
+    fun refreshCard(ref: CardRef) {
+        val el = getHtmlElement(DomIds.card(ref))
+        val card = cards(ref.columnId).getOrNull(ref.index)
+        if (el == null || card == null) {
+            refreshColumns(setOf(ref.columnId))
+            return
+        }
+        el.rebuildInPlace { with(CardRenderer) { renderCard(canvas.name, card, eventBus) } }
     }
 
     fun toggleMode(columnId: ColumnId = focusedColumn) {

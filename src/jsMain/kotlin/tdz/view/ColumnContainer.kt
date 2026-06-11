@@ -33,7 +33,10 @@ class ColumnContainer(
     val cards: List<Card>,
     val boundary: Boundary,
     private val columnId: ColumnId,
-    val eventBus: EventBus<TdzEvent>) {
+    val eventBus: EventBus<TdzEvent>,
+    /** Editor supplier — [CanvasColumns] hands out its CACHED instance so a mode toggle re-adopts
+     *  the live Ace editor instead of paying a full re-initialization. */
+    private val editorFor: (ColumnId) -> EditorColumn) {
 
     private var focused = false
     private var editorColumn: EditorColumn? = null
@@ -56,17 +59,19 @@ class ColumnContainer(
                 }
             }
             EDITOR -> {
-                val editor = EditorColumn(canvas, cards, columnId, eventBus)
+                val editor = editorFor(columnId)
                 editorColumn = editor
                 with(editor) {
-                    render()
+                    render(cards)
                 }
             }
         }
     }
 
     fun beforeRemoval() {
-        editorColumn?.destroy()
+        // Save + PARK the editor (not destroy): the cached instance is re-adopted on the next
+        // EDITOR render. Real teardown is CanvasColumns.saveEditors, on canvas dispose.
+        editorColumn?.detach()
         // The per-column accent <style> (see CanvasColumns.setColumnHeaderAccent) is re-injected on
         // (re)mount, so dropping it here keeps deleted columns from orphaning rules in <head>.
         document.getElementById(accentStyleId(columnId))?.remove()

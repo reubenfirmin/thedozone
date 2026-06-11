@@ -52,9 +52,22 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
         currentCanvas = getCanvas(canvasName)
     }
 
+    /**
+     * Parse cache, keyed by raw-markdown equality rather than write-path invalidation: every read
+     * still fetches the raw string (cheap), and re-parses only when it differs from the cached
+     * raw. So a write from ANY path — editor save, drag persist, a sync pull writing localStorage
+     * underneath this instance — naturally misses the cache; there is no hook to forget.
+     * Without this, cards() re-parsed on every call and getCardByIndex made drops O(n²).
+     */
+    private val parsedColumns = mutableMapOf<String, Pair<String, List<Card>>>()
+
     override fun cards(canvasName: CanvasName, columnId: ColumnId): List<Card> {
         val stored = fs.getColumn(canvasName, columnId) ?: return listOf()
-        return MarkdownService.fromMd(stored, columnId)
+        val key = "${canvasName.normalized()}|$columnId"
+        parsedColumns[key]?.let { (raw, parsed) -> if (raw == stored) return parsed }
+        val parsed = MarkdownService.fromMd(stored, columnId)
+        parsedColumns[key] = stored to parsed
+        return parsed
     }
 
     fun allCards(canvasName: CanvasName): List<List<Card>> {

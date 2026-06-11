@@ -45,7 +45,7 @@ import tdz.view.theme.ThemeManager
 import zoned.framework.interop.css
 import zoned.framework.interop.addToBody
 import zoned.framework.interop.important
-import zoned.framework.interop.styleSheet
+import tdz.view.theme.themedStyleSheet
 import zoned.framework.routing.Router
 import zoned.framework.routing.Zone.Companion.zone
 import zoned.framework.dom.onClick
@@ -292,7 +292,7 @@ class Index(val model: Model, val eventBus: EventBus<Event>) {
                 }
             }
         }
-        styleSheet("tdz-overlay-zone") {
+        themedStyleSheet("tdz-overlay-zone") {
             // !important: the zone's inline display:flex must lose when the zone is empty.
             rule("#${Zones.OVERLAY.elementId}:empty") { important("display", "none") }
         }

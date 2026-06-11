@@ -6,31 +6,33 @@ import kotlinx.html.*
 import tdz.controller.DragDrop
 import tdz.controller.events.Event
 import zoned.framework.events.EventBus
-import tdz.controller.events.TaskToggleDone
 import tdz.controller.events.SwitchToCanvas
 import tdz.model.*
 import tdz.model.ref
 import tdz.model.card.*
+import tdz.view.theme.FlourishStyle
 import tdz.view.theme.MarkerStyle
 import tdz.view.theme.ThemeManager
+import tdz.view.theme.themedStyleSheet
 import web.dom.document
 import web.html.HTMLCanvasElement
 import web.html.HTMLDivElement
+import web.html.HTMLElement
 import web.window.window
 import zoned.framework.dom.Ref
 import zoned.framework.dom.onClick
 import zoned.framework.dom.onMount
 import zoned.framework.dom.ref
 import zoned.framework.interop.backgroundClipText
+import zoned.framework.interop.containIntrinsicSize
 import zoned.framework.interop.css
 import zoned.framework.interop.getHtmlElement
 import zoned.framework.interop.important
-import zoned.framework.interop.styleSheet
 import zoned.framework.interop.webkitTextFillColor
 import zoned.framework.interop.webkitTextStroke
-import zoned.framework.libs.Leaflet
 import zoned.framework.libs.TileLayerOptions
-import zoned.framework.libs.draw
+import zoned.framework.libs.loadLeaflet
+import zoned.framework.libs.loadNomnoml
 
 /**
  * Cards -> Tags
@@ -49,8 +51,8 @@ object CardRenderer {
      * which feel cramped at the app's default (dense) spacing.
      */
     fun FlowContent.render(canvasName: CanvasName, cards: List<Card>, eventBus: EventBus<Event>, loose: Boolean = false) {
-        // Inject/refresh the shared rules ONCE per render pass — they are theme-keyed, not
-        // card-keyed, and styleSheet() does a DOM write per call.
+        // The shared rules are theme-keyed: themedStyleSheet re-injects only on a theme change
+        // (or a missing tag), so render passes after the first cost four no-op guard checks.
         ensureCardStyles()
         ensureHeadingStyles()
         ensureTaskStyles()
@@ -61,6 +63,42 @@ object CardRenderer {
     }
 
     private fun FlowContent.render(canvasName: CanvasName, card: Card, eventBus: EventBus<Event>, loose: Boolean) {
+        div(cardClasses(card, loose)) { buildCard(canvasName, card, eventBus, loose) }
+    }
+
+    /**
+     * Single-card entry at consumer level (returns the element): lets a changed card be rebuilt IN
+     * PLACE (`rebuildInPlace`) without re-rendering its column. Emits exactly the same DOM as the
+     * list-level [render] — minus the shared `ensure*Styles()` injection, which the surrounding
+     * render pass owns (a lone card rebuild can rely on them already being present).
+     */
+    fun TagConsumer<HTMLElement>.renderCard(
+        canvasName: CanvasName,
+        card: Card,
+        eventBus: EventBus<Event>,
+        loose: Boolean = false,
+    ): HTMLElement = div(cardClasses(card, loose)) { buildCard(canvasName, card, eventBus, loose) }
+
+    /**
+     * The card's full chrome as modifier classes over the `.tdz-card` base rule — elevation,
+     * chromeless h1-only title cards, the Material strip / TUI frame variants, loose spacing.
+     * (All styling is theme-keyed rules; the element carries no inline style at all.)
+     */
+    private fun cardClasses(card: Card, loose: Boolean): String {
+        val t = ThemeManager.current
+        val chromeless = card.isH1Only()
+        val leadingHeading = card.segments.firstOrNull() is CardHeading
+        return buildString {
+            append(CssClasses.CARD)
+            if (!chromeless && t.cardElevation.isNotEmpty()) append(" ${CssClasses.CARD_ELEV}")
+            if (chromeless) append(" ${CssClasses.CARD_CHROMELESS}")
+            else if (t.titleInStrip && leadingHeading) append(" ${CssClasses.CARD_STRIP}")
+            else if (t.titleInBorder && leadingHeading) append(" ${CssClasses.CARD_FRAMED}")
+            if (loose) append(" ${CssClasses.CARD_LOOSE}")
+        }
+    }
+
+    private fun DIV.buildCard(canvasName: CanvasName, card: Card, eventBus: EventBus<Event>, loose: Boolean) {
         val t = ThemeManager.current
         // TUI: a non-title card's leading heading becomes the panel's title, sitting in the top
         // border line (┌─ title ─┐). h1-only cards are excluded — they get the chromeless label
@@ -68,77 +106,38 @@ object CardRenderer {
         val frameTitle = if (t.titleInBorder && !card.isH1Only()) card.segments.firstOrNull() as? CardHeading else null
         // Material: a non-title card's leading heading goes into a full-bleed colored header strip.
         val stripTitle = if (t.titleInStrip && !card.isH1Only()) card.segments.firstOrNull() as? CardHeading else null
-        // An h1-only "title" card sits chrome-free on the column background — no fill, border, or
-        // shadow — so the heading reads as a section label, in every theme (DOS renders it ALL CAPS
-        // via the heading rule). Drag visuals are unaffected: the mirror/ghost force their own bg.
+        // The chrome itself (fill, border, shadow, strip/frame/chromeless variants) is class rules
+        // from [cardClasses] + [ensureCardStyles]; this builder only emits structure.
         val chromeless = card.isH1Only()
-        // Themes that supply cardElevation (e.g. Material elevation) get it via an injected class
-        // rule instead of the default hard offset; chromeless title cards never carry a shadow.
-        val elevated = !chromeless && t.cardElevation.isNotEmpty()
-        div(if (elevated) "tdz-card tdz-card-elev" else "tdz-card") {
-            css {
-                margin = Margin(t.cardMargin)
-                // Loose mode adds breathing room between stacked cards (e.g. the help overlay).
-                if (loose) marginBottom = 24.px
-                // A header strip is full-bleed, so its card drops top padding (the strip supplies it).
-                padding = if (stripTitle != null) Padding(0.px) else Padding(t.cardPadding)
-                if (chromeless) {
-                    // DOS: the section label sits on the column bg with breathing room above it.
-                    if (t.titleInBorder) paddingTop = 12.px
-                } else {
-                    border = Border(t.borderWidth, BorderStyle.solid, t.cardBorder)
-                    backgroundColor = t.cardBg
-                    borderRadius = t.cardRadius
-                    if (stripTitle != null) overflow = Overflow.hidden   // clip the strip to the rounded corners
-                    // hard, no-blur offset = 2D "arcade"/DOS dialog shadow (transparent in DOS = flat).
-                    // Skipped when the theme supplies its own (soft) elevation via cardElevation.
-                    if (!elevated) boxShadow += BoxShadow(t.cardShadow, 5.px, 5.px, 0.px)
-                    if (frameTitle != null) {
-                        position = Position.relative
-                        paddingTop = 16.px   // clear the title that straddles the top border
-                    }
-                }
+        id = DomIds.card(card.ref)
+        // Marks a section header so drag-and-drop can carry the cards beneath it as a group.
+        if (card.isH1Only()) attributes["data-h1only"] = "true"
+        if (frameTitle != null) {
+            span(CssClasses.CARD_FRAME_TITLE) {
+                +frameTitle.text
             }
-            id = DomIds.card(card.ref)
-            // Marks a section header so drag-and-drop can carry the cards beneath it as a group.
-            if (card.isH1Only()) attributes["data-h1only"] = "true"
-            if (frameTitle != null) {
-                span {
-                    css {
-                        position = Position.absolute
-                        top = (-11).px             // straddle the top border line (tuned for 19px font)
-                        left = 8.px
-                        padding = Padding(horizontal = 4.px, vertical = 0.px)
-                        backgroundColor = t.panelBg   // cover the border segment behind the title
-                        color = t.heading1
-                        whiteSpace = WhiteSpace.nowrap
-                    }
-                    +frameTitle.text
-                }
-            }
-            // Material header strip: the card title on a colored band across the top.
-            if (stripTitle != null) {
-                div("tdz-card-header") { +stripTitle.text }
-            }
-            // When a strip is present the body needs its own padding (the card's was zeroed).
-            val body: FlowContent.() -> Unit = {
-                for (segment in card.segments) {
-                    if (segment === frameTitle || segment === stripTitle) continue
-                    if (loose) {
-                        // Loose mode spaces segments apart (heading / text / quote sit too close by default).
-                        div {
-                            css { marginBottom = 12.px }
-                            renderSegment(canvasName, segment, card, eventBus)
-                        }
-                    } else {
+        }
+        // Material header strip: the card title on a colored band across the top.
+        if (stripTitle != null) {
+            div(CssClasses.CARD_HEADER) { +stripTitle.text }
+        }
+        // When a strip is present the body needs its own padding (the card's was zeroed).
+        val body: FlowContent.() -> Unit = {
+            for (segment in card.segments) {
+                if (segment === frameTitle || segment === stripTitle) continue
+                if (loose) {
+                    // Loose mode spaces segments apart (heading / text / quote sit too close by default).
+                    div(CssClasses.LOOSE_SEG) {
                         renderSegment(canvasName, segment, card, eventBus)
                     }
+                } else {
+                    renderSegment(canvasName, segment, card, eventBus)
                 }
-                // Ornamental centered divider at the foot of content cards (not h1-only title cards).
-                if (t.cardFooterFlourish && !chromeless) div("tdz-card-flourish") {}
             }
-            if (stripTitle != null) div("tdz-card-body") { body() } else body()
+            // Ornamental centered divider at the foot of content cards (not h1-only title cards).
+            if (t.cardFooterFlourish && !chromeless) div(CssClasses.CARD_FLOURISH) {}
         }
+        if (stripTitle != null) div(CssClasses.CARD_BODY) { body() } else body()
     }
 
     private fun FlowContent.renderSegment(canvasName: CanvasName, segment: CardSegment, card: Card, eventBus: EventBus<Event>) {
@@ -182,31 +181,17 @@ object CardRenderer {
     }
 
     fun FlowContent.renderSegment(canvasName: CanvasName, segment: CardListItem, card: Card, index: Int, eventBus: EventBus<Event>) {
-        div("tdz-task") {
-            css {
-                cursor = Cursor.pointer
-                // minimal vertical padding for density; the hover highlight still fills the full-width row
-                padding = Padding(vertical = 1.px, horizontal = 6.px)
-                paddingLeft = (6 + segment.level * 24).px
-                borderRadius = 4.px
-            }
+        div(CssClasses.TASK) {
+            // Only the per-instance indent is inline; the row chrome lives in the .tdz-task rules
+            // (one shared injection instead of a style-attribute build per row per render).
+            if (segment.level > 0) css { paddingLeft = (6 + segment.level * 24).px }
 
             label {
-                css { position = Position.relative; cursor = Cursor.pointer }
                 input(type = InputType.checkBox) {
-                    css { position = Position.absolute; opacity = 0.0; cursor = Cursor.pointer }
                     value = segment.done.toString()
                 }
 
-                span {
-                    // single css{} block: css{} replaces the whole style attribute, so a second
-                    // call on the same element silently wipes the first
-                    css {
-                        display = Display.inlineBlock
-                        paddingRight = 0.5.rem
-                        fontWeight = FontWeight.bold
-                        if (segment.done) color = ThemeManager.current.checkDone
-                    }
+                span(if (segment.done) "${CssClasses.MARKER} ${CssClasses.MARKER_DONE}" else CssClasses.MARKER) {
                     val ascii = ThemeManager.current.markerStyle == MarkerStyle.ASCII
                     if (segment.done) {
                         +(if (ascii) "[X]" else "\u2713")
@@ -230,12 +215,8 @@ object CardRenderer {
                     renderRichText(it, eventBus)
                 }
             }
-
-            onClick { event ->
-                eventBus.fire(TaskToggleDone(canvasName, card, segment))
-                event.stopPropagation()
-                event.preventDefault()
-            }
+            // No onClick here: toggling is handled by ONE delegated listener per column
+            // (CanvasColumns.wireTaskToggleDelegate), not a closure per row.
         }
     }
 
@@ -246,8 +227,29 @@ object CardRenderer {
      */
     private fun ensureHeadingStyles() {
         val theme = ThemeManager.current
-        styleSheet("tdz-heading-styles") {
-            rule(".tdz-h1") {
+        themedStyleSheet("tdz-heading-styles") {
+            rule(".${CssClasses.H2}") {
+                fontFamily = theme.headingFont
+                fontSize = theme.heading2FontSize     // 1em in a text-grid theme; larger elsewhere
+                fontWeight = FontWeight(theme.heading2FontWeight.toString())  // ignored by single-weight bitmap fonts (DOS)
+                if (theme.headingTransform == "lowercase") textTransform = TextTransform.lowercase
+                color = theme.heading2
+                paddingBottom = 4.px
+            }
+            rule(".${CssClasses.H3}") {
+                fontFamily = theme.headingFont
+                if (theme.headingTransform == "lowercase") textTransform = TextTransform.lowercase
+                fontSize = 1.125.rem
+                fontWeight = FontWeight.bold
+                paddingBottom = 8.px
+            }
+            rule(".${CssClasses.H4}") {
+                fontFamily = theme.headingFont
+                if (theme.headingTransform == "lowercase") textTransform = TextTransform.lowercase
+                fontSize = 1.125.rem
+                paddingBottom = 8.px
+            }
+            rule(".${CssClasses.H1}") {
                 fontFamily = theme.headingFont
                 fontWeight = FontWeight("${theme.heading1FontWeight}")
                 lineHeight = LineHeight("1.05")
@@ -255,16 +257,10 @@ object CardRenderer {
                 paddingTop = 0.1.em
                 paddingBottom = theme.heading1PadBottom
                 letterSpacing = theme.headingLetterSpacing
-                // DOS renders section labels in ALL CAPS (group-box / text-UI convention), with wider
-                // tracking and a slightly larger size so the tight bitmap caps stay legible.
-                if (theme.titleInBorder) {
-                    textTransform = TextTransform.uppercase
-                    letterSpacing = 0.18.em
-                    fontSize = 1.2.em
-                } else {
-                    textTransform = TextTransform.valueOf(theme.headingTransform)
-                    fontSize = theme.heading1FontSize
-                }
+                // Pure data — case/tracking/size all come from theme tokens (DOS sets uppercase +
+                // wide tracking there; no theme-identity branching here).
+                textTransform = TextTransform.valueOf(theme.headingTransform)
+                fontSize = theme.heading1FontSize
                 // Data-driven (not theme-identity): if the theme supplies a heading gradient, clip it to
                 // the text (remotestorage style); otherwise a monochrome fill dressed with a same-hue
                 // glow + hairline stroke.
@@ -283,54 +279,133 @@ object CardRenderer {
         }
     }
 
-    /** Inject/refresh card-level rules that need a class/pseudo-element selector (so inline css{} can't
-     *  carry them): line-height, the optional Material elevation + :hover lift, the ornamental ::before
-     *  footer divider, and the Material header strip. */
+    /** Inject/refresh the card chrome rules — the `.tdz-card` base (fill, border, shadow, spacing)
+     *  and its modifiers (elevation + :hover lift, chromeless title cards, Material strip, TUI
+     *  frame, loose spacing), plus the ornamental ::before footer divider. */
     private fun ensureCardStyles() {
         val t = ThemeManager.current
-        styleSheet("tdz-card-styles") {
-            rule(".tdz-card") { lineHeight = LineHeight(t.lineHeight) }
+        themedStyleSheet("tdz-card-styles") {
+            rule(".${CssClasses.CARD}") {
+                lineHeight = LineHeight(t.lineHeight)
+                margin = Margin(t.cardMargin)
+                padding = Padding(t.cardPadding)
+                border = Border(t.borderWidth, BorderStyle.solid, t.cardBorder)
+                backgroundColor = t.cardBg
+                borderRadius = t.cardRadius
+                // hard, no-blur offset = 2D "arcade"/DOS dialog shadow (transparent in DOS = flat).
+                // Overridden by .tdz-card-elev (soft elevation) and .tdz-card-chromeless (none) below.
+                boxShadow += BoxShadow(t.cardShadow, 5.px, 5.px, 0.px)
+                // Offscreen cards skip layout + paint entirely, so a long column costs what the
+                // viewport shows, not what the column holds. The intrinsic estimate stands in only
+                // until a card has rendered once (auto = the browser then remembers its real size).
+                // NOTE: content-visibility:auto applies PAINT containment at all times (size
+                // containment is the only skip-conditional part), clipping any descendant that
+                // paints outside the border box — .tdz-card-framed opts back out below for exactly
+                // that reason (its title straddles the top border).
+                contentVisibility = ContentVisibility.auto
+                containIntrinsicSize(120.px)
+            }
+            // Loose mode adds breathing room between stacked cards (e.g. the help overlay), and
+            // between the segments within them (the .tdz-loose-seg wrappers).
+            rule(".${CssClasses.CARD_LOOSE}") { marginBottom = 24.px }
+            rule(".${CssClasses.LOOSE_SEG}") { marginBottom = 12.px }
+            // Material header strip variant: full-bleed band, so the card zeroes its own padding
+            // (the .tdz-card-body supplies it back) and clips the strip to the rounded corners.
+            if (t.titleInStrip) {
+                rule(".${CssClasses.CARD_STRIP}") {
+                    padding = Padding(0.px)
+                    overflow = Overflow.hidden
+                }
+            }
+            // TUI frame variant: the title straddles the top border line.
+            if (t.titleInBorder) {
+                rule(".${CssClasses.CARD_FRAMED}") {
+                    position = Position.relative
+                    paddingTop = 16.px   // clear the title that straddles the top border
+                    // The base rule's content-visibility:auto paint containment would clip the
+                    // title's above-the-border half on EVERY card (not just skipped ones); framed
+                    // cards trade the skip optimization for an intact frame.
+                    contentVisibility = ContentVisibility.visible
+                }
+                rule(".${CssClasses.CARD_FRAME_TITLE}") {
+                    position = Position.absolute
+                    top = (-11).px             // straddle the top border line (tuned for 19px font)
+                    left = 8.px
+                    padding = Padding(horizontal = 4.px, vertical = 0.px)
+                    backgroundColor = t.panelBg   // cover the border segment behind the title
+                    color = t.heading1
+                    whiteSpace = WhiteSpace.nowrap
+                }
+            }
             // Soft/blurred elevation (Material) — css{} only does a single hard offset, so it's a rule.
             // A transition + optional deeper hover shadow give the Material "lift".
             if (t.cardElevation.isNotEmpty()) {
-                rule(".tdz-card-elev") {
+                rule(".${CssClasses.CARD_ELEV}") {
                     t.cardElevation.forEach { boxShadow += it }
                     transition += Transition("box-shadow", 0.18.s, Timing.ease)
                 }
                 if (t.cardElevationHover.isNotEmpty()) {
-                    rule(".tdz-card-elev:hover") { t.cardElevationHover.forEach { boxShadow += it } }
+                    rule(".${CssClasses.CARD_ELEV}:hover") { t.cardElevationHover.forEach { boxShadow += it } }
                 }
             }
-            // Elegant divider: a short centered line with a centered diamond (the ::before), sized to
-            // ~14% of the card and tinted via the muted icon color.
-            if (t.cardFooterFlourish) {
-                rule(".tdz-card-flourish") {
-                    position = Position.relative
-                    height = 1.px
-                    width = 14.pct
-                    minWidth = 44.px
-                    marginTop = 1.5.em
-                    marginBottom = 0.6.em
-                    marginLeft = LinearDimension.auto
-                    marginRight = LinearDimension.auto
-                    backgroundColor = t.icon
+            // An h1-only "title" card sits chrome-free on the column background — no fill, border,
+            // or shadow — so the heading reads as a section label, in every theme (DOS renders it
+            // ALL CAPS via the heading rule). Drag visuals are unaffected: the mirror/ghost force
+            // their own bg. Placed after the elevation rules so it wins the cascade.
+            rule(".${CssClasses.CARD_CHROMELESS}") {
+                border = Border.none
+                backgroundColor = Color.transparent
+                boxShadow = BoxShadows.none
+                // DOS: the section label sits on the column bg with breathing room above it.
+                if (t.titleInBorder) paddingTop = 12.px
+            }
+            // Card-footer divider, glyph set per theme: an elegant line-with-diamond, or Medium's
+            // centered three-dot section break.
+            if (t.cardFooterFlourish) when (t.flourishStyle) {
+                FlourishStyle.LINE_DIAMOND -> {
+                    // A short centered line (~14% of the card) with a centered diamond (the ::before),
+                    // tinted via the muted icon color.
+                    rule(".${CssClasses.CARD_FLOURISH}") {
+                        position = Position.relative
+                        height = 1.px
+                        width = 14.pct
+                        minWidth = 44.px
+                        marginTop = 1.5.em
+                        marginBottom = 0.6.em
+                        marginLeft = LinearDimension.auto
+                        marginRight = LinearDimension.auto
+                        backgroundColor = t.icon
+                    }
+                    rule(".${CssClasses.CARD_FLOURISH}::before") {
+                        content = QuotedString("")
+                        position = Position.absolute
+                        left = 50.pct
+                        top = (-4).px
+                        width = 8.px
+                        height = 8.px
+                        marginLeft = (-4).px
+                        backgroundColor = t.icon
+                        transform { rotate(45.deg) }
+                    }
                 }
-                rule(".tdz-card-flourish::before") {
-                    content = QuotedString("")
-                    position = Position.absolute
-                    left = 50.pct
-                    top = (-4).px
-                    width = 8.px
-                    height = 8.px
-                    marginLeft = (-4).px
-                    backgroundColor = t.icon
-                    transform { rotate(45.deg) }
+                FlourishStyle.DOTS -> {
+                    rule(".${CssClasses.CARD_FLOURISH}") {
+                        textAlign = TextAlign.center
+                        marginTop = 1.2.em
+                        marginBottom = 0.4.em
+                        color = t.icon
+                    }
+                    rule(".${CssClasses.CARD_FLOURISH}::before") {
+                        content = QuotedString("· · ·")
+                        letterSpacing = 0.35.em
+                        fontSize = 1.1.em
+                    }
                 }
             }
             // Material header strip: a full-bleed colored band carrying the card title, with the body
             // padded back in (the card itself zeroes its padding when a strip is present).
             if (t.titleInStrip) {
-                rule(".tdz-card-header") {
+                rule(".${CssClasses.CARD_HEADER}") {
                     backgroundColor = t.cardHeaderBg
                     color = t.cardHeaderFg
                     fontFamily = t.headingFont
@@ -338,7 +413,7 @@ object CardRenderer {
                     fontSize = 1.05.rem
                     padding = Padding(vertical = 12.px, horizontal = 16.px)
                 }
-                rule(".tdz-card-body") { padding = Padding(t.cardPadding) }
+                rule(".${CssClasses.CARD_BODY}") { padding = Padding(t.cardPadding) }
             }
         }
     }
@@ -346,63 +421,59 @@ object CardRenderer {
     /** Inject/refresh canvas-link chip styling — no underline, and a hover (brighten + arcade shadow). */
     private fun ensureLinkStyles() {
         val t = ThemeManager.current
-        styleSheet("tdz-link-styles") {
-            rule(".tdz-canvas-link") { textDecoration = TextDecoration.none }
-            rule(".tdz-canvas-link:hover") {
+        themedStyleSheet("tdz-link-styles") {
+            rule(".${CssClasses.CANVAS_LINK}") { textDecoration = TextDecoration.none }
+            rule(".${CssClasses.CANVAS_LINK}:hover") {
                 important("background-color", t.linkHoverBg)   // must beat the chip's base fill
                 boxShadow += BoxShadow(t.cardShadow, 2.px, 2.px, 0.px)   // hard arcade offset
             }
         }
     }
 
-    /** Inject/refresh the task-row hover highlight — a large hover target over checkbox rows. */
+    /**
+     * Inject/refresh the task-row rules: row chrome + hover highlight, the visually-hidden
+     * checkbox, and the marker glyph (shared with callouts). All static per theme — only the
+     * per-instance indent stays inline on the row.
+     */
     private fun ensureTaskStyles() {
-        styleSheet("tdz-task-styles") {
-            rule(".tdz-task:hover") { backgroundColor = ThemeManager.current.taskHover }
+        val t = ThemeManager.current
+        themedStyleSheet("tdz-task-styles") {
+            rule(".${CssClasses.TASK}") {
+                cursor = Cursor.pointer
+                // minimal vertical padding for density; the hover highlight still fills the full-width row
+                padding = Padding(vertical = 1.px, horizontal = 6.px)
+                borderRadius = 4.px
+            }
+            rule(".${CssClasses.TASK}:hover") { backgroundColor = t.taskHover }
+            rule(".${CssClasses.TASK} label") { position = Position.relative; cursor = Cursor.pointer }
+            rule(".${CssClasses.TASK} input") { position = Position.absolute; opacity = 0.0; cursor = Cursor.pointer }
+            rule(".${CssClasses.MARKER}") {
+                display = Display.inlineBlock
+                paddingRight = 0.5.rem
+                fontWeight = FontWeight.bold
+            }
+            rule(".${CssClasses.MARKER_DONE}") { color = t.checkDone }
+            rule(".${CssClasses.CALLOUT}") { padding = Padding(vertical = 1.px, horizontal = 6.px) }
         }
     }
 
     private fun FlowContent.renderSegment(segment: CardHeading) {
         when (segment.level) {
             1 -> {
-                h1("tdz-h1") {
+                h1(CssClasses.H1) {
                     +segment.text
                 }
             }
 
-            2 -> h2 {
-                css {
-                    val t = ThemeManager.current
-                    fontFamily = t.headingFont
-                    fontSize = t.heading2FontSize     // 1em in a text-grid theme; larger elsewhere
-                    fontWeight = FontWeight(t.heading2FontWeight.toString())  // ignored by single-weight bitmap fonts (DOS)
-                    if (t.headingTransform == "lowercase") textTransform = TextTransform.lowercase
-                    color = t.heading2
-                    paddingBottom = 4.px
-                }
+            2 -> h2(CssClasses.H2) {
                 +segment.text
             }
 
-            3 -> h3 {
-                css {
-                    val t = ThemeManager.current
-                    fontFamily = t.headingFont
-                    if (t.headingTransform == "lowercase") textTransform = TextTransform.lowercase
-                    fontSize = 1.125.rem
-                    fontWeight = FontWeight.bold
-                    paddingBottom = 8.px
-                }
+            3 -> h3(CssClasses.H3) {
                 +segment.text
             }
 
-            4 -> h4 {
-                css {
-                    val t = ThemeManager.current
-                    fontFamily = t.headingFont
-                    if (t.headingTransform == "lowercase") textTransform = TextTransform.lowercase
-                    fontSize = 1.125.rem
-                    paddingBottom = 8.px
-                }
+            4 -> h4(CssClasses.H4) {
                 +segment.text
             }
 
@@ -421,18 +492,11 @@ object CardRenderer {
     }
 
     private fun FlowContent.renderSegment(segment: Callout, card: Card, eventBus: EventBus<Event>) {
-        div("tdz-callout") {
-            css {
-                padding = Padding(vertical = 1.px, horizontal = 6.px)
-                paddingLeft = (6 + segment.level * 24).px
-            }
+        div(CssClasses.CALLOUT) {
+            // Row chrome from the .tdz-callout rule; only the per-instance indent is inline.
+            if (segment.level > 0) css { paddingLeft = (6 + segment.level * 24).px }
             val ascii = ThemeManager.current.markerStyle == MarkerStyle.ASCII
-            span {
-                css {
-                    display = Display.inlineBlock
-                    paddingRight = 0.5.rem
-                    fontWeight = FontWeight.bold
-                }
+            span(CssClasses.MARKER) {
                 +(if (ascii) ">" else when (segment.weight) {
                     1 -> "▷"
                     2 -> "▶"
@@ -474,9 +538,10 @@ object CardRenderer {
             // framework appends it in finalize() *then* runs onMount; a synchronous getElementById
             // during construction would (and did) return null, so draw never ran and the canvas was blank.
             onMount {
-                try {
-                    draw(canvasRef.element, noml)
-                } catch (e: Throwable) {
+                // nomnoml is code-split: fetched on the first card that actually has a diagram.
+                loadNomnoml().then { nomnoml ->
+                    nomnoml.draw(canvasRef.element, noml)
+                }.catch { e ->
                     console.error("nomnoml draw failed", e)
                 }
             }
@@ -561,9 +626,11 @@ object CardRenderer {
                 height = (link.height ?: 200).px
             }
             onMount {
-                try {
-                    val map = Leaflet.map(mapRef.element)
-                    Leaflet.tileLayer(
+                // Leaflet (and its CSS) are code-split: fetched on the first card with a map.
+                loadLeaflet().then { leaflet ->
+                    if (!mapRef.element.isConnected) return@then   // card re-rendered while loading
+                    val map = leaflet.map(mapRef.element)
+                    leaflet.tileLayer(
                         "https://{s}.tile.osm.org/{z}/{x}/{y}.png",
                         object : TileLayerOptions {
                             override var attribution: String? =
@@ -574,9 +641,9 @@ object CardRenderer {
                     ).addTo(map)
                     map.setView(arrayOf(link.lat, link.long), link.zoom ?: 12)
                     map.invalidateSize()
-                } catch (e: Throwable) {
-                    // Map failed to initialize (e.g. tile/network issue); leave the container empty
-                    // rather than breaking the rest of the card.
+                }.catch {
+                    // Map failed to initialize (e.g. chunk/tile/network issue); leave the container
+                    // empty rather than breaking the rest of the card.
                 }
             }
         }
@@ -591,13 +658,13 @@ object CardRenderer {
     private fun FlowContent.renderRichText(link: CanvasLink, eventBus: EventBus<Event>) {
         val linkId = DomIds.canvasLink(link.canvasName)
 
-        span("canvas-drop-zone") {
+        span(CssClasses.DROP_ZONE) {
             attributes["data-canvas-name"] = link.canvasName.normalized()
             id = linkId
             css { display = Display.inlineBlock }
 
             // Fancy chip: bordered pill in the link color with a nav arrow; hover brightens + arcade shadow.
-            a("tdz-canvas-link") {
+            a(CssClasses.CANVAS_LINK) {
                 css {
                     cursor = Cursor.pointer
                     display = Display.inlineBlock

@@ -7,8 +7,10 @@ import tdz.controller.events.ColumnEdited
 import tdz.controller.events.ColumnsChanged
 import tdz.controller.events.Event
 import zoned.framework.events.EventBus
+import tdz.controller.events.RefreshCard
 import tdz.controller.events.RefreshColumns
 import tdz.controller.events.TaskToggleDone
+import tdz.model.ref
 import tdz.model.CanvasName
 import tdz.model.LayoutTemplate.SINGLE_PANE
 import tdz.model.LayoutTemplates.canvasFromTemplate
@@ -30,9 +32,11 @@ class ControllerEventCycleTest {
     private class Captured(bus: EventBus<Event>) {
         val changed = mutableListOf<ColumnsChanged>()
         val refreshed = mutableListOf<RefreshColumns>()
+        val cardRefreshed = mutableListOf<RefreshCard>()
         init {
             bus.on<ColumnsChanged> { changed += it }
             bus.on<RefreshColumns> { refreshed += it }
+            bus.on<RefreshCard> { cardRefreshed += it }
         }
     }
 
@@ -56,7 +60,9 @@ class ControllerEventCycleTest {
 
         assertEquals(listOf(setOf(ColumnId(1))), captured.changed.map { it.columnIds }, "toggle is a model fact sync must see")
         assertTrue(captured.changed.none { it.remote }, "local mutations are not remote")
-        assertEquals(listOf(setOf(ColumnId(1))), captured.refreshed.map { it.columnIds })
+        // A toggle repaints ONE glyph — it re-renders one card in place, never the whole column.
+        assertEquals(listOf(card.ref), captured.cardRefreshed.map { it.ref })
+        assertEquals(0, captured.refreshed.size, "no column rebuild for a single-card change")
         val toggled = (model.cards(canvas, ColumnId(1)).first().segments.first { it is ListGroup } as ListGroup)
             .members.filterIsInstance<CardListItem>().first()
         assertTrue(toggled.done, "the model actually toggled")

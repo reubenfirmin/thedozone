@@ -22,9 +22,10 @@ class ColumnContainerTest {
         assertNotNull(document.getElementById("tdz-col-accent-$columnId"))
 
         val canvas = canvasFromTemplate(CanvasName("_accent-test"), null, SINGLE_PANE)
+        val bus = EventBus<Event>()
         val container = ColumnContainer(
-            canvas, Mode.CARD, emptyList(), Boundary(0, 0, 100, 100), columnId, EventBus<Event>(),
-        )
+            canvas, Mode.CARD, emptyList(), Boundary(0, 0, 100, 100), columnId, bus,
+        ) { id -> EditorColumn(canvas, id, bus) }
         container.beforeRemoval()
 
         assertNull(

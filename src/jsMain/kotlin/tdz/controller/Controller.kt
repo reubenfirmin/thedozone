@@ -10,7 +10,9 @@ import tdz.controller.events.DeleteColumn
 import tdz.controller.events.Event
 import zoned.framework.events.EventBus
 import tdz.controller.events.RefreshCanvas
+import tdz.controller.events.RefreshCard
 import tdz.controller.events.RefreshColumns
+import tdz.model.ref
 import tdz.controller.events.SplitColumn
 import tdz.controller.events.TaskToggleDone
 import tdz.model.Model
@@ -23,8 +25,9 @@ class Controller(eventBus: EventBus<Event>, model: Model) {
             model.toggleDone(event.canvasName, event.card, event.segment)
             val changed = setOf(event.card.metadata.columnId)
             eventBus.fire(ColumnsChanged(event.canvasName, changed))
-            // Re-render the card's column from the (now updated) model so the checkbox reflects state.
-            eventBus.fire(RefreshColumns(event.canvasName, changed))
+            // Toggling rewrites the card's content but not the column's order, so the card's ref is
+            // still valid — re-render just that card in place instead of rebuilding the column.
+            eventBus.fire(RefreshCard(event.canvasName, event.card.ref))
         }
 
         eventBus.on<ColumnEdited> { event ->
@@ -52,8 +55,12 @@ class Controller(eventBus: EventBus<Event>, model: Model) {
             event.fromCards?.let { model.saveCards(event.canvasName, event.fromColumnId, it) }
             val changed = setOf(event.fromColumnId, event.toColumnId)
             eventBus.fire(ColumnsChanged(event.canvasName, changed))
-            // Re-render so the positional card ids reflect the new order.
-            eventBus.fire(RefreshColumns(event.canvasName, changed))
+            // Re-render so the positional card ids reflect the new order — except when the drop
+            // already left the DOM in the persisted order with renumbered ids (single-card drags):
+            // rebuilding then would only re-create, element by element, what the browser is showing.
+            if (!event.domAlreadyOrdered) {
+                eventBus.fire(RefreshColumns(event.canvasName, changed))
+            }
         }
 
         eventBus.on<CardsSentToCanvas> { event ->

@@ -11,10 +11,10 @@ import kotlinx.html.div
 import web.dom.document
 import web.html.HTMLCanvasElement
 import zoned.framework.interop.addToBody
+import tdz.pollUntil
+import kotlin.js.Promise
 import kotlin.test.AfterTest
 import kotlin.test.Test
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 /**
  * Regression: nomnoml diagrams rendered blank. The renderer looked the canvas up via
@@ -22,6 +22,7 @@ import kotlin.test.assertTrue
  * appended the element to the DOM (it appends in finalize(), then runs onMount callbacks).
  * The lookup returned null, the non-null cast threw, the silent catch swallowed it, and
  * draw() never ran. The fix defers draw() to onMount via a Ref, like the map/canvas-link renderers.
+ * (nomnoml is code-split now, so the draw also waits on its chunk — hence the poll.)
  */
 class CardDiagramRenderTest {
 
@@ -30,8 +31,22 @@ class CardDiagramRenderTest {
         document.body?.asDynamic()?.innerHTML = ""
     }
 
+    /** nomnoml paints shapes/text; until then every pixel is transparent. Scan the alpha channel. */
+    private fun canvasHasInk(canvas: HTMLCanvasElement): Boolean {
+        // Dynamic context avoids kotlin-wrappers getContext/ImageData overload churn.
+        val ctx = canvas.asDynamic().getContext("2d")
+        val data = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+        val length = data.length as Int
+        var i = 3
+        while (i < length) {
+            if ((data[i] as Int) > 0) return true
+            i += 4
+        }
+        return false
+    }
+
     @Test
-    fun diagramIsDrawnOntoCanvas() {
+    fun diagramIsDrawnOntoCanvas(): Promise<Unit> {
         val card = Card(listOf(CardDiagram("[A] -> [B]")), CardMetadata(ColumnId(0)), 0)
         addToBody {
             div {
@@ -41,24 +56,8 @@ class CardDiagramRenderTest {
             }
         }
 
-        val canvas = document.querySelector("canvas") as? HTMLCanvasElement
-        assertNotNull(canvas, "a canvas element should be rendered for the diagram")
-
-        // nomnoml paints shapes/text onto the canvas; with the bug nothing is drawn (all pixels
-        // transparent). Scan the alpha channel for any painted pixel. Use a dynamic context to
-        // avoid kotlin-wrappers getContext/ImageData overload churn.
-        val ctx = canvas.asDynamic().getContext("2d")
-        val data = ctx.getImageData(0, 0, canvas.width, canvas.height).data
-        val length = data.length as Int
-        var drew = false
-        var i = 3
-        while (i < length) {
-            if ((data[i] as Int) > 0) {
-                drew = true
-                break
-            }
-            i += 4
+        return pollUntil("nomnoml chunk to load and paint the diagram") {
+            (document.querySelector("canvas") as? HTMLCanvasElement)?.let { canvasHasInk(it) } == true
         }
-        assertTrue(drew, "nomnoml should have painted the diagram onto the canvas (it was blank)")
     }
 }

@@ -76,5 +76,21 @@ data class Card(val segments: List<CardSegment>, val metadata: CardMetadata, val
             return drop(h1Index + 1).takeWhile { !it.isH1Only() }
         }
 
+        /**
+         * The card's checkable items in RENDER order — list groups in segment order, nested groups
+         * depth-first — matching CardRenderer's traversal exactly. This is the positional contract
+         * the delegated task-click handler relies on: the clicked row's ordinal among the card's
+         * task-row elements indexes into this list.
+         */
+        fun Card.taskItems(): List<CardListItem> {
+            fun collect(group: ListGroup): List<CardListItem> = group.members.flatMap { member ->
+                when (member) {
+                    is CardListItem -> listOf(member)
+                    is ListGroup -> collect(member)
+                    else -> emptyList()
+                }
+            }
+            return segments.filterIsInstance<ListGroup>().flatMap { collect(it) }
+        }
     }
 }

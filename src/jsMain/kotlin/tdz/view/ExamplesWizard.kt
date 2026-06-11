@@ -11,7 +11,9 @@ import zoned.framework.dom.Ref
 import zoned.framework.dom.onClick
 import zoned.framework.dom.ref
 import zoned.framework.interop.addToBody
-import zoned.framework.interop.styleSheet
+import zoned.framework.interop.brightness
+import zoned.framework.interop.filter
+import tdz.view.theme.themedStyleSheet
 import zoned.framework.routing.Zone.Companion.zone
 
 /**
@@ -52,7 +54,7 @@ object ExamplesWizard {
 
     private fun ensureStyles() {
         val t = ThemeManager.current
-        styleSheet("$ID-styles") {
+        themedStyleSheet("$ID-styles") {
             rule("#$ID") {
                 position = Position.fixed
                 top = 0.px; left = 0.px; right = 0.px; bottom = 0.px
@@ -94,7 +96,7 @@ object ExamplesWizard {
                 padding = Padding(vertical = 8.px, horizontal = 16.px)
             }
             rule("#$ID .tdz-wiz-close:hover") {
-                put("filter", "brightness(1.08)")
+                filter(brightness(1.08))
             }
         }
     }

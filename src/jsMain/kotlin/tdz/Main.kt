@@ -10,9 +10,9 @@ import tdz.model.Model
 import tdz.view.Zones
 import tdz.view.help.HelpTopic
 import tdz.view.theme.ThemeManager
+import tdz.view.theme.longFormTheme
 import tdz.view.theme.themes
 import zoned.framework.*
-import zoned.framework.libs.initLeaflet
 import zoned.framework.routing.RenderMode
 import zoned.framework.routing.Router
 import zoned.framework.routing.Routes
@@ -77,9 +77,11 @@ object settingsPages : Routes<Index>(tdzIndex, "/settings") {
 }
 
 fun main() {
-    initLeaflet()
     // Restore the saved theme before the first render so its colors/font apply immediately.
-    tdzModel.getTheme()?.let { saved -> themes.firstOrNull { it.name == saved } }?.let { ThemeManager.use(it) }
+    tdzModel.getTheme()?.let { saved ->
+        themes.firstOrNull { it.name == saved }
+            ?: longFormTheme.takeIf { saved == "Immaterial" }   // theme renamed; honor old saves
+    }?.let { ThemeManager.use(it) }
     tdz.sync.SyncBootstrap.init(tdzModel, eventBus)
     // Passing the collections IS their registration — an unmounted collection contributes no
     // routes, and any typed Route.path() link to it fails loudly naming the missing mount.

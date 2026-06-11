@@ -12,10 +12,14 @@ import zoned.framework.interop.addToBody
 import zoned.framework.interop.classes
 import zoned.framework.interop.css
 import zoned.framework.interop.animation
+import zoned.framework.interop.blur
+import zoned.framework.interop.brightness
 import zoned.framework.interop.conicGradient
+import zoned.framework.interop.dropShadow
+import zoned.framework.interop.filter
 import zoned.framework.interop.keyframes
 import zoned.framework.interop.radialGradient
-import zoned.framework.interop.styleSheet
+import tdz.view.theme.themedStyleSheet
 import zoned.framework.interop.transformOrigin
 import zoned.framework.routing.Zone.Companion.zone
 
@@ -113,7 +117,7 @@ object WormholePortal {
 
         val el = cardEl.cloneNode(true) as HTMLElement
         el.removeAttribute("id")
-        el.classList.remove(ClassName("tdz-card-ghost"), ClassName("sortable-ghost"))
+        el.classList.remove(ClassName(CssClasses.CARD_GHOST), ClassName("sortable-ghost"))
         el.css {
             position = Position.fixed
             left = (startCx - w / 2).px
@@ -176,27 +180,27 @@ object WormholePortal {
         val c = ThemeManager.current.link
         val edge = Color("rgba(0,0,0,0)")
         val horizon = Color("rgba(0,0,0,0.92)")
-        styleSheet("tdz-wormhole-styles") {
-            val spin = keyframes("tdz-wh-spin") { to { put("transform", "rotate(360deg)") } }
-            val spinReverse = keyframes("tdz-wh-spin-rev") { to { put("transform", "rotate(-360deg)") } }
-            val diskSpin = keyframes("tdz-bh-spin") { to { put("transform", "rotate(360deg)") } }
+        themedStyleSheet("tdz-wormhole-styles") {
+            val spin = keyframes("tdz-wh-spin") { to { transform { rotate(360.deg) } } }
+            val spinReverse = keyframes("tdz-wh-spin-rev") { to { transform { rotate((-360).deg) } } }
+            val diskSpin = keyframes("tdz-bh-spin") { to { transform { rotate(360.deg) } } }
             val pulse = keyframes("tdz-wh-pulse") {
-                at(0.pct, 100.pct) { put("transform", "scale(1)") }
-                at(50.pct) { put("transform", "scale(1.07)") }
+                at(0.pct, 100.pct) { transform { scale(1) } }
+                at(50.pct) { transform { scale(1.07) } }
             }
             val vortexFlash = keyframes("tdz-wh-vflash") {
-                at(0.pct) { put("transform", "scale(1)"); put("filter", "brightness(1) drop-shadow(0 0 10px $c)") }
-                at(40.pct) { put("transform", "scale(1.4)"); put("filter", "brightness(2.4) drop-shadow(0 0 28px $c)") }
-                at(100.pct) { put("transform", "scale(0.7)"); opacity = 0.0; put("filter", "brightness(1) drop-shadow(0 0 10px $c)") }
+                at(0.pct) { transform { scale(1) }; filter(brightness(1), dropShadow(0.px, 0.px, 10.px, c)) }
+                at(40.pct) { transform { scale(1.4) }; filter(brightness(2.4), dropShadow(0.px, 0.px, 28.px, c)) }
+                at(100.pct) { transform { scale(0.7) }; opacity = 0.0; filter(brightness(1), dropShadow(0.px, 0.px, 10.px, c)) }
             }
             val holeFlash = keyframes("tdz-wh-bhflash") {
-                at(0.pct) { put("transform", "scale(1)"); put("filter", "brightness(1) drop-shadow(0 0 14px $c)") }
-                at(30.pct) { put("transform", "scale(1.18)"); put("filter", "brightness(2.6) drop-shadow(0 0 30px $c)") }
-                at(100.pct) { put("transform", "scale(0.55)"); opacity = 0.0; put("filter", "brightness(1) drop-shadow(0 0 14px $c)") }
+                at(0.pct) { transform { scale(1) }; filter(brightness(1), dropShadow(0.px, 0.px, 14.px, c)) }
+                at(30.pct) { transform { scale(1.18) }; filter(brightness(2.6), dropShadow(0.px, 0.px, 30.px, c)) }
+                at(100.pct) { transform { scale(0.55) }; opacity = 0.0; filter(brightness(1), dropShadow(0.px, 0.px, 14.px, c)) }
             }
             val shockwave = keyframes("tdz-bh-shock") {
-                at(0.pct) { opacity = 0.9; put("transform", "scale(0.2)") }
-                at(100.pct) { opacity = 0.0; put("transform", "scale(3)") }
+                at(0.pct) { opacity = 0.9; transform { scale(0.2) } }
+                at(100.pct) { opacity = 0.0; transform { scale(3) } }
             }
 
             // z-index sits above Sortable's drag mirror (~100000) so the portal glows on top of the
@@ -217,21 +221,21 @@ object WormholePortal {
             }
 
             // ---- VORTEX ----
-            rule("#$ID.tdz-wh-vortex") { put("filter", "drop-shadow(0 0 10px $c)") }
+            rule("#$ID.tdz-wh-vortex") { filter(dropShadow(0.px, 0.px, 10.px, c)) }
             rule("#$ID.tdz-wh-vortex.tdz-wh-on") {
                 animation(pulse, 1.6.s, Timing.easeInOut, iterationCount = IterationCount.infinite)
             }
-            rule("#$ID .tdz-wh-swirl, #$ID .tdz-wh-core") { put("inset", "0") }
+            rule("#$ID .tdz-wh-swirl, #$ID .tdz-wh-core") { inset = Inset(0.px) }
             rule("#$ID .tdz-wh-swirl") {
                 backgroundImage = conicGradient(from = 0.deg) {
                     stop(Color.transparent, 0.deg); stop(c, 60.deg); stop(Color.transparent, 140.deg)
                     stop(c, 220.deg); stop(Color.transparent, 320.deg)
                 }
                 animation(spin, 1.1.s, Timing.linear, iterationCount = IterationCount.infinite)
-                put("filter", "blur(1px)")
+                filter(blur(1.px))
             }
             rule("#$ID .tdz-wh-swirl2") {
-                put("inset", "16%")
+                inset = Inset(16.pct)
                 opacity = 0.85
                 backgroundImage = conicGradient(from = 90.deg) {
                     stop(Color.transparent, 0.deg); stop(c, 50.deg); stop(Color.transparent, 120.deg)
@@ -250,19 +254,19 @@ object WormholePortal {
             }
 
             // ---- BLACK HOLE ----
-            rule("#$ID.tdz-wh-bh") { put("filter", "drop-shadow(0 0 14px $c)") }
+            rule("#$ID.tdz-wh-bh") { filter(dropShadow(0.px, 0.px, 14.px, c)) }
             rule("#$ID.tdz-wh-bh.tdz-wh-on") {
                 animation(pulse, 2.2.s, Timing.easeInOut, iterationCount = IterationCount.infinite)
             }
             rule("#$ID .tdz-bh-glow") {
-                put("inset", "-22%")
-                put("filter", "blur(7px)")
+                inset = Inset((-22).pct)
+                filter(blur(7.px))
                 opacity = 0.55
                 backgroundImage = radialGradient { stop(c, 0.pct); stop(edge, 62.pct) }
             }
             rule("#$ID .tdz-bh-disk") {
-                put("inset", "0")
-                put("filter", "blur(2px)")
+                inset = Inset(0.px)
+                filter(blur(2.px))
                 animation(diskSpin, 0.9.s, Timing.linear, iterationCount = IterationCount.infinite)
                 backgroundImage = conicGradient(from = 0.deg) {
                     stop(edge, 0.deg); stop(c, 40.deg); stop(Color.white, 70.deg); stop(c, 110.deg)
@@ -270,17 +274,18 @@ object WormholePortal {
                 }
             }
             rule("#$ID .tdz-bh-core") {
-                put("inset", "23%")
+                inset = Inset(23.pct)
                 backgroundImage = radialGradient(at = "center") {
                     stop(Color.black, 50.pct); stop(c, 59.pct); stop(Color.white, 66.pct); stop(edge, 76.pct)
                 }
-                put("box-shadow", "inset 0 0 12px #000, 0 0 16px $c")
+                boxShadow += BoxShadowInset(Color("#000"), 0.px, 0.px, 12.px, 0.px)
+                boxShadow += BoxShadow(c, 0.px, 0.px, 16.px, 0.px)
             }
             rule("#$ID .tdz-bh-shock") {
-                put("inset", "30%")
+                inset = Inset(30.pct)
                 border = Border(2.px, BorderStyle.solid, c)
                 opacity = 0.0
-                put("transform", "scale(0.2)")
+                transform { scale(0.2) }
             }
             rule("#$ID.tdz-wh-bh.tdz-wh-flash") {
                 opacity = 1.0

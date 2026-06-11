@@ -19,29 +19,41 @@ import zoned.framework.dom.onMount
 import kotlinx.css.*
 import kotlinx.css.properties.*
 import zoned.framework.interop.css
+import zoned.framework.interop.getHtmlElement
 import zoned.framework.interop.important
-import zoned.framework.interop.styleSheet
-import zoned.framework.libs.Ace
+import tdz.view.theme.themedStyleSheet
 import zoned.framework.libs.AceEditor
 import zoned.framework.libs.aceCommand
 import zoned.framework.libs.aceRange
-import zoned.framework.libs.ensureAceResolver
+import zoned.framework.libs.loadAce
 import tdz.view.theme.ThemeManager
 
 /**
- * Editor mode for a column using Ace editor
+ * Editor mode for a column using Ace editor.
+ *
+ * Kept ALIVE across mode toggles (Ace init — DOM build, tokenizer, mode load — is the app's
+ * heaviest single interaction): [detach] saves and parks the live editor element, and the next
+ * [render] re-adopts it, refreshing the buffer from the model. [destroy] is real teardown, called
+ * only when the canvas render is disposed ([CanvasColumns.saveEditors]).
  */
 class EditorColumn(
     val canvas: Canvas,
-    val cards: List<Card>,
     val columnId: ColumnId,
     val eventBus: EventBus<Event>
 ) {
 
     private var aceEditor: AceEditor? = null
+    /** The editor's root element, parked here across detach/re-adopt (Ace's DOM lives inside). */
+    private var rootEl: web.html.HTMLElement? = null
+    /** Number of full Ace initializations — the reuse contract is that toggles keep this at 1. */
+    internal var initCount = 0
+        private set
 
-    fun FlowContent.render() {
+    fun FlowContent.render(cards: List<Card>) {
         val editorId = DomIds.editor(columnId)
+        val text = MarkdownService.toMd(cards, false).let {
+            if (it.isNotEmpty()) "$it\n" else it
+        }
 
         div {
             id = editorId
@@ -54,9 +66,32 @@ class EditorColumn(
 
             // Setup Ace editor after DOM is ready
             onMount {
-                ensureAceResolver()   // wire webpack-bundled theme/mode/worker URLs before edit
-                aceEditor = Ace.edit(editorId)
-                aceEditor?.let { editor ->
+                val parked = rootEl
+                val existing = aceEditor
+                if (parked != null && existing != null) {
+                    // Re-adopt the parked editor: swap the freshly built (empty) div for the parked
+                    // element with the live Ace DOM, refresh the buffer from the model (the column
+                    // may have changed while in CARD mode), and resize to the new slot.
+                    getHtmlElement(editorId)?.let { fresh ->
+                        fresh.parentElement?.replaceChild(parked, fresh)
+                    }
+                    if (existing.getValue() != text) {
+                        existing.setValue(text)
+                        existing.clearSelection()
+                    }
+                    existing.focus()
+                    existing.resize()
+                    return@onMount
+                }
+
+                // Ace is code-split: nobody pays its load/parse until the first editor opens.
+                loadAce().then { ace ->
+                    // The chunk fetch yielded; bail if the column was re-rendered/toggled meanwhile.
+                    val el = getHtmlElement(editorId) ?: return@then
+                    initCount++
+                    rootEl = el
+                    val editor = ace.edit(editorId)
+                    aceEditor = editor
                     // Configure editor
                     editor.setTheme(ThemeManager.current.editorTheme)
                     editor.setFontSize(16)
@@ -71,10 +106,6 @@ class EditorColumn(
                     installEditorShortcuts(editor)
                     ensureEditorMarkdownStyles()
 
-                    // Load content from cards
-                    val text = MarkdownService.toMd(cards, false).let {
-                        if (it.isNotEmpty()) "$it\n" else it
-                    }
                     editor.setValue(text)
                     editor.clearSelection()
                     editor.focus()
@@ -82,6 +113,18 @@ class EditorColumn(
                 }
             }
         }
+    }
+
+    /** The current buffer text (test seam). */
+    internal fun text(): String = aceEditor?.getValue() ?: ""
+
+    /**
+     * Save and PARK (not destroy): the root element is pulled out of the DOM before the column
+     * rebuild discards its parent, keeping Ace's DOM alive for the next [render] to re-adopt.
+     */
+    fun detach() {
+        save()
+        rootEl?.remove()
     }
 
     /**
@@ -176,7 +219,7 @@ class EditorColumn(
      */
     private fun ensureEditorMarkdownStyles() {
         val t = ThemeManager.current
-        styleSheet("tdz-editor-md") {
+        themedStyleSheet("tdz-editor-md") {
             // !important throughout: Ace's own theme stylesheet wins specificity otherwise.
             rule(".ace_editor .ace_markup.ace_heading, .ace_editor .ace_heading") {
                 important("color", t.heading1)
@@ -223,6 +266,7 @@ class EditorColumn(
         // Idempotent: beforeRemoval can run more than once (column re-render + canvas dispose);
         // a second destroy/save against the torn-down Ace instance must be a no-op.
         aceEditor = null
+        rootEl = null
     }
 }
 

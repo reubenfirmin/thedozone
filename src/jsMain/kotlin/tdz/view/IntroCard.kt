@@ -13,9 +13,12 @@ import kotlinx.css.properties.*
 import tdz.view.theme.ThemeManager
 import zoned.framework.dom.onClick
 import zoned.framework.interop.addToBody
+import zoned.framework.interop.brightness
+import zoned.framework.interop.filter
+import zoned.framework.interop.transformOrigin
 import zoned.framework.interop.animation
 import zoned.framework.interop.keyframes
-import zoned.framework.interop.styleSheet
+import tdz.view.theme.themedStyleSheet
 import zoned.framework.routing.Zone.Companion.zone
 
 /**
@@ -122,12 +125,11 @@ object IntroCard {
 
     private fun ensureStyles() {
         val t = ThemeManager.current
-        // DOS's square cards read fine, but a square welcome dialog reads broken; round it anyway.
-        val radius = if (t.cardRadius.toString() == "0px") 14.px else t.cardRadius
-        styleSheet("tdz-intro-styles") {
+        val radius = t.dialogRadius
+        themedStyleSheet("tdz-intro-styles") {
             val enter = keyframes("tdz-intro-in") {
-                from { opacity = 0.0; put("transform", "translateY(10px) scale(0.96)") }
-                to { opacity = 1.0; put("transform", "none") }
+                from { opacity = 0.0; transform { translateY(10.px); scale(0.96) } }
+                to { opacity = 1.0; transform = Transforms.none }
             }
             val rightButtonPulse = keyframes("tdz-intro-rbtn") {
                 at(0.pct, 100.pct) { opacity = 0.3 }
@@ -135,10 +137,14 @@ object IntroCard {
             }
             val glow = keyframes("tdz-intro-glow") {
                 at(0.pct, 100.pct) {
-                    put("box-shadow", "0 12px 44px ${t.scrimBg}, 0 0 0 1px ${t.menuBorder}, 0 0 16px -4px ${t.link}")
+                    boxShadow += BoxShadow(t.scrimBg, 0.px, 12.px, 44.px, 0.px)
+                    boxShadow += BoxShadow(t.menuBorder, 0.px, 0.px, 0.px, 1.px)
+                    boxShadow += BoxShadow(t.link, 0.px, 0.px, 16.px, (-4).px)
                 }
                 at(50.pct) {
-                    put("box-shadow", "0 12px 44px ${t.scrimBg}, 0 0 0 1px ${t.link}, 0 0 34px 0px ${t.link}")
+                    boxShadow += BoxShadow(t.scrimBg, 0.px, 12.px, 44.px, 0.px)
+                    boxShadow += BoxShadow(t.link, 0.px, 0.px, 0.px, 1.px)
+                    boxShadow += BoxShadow(t.link, 0.px, 0.px, 34.px, 0.px)
                 }
             }
             rule("#$ID") {
@@ -166,12 +172,14 @@ object IntroCard {
                 animation(glow, 2.6.s, Timing.easeInOut, delay = 360.ms, iterationCount = IterationCount.infinite)
             }
             rule("#$ID .tdz-intro-mouse") {
-                put("flex", "0 0 auto")
+                flexGrow = 0.0
+                flexShrink = 0.0
+                flexBasis = FlexBasis.auto
                 display = Display.block
             }
             rule("#$ID .tdz-intro-rbtn") {
                 animation(rightButtonPulse, 1.2.s, Timing.easeInOut, iterationCount = IterationCount.infinite)
-                put("transform-origin", "center")
+                transformOrigin("center")
             }
             rule("#$ID .tdz-intro-text") { minWidth = 0.px }
             rule("#$ID .tdz-intro-h") {
@@ -210,7 +218,7 @@ object IntroCard {
                 borderRadius = 6.px
                 padding = Padding(vertical = 8.px, horizontal = 16.px)
             }
-            rule("#$ID .tdz-intro-btn:hover") { put("filter", "brightness(1.08)") }
+            rule("#$ID .tdz-intro-btn:hover") { filter(brightness(1.08)) }
         }
     }
 }

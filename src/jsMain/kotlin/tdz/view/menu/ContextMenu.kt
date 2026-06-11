@@ -25,7 +25,7 @@ import zoned.framework.dom.onMouseLeave
 import zoned.framework.dom.ref
 import zoned.framework.interop.addToBody
 import zoned.framework.interop.css
-import zoned.framework.interop.styleSheet
+import tdz.view.theme.themedStyleSheet
 import tdz.view.ZLayer
 import tdz.view.theme.ThemeManager
 
@@ -263,7 +263,7 @@ object ContextMenu {
      * runs on every show — a one-shot injection would go stale after an in-session theme switch.
      */
     private fun ensureStyles() {
-        styleSheet(STYLE_ID) {
+        themedStyleSheet(STYLE_ID) {
             rule(".$ITEM_CLASS:hover") {
                 backgroundColor = ThemeManager.current.menuHover
                 fontWeight = FontWeight.bold

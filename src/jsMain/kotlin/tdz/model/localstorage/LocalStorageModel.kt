@@ -3,6 +3,42 @@ package tdz.model.localstorage
 import tdz.model.*
 import kotlinx.browser.window
 
+/**
+ * Write-behind buffer, shared across [LocalStorageModel] instances (localStorage is one global, so
+ * its buffer must be too). store() records here and the synchronous localStorage.setItem runs
+ * AFTER the current task — never between a click and its render. retrieve() consults the buffer
+ * first, so every reader (including the Model parse cache, which keys on the raw string) sees the
+ * latest write immediately, flushed or not. Durability: flushed one task later, and forced on
+ * pagehide / tab backgrounding — the at-risk window is milliseconds, not "until the user leaves".
+ */
+private object WriteBehind {
+    val pending = LinkedHashMap<String, String>()
+    private var scheduled = false
+    private var hooksInstalled = false
+
+    fun write(key: String, value: String) {
+        pending[key] = value   // value is the encoded snapshot — mutation-safe to defer
+        if (!hooksInstalled) {
+            hooksInstalled = true
+            window.addEventListener("pagehide", { flush() })
+            window.addEventListener("visibilitychange", {
+                if (kotlinx.browser.document.asDynamic().visibilityState == "hidden") flush()
+            })
+        }
+        if (!scheduled) {
+            scheduled = true
+            window.setTimeout({ flush() }, 0)
+        }
+    }
+
+    fun flush() {
+        scheduled = false
+        if (pending.isEmpty()) return
+        pending.forEach { (k, v) -> window.localStorage.setItem(k, v) }
+        pending.clear()
+    }
+}
+
 class LocalStorageModel {
 
     private fun storageKey(namespace: Namespace, key: String): String {
@@ -10,14 +46,18 @@ class LocalStorageModel {
     }
 
     private fun store(namespace: Namespace, item: HasKey) {
-        window.localStorage.setItem(storageKey(namespace, item.key), item.encode())
+        WriteBehind.write(storageKey(namespace, item.key), item.encode())
     }
 
-    private fun retrieve(namespace: Namespace, key: String): String? =
-        window.localStorage.getItem(storageKey(namespace, key))
+    private fun retrieve(namespace: Namespace, key: String): String? {
+        val k = storageKey(namespace, key)
+        return WriteBehind.pending[k] ?: window.localStorage.getItem(k)
+    }
 
     private fun remove(namespace: Namespace, key: String) {
-        window.localStorage.removeItem(storageKey(namespace, key))
+        val k = storageKey(namespace, key)
+        WriteBehind.pending.remove(k)   // a delete also cancels any not-yet-flushed write
+        window.localStorage.removeItem(k)
     }
 
     fun getCanvas(canvasName: CanvasName): Canvas? =

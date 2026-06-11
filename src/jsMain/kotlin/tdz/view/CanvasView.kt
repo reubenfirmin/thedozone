@@ -8,6 +8,7 @@ import kotlinx.html.div
 import zoned.framework.interop.css
 import tdz.controller.events.Event
 import zoned.framework.events.EventBus
+import tdz.controller.events.RefreshCard
 import tdz.controller.events.RefreshColumns
 import tdz.model.Canvas
 import tdz.model.Model
@@ -28,7 +29,11 @@ class CanvasView(bus: EventBus<Event>, private val model: Model) : ZoneView<Canv
     override fun TagConsumer<HTMLElement>.render(canvas: Canvas) {
         val cols = CanvasColumns(canvas, bus, model) { id -> model.cards(canvas.name, id) }
         columns = cols
+        // Synchronous on purpose (no rAF batching): no producer refreshes the same column twice in
+        // a tick (toggles use RefreshCard, single-card drops skip refresh), and a sync pull's burst
+        // of distinct columns already shares one style/layout/paint pass at frame end.
         on<RefreshColumns> { e -> if (e.canvasName == canvas.name) cols.refreshColumns(e.columnIds) }
+        on<RefreshCard> { e -> if (e.canvasName == canvas.name) cols.refreshCard(e.ref) }
         onDispose {
             cols.saveEditors()
             columns = null

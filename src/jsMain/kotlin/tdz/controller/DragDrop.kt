@@ -7,9 +7,12 @@ import zoned.framework.events.EventBus
 import tdz.model.CanvasName
 import tdz.model.Card
 import tdz.model.Card.Companion.cardsUnderH1
+import tdz.model.CardRef
 import tdz.model.ref
 import tdz.model.Model
 import js.string.asString
+import kotlinx.css.outlineOffset
+import kotlinx.css.px
 import web.cssom.ClassName
 import web.dom.Element
 import web.dom.ElementId
@@ -20,12 +23,14 @@ import web.html.HTMLElement
 import web.pointer.POINTER_DOWN
 import web.pointer.POINTER_MOVE
 import web.pointer.PointerEvent
+import tdz.view.CssClasses
 import tdz.view.DomIds
 import tdz.view.WormholePortal
+import tdz.view.theme.DragPreviewFill
 import tdz.view.theme.ThemeManager
 import zoned.framework.interop.clear
 import zoned.framework.interop.important
-import zoned.framework.interop.styleSheet
+import tdz.view.theme.themedStyleSheet
 import zoned.framework.libs.SortableConfig
 import zoned.framework.libs.makeSortable
 import zoned.framework.libs.sortableSelect
@@ -61,6 +66,10 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
     private var portalHookInstalled = false
     /** The canvas-link drop zone currently under the pointer (so we only re-show on change). */
     private var activeLink: Element? = null
+    /** The chip elements, snapshotted at drag start: columns never re-render mid-drag, so a
+     *  per-pointermove querySelectorAll was pure overhead. Rects are still read live (chips shift
+     *  with column reflow); an element that leaves the DOM mid-drag just stops participating. */
+    private var dropZones: List<Element> = emptyList()
     /** Last pointer position + the dragged card's size, captured for the swallow animation. */
     private var lastPointerX = 0.0
     private var lastPointerY = 0.0
@@ -79,9 +88,9 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
             animation = 150,
             draggable = DomIds.CARD_SELECTOR,
             // placeholder (drop preview): solid rectangle, contents hidden; mirror: opaque card
-            ghostClass = "tdz-card-ghost",
-            chosenClass = "tdz-card-chosen",
-            dragClass = "tdz-card-drag",
+            ghostClass = CssClasses.CARD_GHOST,
+            chosenClass = CssClasses.CARD_CHOSEN,
+            dragClass = CssClasses.CARD_DRAG,
             // Sortable's managed mirror (lifted to body) instead of the native drag image —
             // smooth across the nested scroll/grid columns; larger threshold so cards target
             // (and paint the ghost into) columns readily, including empty ones.
@@ -101,7 +110,7 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
             // multiDragKey neutralises click-to-select so normal card clicks (links, navigation)
             // keep working — selection is purely programmatic here.
             multiDrag = true,
-            selectedClass = "tdz-card-selected",
+            selectedClass = CssClasses.CARD_SELECTED,
             multiDragKey = "CTRL",
             // MultiDrag folds the other selected cards away during the drag, so by default both the
             // floating mirror and the drop placeholder are just the header. Decorate them to reflect
@@ -175,14 +184,14 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
         if (pendingGroupCount <= 1) return
         val height = pendingGroupHeight
         pendingGroupCount = 0
-        (document.querySelector(".tdz-card-drag") as? HTMLElement)?.let { mirror ->
-            mirror.classList.add(ClassName("tdz-card-drag-group"))
+        (document.querySelector(".${CssClasses.CARD_DRAG}") as? HTMLElement)?.let { mirror ->
+            mirror.classList.add(ClassName(CssClasses.CARD_DRAG_GROUP))
             mirror.style.height = "auto"   // grow past the header-sized box Sortable created
             mirror.clear()
             groupClones.forEach { clone ->
                 clone.removeAttribute("id")                  // avoid duplicate ids with the originals
                 clone.classList.remove(                      // drop the selection outline on the clones
-                    ClassName("tdz-card-selected"),
+                    ClassName(CssClasses.CARD_SELECTED),
                     ClassName("sortable-chosen"),
                 )
                 mirror.appendChild(clone)
@@ -190,7 +199,7 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
         }
         groupClones.clear()
         if (height > 0) {
-            (document.querySelector(".tdz-card-ghost") as? HTMLElement)?.style?.minHeight = "${height}px"
+            (document.querySelector(".${CssClasses.CARD_GHOST}") as? HTMLElement)?.style?.minHeight = "${height}px"
         }
     }
 
@@ -222,6 +231,9 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
         val r = dragged.getBoundingClientRect()
         if (r.width > 0) dragCardW = r.width
         if (r.height > 0) dragCardH = r.height
+        dropZones = document.querySelectorAll(".${CssClasses.DROP_ZONE}").let { zones ->
+            (0 until zones.length).mapNotNull { zones[it] }
+        }
         installPortalHook()
     }
 
@@ -230,6 +242,7 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
     internal fun stopPortalTracking() {
         dragActive = false
         activeLink = null
+        dropZones = emptyList()
         WormholePortal.hide()
     }
 
@@ -279,17 +292,7 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
 
         // Latched: the active link holds (no rescan) while the pointer stays within the release range.
         val held = activeLink?.takeIf { it.isConnected && within(it, releaseMargin) }
-        val hit = held ?: run {
-            val zones = document.querySelectorAll(".canvas-drop-zone")
-            var found: Element? = null
-            for (i in 0 until zones.length) {
-                if (within(zones[i], enterMargin)) {
-                    found = zones[i]
-                    break
-                }
-            }
-            found
-        }
+        val hit = held ?: dropZones.firstOrNull { it.isConnected && within(it, enterMargin) }
 
         if (hit !== activeLink) {
             activeLink = hit
@@ -309,15 +312,19 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
      */
     private fun ensureDragStyles() {
         val theme = ThemeManager.current
-        // Placeholder background-image: "@bg" paints the page background fixed to the viewport, so the
-        // preview cuts straight through the (translucent) column to the real background. A gradient value
-        // paints it on the preview itself (e.g. a spotlight). "none" = the solid dragPlaceholder color.
-        val phImg = if (theme.dragPlaceholderImage == "@bg") theme.appBgImage else theme.dragPlaceholderImage
-        val phAttach = if (theme.dragPlaceholderImage == "@bg") "fixed" else "scroll"
+        // AppBackground paints the page background fixed to the viewport, so the preview cuts
+        // straight through the (translucent) column to the real background; Image paints a custom
+        // image on the preview itself (e.g. a spotlight); Solid = the dragPlaceholder color alone.
+        val phImg = when (val fill = theme.dragPlaceholderFill) {
+            DragPreviewFill.Solid -> "none"
+            DragPreviewFill.AppBackground -> theme.appBgImage
+            is DragPreviewFill.Image -> fill.css
+        }
+        val phAttach = if (theme.dragPlaceholderFill == DragPreviewFill.AppBackground) "fixed" else "scroll"
         // !important throughout: these must beat Sortable's inline styles and the cards' own
         // inline css{}.
-        styleSheet("tdz-drag-styles") {
-            rule(".tdz-card-ghost") {
+        themedStyleSheet("tdz-drag-styles") {
+            rule(".${CssClasses.CARD_GHOST}") {
                 important("background-color", theme.dragPlaceholder)
                 important("background-image", phImg)
                 important("background-attachment", phAttach)
@@ -327,22 +334,22 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
                 important("opacity", "1")
                 important("box-shadow", "none")
             }
-            rule(".tdz-card-ghost *") { important("visibility", "hidden") }
-            rule(".tdz-card-chosen") { important("background-color", theme.dragMirrorBg) }
-            rule(".tdz-card-drag") {
+            rule(".${CssClasses.CARD_GHOST} *") { important("visibility", "hidden") }
+            rule(".${CssClasses.CARD_CHOSEN}") { important("background-color", theme.dragMirrorBg) }
+            rule(".${CssClasses.CARD_DRAG}") {
                 important("opacity", "1")
                 important("background-color", theme.dragMirrorBg)
                 important("border-radius", "0")
                 important("box-shadow", "5px 5px 0 ${theme.cardShadow}")
             }
-            rule(".tdz-card-selected") {
+            rule(".${CssClasses.CARD_SELECTED}") {
                 important("outline", "2px dashed ${theme.dragPlaceholder}")
-                put("outline-offset", "-2px")
+                outlineOffset = (-2).px
             }
             // Group drag: the mirror becomes a transparent container holding clones of the real cards
             // (each clone keeps its own background/border/shadow), so it reads as the actual stack
             // of cards moving. The placeholder is grown to the group height inline.
-            rule(".tdz-card-drag-group") {
+            rule(".${CssClasses.CARD_DRAG_GROUP}") {
                 important("background-color", "transparent")
                 important("background-image", "none")
                 important("box-shadow", "none")
@@ -350,7 +357,7 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
             }
             // Each cloned card gets the opaque drag background (themes like rainbow use translucent
             // card fills, which would show the page through the floating stack).
-            rule(".tdz-card-drag-group .tdz-card") {
+            rule(".${CssClasses.CARD_DRAG_GROUP} .${CssClasses.CARD}") {
                 important("background-color", theme.dragMirrorBg)
                 important("background-image", "none")
             }
@@ -397,6 +404,7 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
         // column between drop and here (an interleaved editor save, a sync pull applying remotely)
         // would make these refs resolve to the wrong cards.
         val header = DomIds.cardId(event.itemId.asString())
+        var groupRelocated = false
         if (header != null) {
             val children = model.cards(canvasName, header.columnId).cardsUnderH1(header.index)
             // Sortable always drops the header element into the target column, so it is present in
@@ -410,6 +418,7 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
                 // Re-find the header: removing children above it (same-column drag) shifts its index.
                 val pos = newToCards.indexOfFirst { it.ref == header }
                 newToCards.addAll(pos + 1, children)
+                groupRelocated = true
             }
         }
 
@@ -417,8 +426,31 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
         // anyway, but this keeps our tracking honest and avoids leaking selection state).
         clearSelection()
 
+        // Single-card drag: Sortable already arranged the DOM exactly as being persisted, so a
+        // rebuild would only re-create what the browser is showing. Renumber the positional ids in
+        // place (they must encode the NEW order for the next drop/toggle to decode correct refs)
+        // and tell the Controller to skip the render. Group drags can't skip: the model just
+        // reunited section children that Sortable never moved in the DOM.
+        val domAlreadyOrdered = !groupRelocated
+        if (domAlreadyOrdered) {
+            renumberCardIds(event.to)
+            if (event.from !== event.to) renumberCardIds(event.from)
+        }
+
         // The Controller persists and emits ColumnsChanged (sync) + RefreshColumns (render).
-        eventBus.fire(CardsReordered(canvasName, toColumnId, newToCards, fromColumnId, newFromCards))
+        eventBus.fire(CardsReordered(canvasName, toColumnId, newToCards, fromColumnId, newFromCards, domAlreadyOrdered))
+    }
+
+    /** Rewrite [container]'s card element ids to encode their current DOM order. */
+    private fun renumberCardIds(container: Element) {
+        val columnId = DomIds.columnId(container.id.asString()) ?: return
+        val children = container.children
+        var index = 0
+        for (i in 0 until children.length) {
+            val el = children[i] ?: continue
+            if (DomIds.cardId(el.id.asString()) == null) continue
+            el.id = ElementId(DomIds.card(CardRef(columnId, index++)))
+        }
     }
 
     /** Map a column's card elements, in DOM order, back to their model [Card]s. */

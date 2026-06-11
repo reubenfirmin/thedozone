@@ -46,9 +46,14 @@ class TaskMarkerSpacingTest {
         val marker = document.querySelector(".tdz-task label > span") as? HTMLElement
         assertNotNull(marker, "the task row should render a marker span inside its label")
 
-        val style = marker.getAttribute("style") ?: ""
-        assertTrue("padding-right" in style, "marker span should keep its padding-right (gap before the task text); style was: $style")
-        assertTrue("inline-block" in style, "marker span should keep display: inline-block; style was: $style")
-        assertTrue("font-weight" in style, "marker span should still be bold; style was: $style")
+        // Computed style, not the style attribute: the declarations moved from per-element inline
+        // css{} into shared theme-keyed class rules — what must hold is what the user sees.
+        val style = web.dom.getComputedStyle(marker)
+        assertTrue(style.getPropertyValue("padding-right") == "8px",
+            "marker keeps its 0.5rem gap before the task text (got '${style.getPropertyValue("padding-right")}')")
+        assertTrue(style.getPropertyValue("display") == "inline-block",
+            "marker keeps display: inline-block (got '${style.getPropertyValue("display")}')")
+        val weight = style.getPropertyValue("font-weight")
+        assertTrue(weight == "700" || weight == "bold", "marker stays bold (got '$weight')")
     }
 }

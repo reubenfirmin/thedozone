@@ -3,6 +3,7 @@ package tdz.controller.events
 import tdz.model.Canvas
 import tdz.model.CanvasName
 import tdz.model.Card
+import tdz.model.CardRef
 import tdz.model.ColumnId
 import tdz.model.Direction
 import tdz.model.Split
@@ -22,6 +23,8 @@ data class ColumnEdited(val markdown: String, val canvasName: CanvasName, val co
 /**
  * Drag-drop outcome: [toColumnId] now holds [toCards] in this order (and [fromColumnId] holds
  * [fromCards] when the drag crossed columns). The Controller persists and emits the change events.
+ * [domAlreadyOrdered] = the live DOM already matches this order (Sortable arranged it and the ids
+ * were renumbered in place), so the Controller persists WITHOUT firing a [RefreshColumns] rebuild.
  */
 data class CardsReordered(
     val canvasName: CanvasName,
@@ -29,6 +32,7 @@ data class CardsReordered(
     val toCards: List<Card>,
     val fromColumnId: ColumnId,
     val fromCards: List<Card>?,
+    val domAlreadyOrdered: Boolean = false,
 ): Event
 
 /** Cards dropped on a canvas link: move them from [sourceCanvas] into [targetCanvas]. */
@@ -44,6 +48,13 @@ data class ColumnsChanged(val canvasName: CanvasName, val columnIds: Set<ColumnI
 
 /** RENDER COMMAND: rebuild these columns' DOM from the model. */
 data class RefreshColumns(val canvasName: CanvasName, val columnIds: Set<ColumnId>): Event
+
+/**
+ * RENDER COMMAND: rebuild a single card element in place from the model. The cheap sibling of
+ * [RefreshColumns] for changes that touch one card and leave the column's order intact (e.g. a
+ * checkbox toggle) — the rest of the column's DOM is untouched.
+ */
+data class RefreshCard(val canvasName: CanvasName, val ref: CardRef): Event
 
 data class SwitchToCanvas(val canvasName: CanvasName): Event
 

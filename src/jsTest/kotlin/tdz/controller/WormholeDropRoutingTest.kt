@@ -218,6 +218,35 @@ class WormholeDropRoutingTest {
         dragDrop.stopPortalTracking()
     }
 
+    /**
+     * The hit-test works from a snapshot of the chip elements taken at drag start (columns don't
+     * re-render mid-drag, so a per-pointermove querySelectorAll was pure overhead). A chip that IS
+     * removed mid-drag (a sync pull re-rendering its column) must simply stop participating.
+     */
+    @Test
+    fun chipRemovedMidDragStopsParticipatingInHitTest() {
+        val model = buildModel()
+        val cards = model.cards(source, column)
+        buildDom(cards)
+        val dragDrop = DragDrop(model, EventBus<Event>())
+
+        val cardB = el(DomIds.card(cards[1].ref))
+        val chip = el(DomIds.canvasLink(target))
+        val r = chip.getBoundingClientRect()
+
+        dragDrop.beginPortalTracking(cardB)
+        chip.remove()
+        document.dispatchEvent(PointerEvent(
+            PointerEvent.POINTER_MOVE,
+            PointerEventInit(clientX = (r.left + r.width / 2).toInt(), clientY = (r.top + r.height / 2).toInt()),
+        ))
+
+        val portal = document.getElementById(ElementId(Zones.WORMHOLE.elementId)) as? HTMLElement
+        assertTrue(portal == null || !portal.classList.contains(ClassName("tdz-wh-on")),
+            "a removed chip must not light the wormhole")
+        dragDrop.stopPortalTracking()
+    }
+
     @Test
     fun dropWithWormholeClosedReordersNormally() {
         val model = buildModel()
