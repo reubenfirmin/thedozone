@@ -1,9 +1,14 @@
 package tdz.view
 
+import tdz.canvasPages
+import tdz.helpPages
 import tdz.model.Split
+import tdz.settingsPages
 import tdz.view.menu.MenuItem
 import tdz.view.menu.MenuSection
 import tdz.view.theme.Theme
+import zoned.framework.routing.Router
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -12,7 +17,13 @@ import kotlin.test.assertTrue
 
 class CanvasMenuTest {
 
+    // The menu's doc links are typed route references (helpPages.x.path()), which fail loudly for
+    // unmounted collections by design — so mount them exactly as main() does. Idempotent.
+    @BeforeTest
+    fun mountRoutes() = Router.mount(canvasPages, helpPages, settingsPages)
+
     private class RecordingActions : CanvasMenuActions {
+        var clearedDone = false
         var toggled = 0
         var columnProps = 0
         var downloaded = 0
@@ -38,6 +49,7 @@ class CanvasMenuTest {
         override fun downloadPng() { downloadedPng++ }
         override fun uploadNewCanvas() { uploadedNew++ }
         override fun uploadCardsHere() { uploadedHere++ }
+        override fun clearDone() { clearedDone = true }
         override fun openDoc(path: String) { openedDocs += path }
     }
 
@@ -119,9 +131,13 @@ class CanvasMenuTest {
     }
 
     @Test
-    fun clearDoneIsStillADisabledStub() {
-        val items = allItems(canvasSections(Mode.CARD, RecordingActions()))
-        assertFalse(items.first { it.label == "Clear Done" }.enabled)
+    fun clearDoneIsWiredAndEnabled() {
+        val actions = RecordingActions()
+        val items = allItems(canvasSections(Mode.CARD, actions))
+        val item = items.first { it.label == "Clear Done" }
+        assertTrue(item.enabled)
+        item.onSelect()
+        assertTrue(actions.clearedDone)
     }
 
     @Test
@@ -179,12 +195,12 @@ class CanvasMenuTest {
     }
 
     @Test
-    fun backupsAndDocumentationAreSubmenus() {
+    fun backupsAndHelpAreSubmenus() {
         val top = canvasSections(Mode.CARD, RecordingActions()).flatMap { it.items }
         val backups = assertNotNull(top.firstOrNull { it.label == "Backups & Export" }?.submenu)
         assertTrue(backups.any { it.label == "Download" && it.enabled }, "Download stays wired inside the submenu")
-        val docs = assertNotNull(top.firstOrNull { it.label == "Documentation" }?.submenu)
-        assertTrue(docs.any { it.label == "Release Notes" }, "Documentation submenu holds its entries")
+        val docs = assertNotNull(top.firstOrNull { it.label == "Help" }?.submenu)
+        assertTrue(docs.any { it.label == "Release Notes" }, "Help submenu holds its entries")
     }
 
     @Test

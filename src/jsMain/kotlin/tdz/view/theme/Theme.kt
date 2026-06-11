@@ -11,6 +11,20 @@ import kotlinx.css.rem
 enum class MarkerStyle { UNICODE, ASCII }
 
 /**
+ * Drop-preview fill, as a typed choice (no sentinel strings): the solid [Theme.dragPlaceholder]
+ * color, the app background painted fixed-attached (the preview reads as a hole cut through the
+ * column down to the page), or an explicit CSS background-image.
+ */
+sealed interface DragPreviewFill {
+    object Solid : DragPreviewFill
+    object AppBackground : DragPreviewFill
+    data class Image(val css: String) : DragPreviewFill
+}
+
+/** Card-footer divider glyph set ([Theme.cardFooterFlourish] turns the divider on). */
+enum class FlourishStyle { LINE_DIAMOND, DOTS }
+
+/**
  * A UI theme: typed [Color] tokens (the single source of truth for every UI color) plus the Ace
  * [editorTheme]. Components consume tokens directly via typed `css { }`
  * (e.g. `borderColor = ThemeManager.current.cardBorder`). The few unavoidable string sinks
@@ -78,6 +92,10 @@ data class Theme(
     val cardBg: Color,             // card fill (transparent = cards blend into the column/panel)
     val cardShadow: Color,
     val cardRadius: LinearDimension,
+    // Modal/dialog corner rounding. Defaults to the card radius — except square-card themes, where
+    // a fully square welcome/properties dialog reads broken rather than styled; they default to a
+    // gentle 14px. Its own token so no component has to sniff cardRadius to guess theme intent.
+    val dialogRadius: LinearDimension = if (cardRadius.toString() == "0px") 14.px else cardRadius,
     val cardMargin: LinearDimension,   // gap around each card (DOS panels sit tight/flush)
     val cardPadding: LinearDimension,
     // If non-empty, box-shadow layers used for cards instead of the default hard 2D offset — e.g. a
@@ -87,6 +105,7 @@ data class Theme(
     val cardElevationHover: List<BoxShadow> = emptyList(),
     // Render a centered ornamental divider at the bottom of content cards (not h1-only title cards).
     val cardFooterFlourish: Boolean = false,
+    val flourishStyle: FlourishStyle = FlourishStyle.LINE_DIAMOND,
     val heading1: Color,           // monochrome h1 color (used when headingGradient is empty)
     val headingGlow: Color,        // soft same-hue glow behind a monochrome h1 (transparent = none)
     val headingGradient: String,   // if non-empty, h1 is this CSS gradient clipped to the text instead
@@ -104,10 +123,16 @@ data class Theme(
     val menuHover: Color,
     // drag & drop
     val dragPlaceholder: Color,
-    val dragPlaceholderImage: String,   // CSS background-image for the drop preview ("none" = solid color)
+    val dragPlaceholderFill: DragPreviewFill = DragPreviewFill.Solid,
     val dragMirrorBg: Color,
     // misc
     val shadow: Color,
+    /** Scrim behind modals/overlays (over the canvas). */
+    val scrimBg: Color = Color("rgba(0,0,0,0.45)"),
+    /** Blockquote fill — a faint neutral wash that works on light and dark card surfaces. */
+    val blockquoteBg: Color = Color("rgba(127,127,127,0.08)"),
+    /** Lift under h1 text; transparent on light themes where a dark shadow reads harsh. */
+    val headingDropShadow: Color = Color("rgba(0,0,0,0.35)"),
     val icon: Color,
     val iconFaint: Color,
     val watermark: Color,
@@ -162,7 +187,6 @@ val blueRoomTheme = Theme(
     menuDisabled = Color("#6b7280"),
     menuHover = Color("rgba(255, 255, 255, 0.08)"),
     dragPlaceholder = Color("#3b82f6"),
-    dragPlaceholderImage = "none",
     dragMirrorBg = Color("#243b55"),
     shadow = Color("rgba(0, 0, 0, 0.35)"),
     icon = Color.white,
@@ -183,8 +207,10 @@ val dosTheme = Theme(
     borderWidth = 1.px,                 // crisp 1px rule, like a TUI ─│ frame
     baseFontSize = 19.px,               // VGA font nudged up for readability
     lineHeight = "1.15",                // tight text-grid rows
-    heading1FontSize = 1.em,            // one cell size — headings read by color, not size
+    heading1FontSize = 1.2.em,          // slightly larger so the tight bitmap caps stay legible
     heading2FontSize = 1.em,
+    headingTransform = "uppercase",     // TUI group-box convention: section labels in ALL CAPS
+
     markerStyle = MarkerStyle.ASCII,    // [ ] / [X]
     titleInBorder = true,               // headings sit in the panel's top border (DOS group-box)
     headingFont = "\"IBM VGA 8x16\", \"Px437 IBM VGA 8x16\", Consolas, \"Courier New\", monospace",
@@ -205,7 +231,7 @@ val dosTheme = Theme(
     cardRadius = 0.px,
     cardMargin = 6.px,                     // tight, near-flush like NC panels
     cardPadding = 6.px,
-    headingLetterSpacing = 0.em,
+    headingLetterSpacing = 0.18.em,     // wider tracking for the uppercase bitmap caps
     heading1PadBottom = 0.1.em,
     heading1 = Color("#ffcb2b"),           // bright yellow
     headingGlow = Color("transparent"),    // flat TUI — no glow
@@ -222,7 +248,6 @@ val dosTheme = Theme(
     menuDisabled = Color("#5a5a5a"),
     menuHover = Color("rgba(255, 255, 255, 0.12)"),
     dragPlaceholder = Color("#2ce0e0"),    // cyan drop target
-    dragPlaceholderImage = "none",
     dragMirrorBg = Color("#2a2a2a"),
     shadow = Color("rgba(0, 0, 0, 0.5)"),
     icon = Color("#cfcfcf"),
@@ -288,7 +313,7 @@ val rainbowGapsTheme = Theme(
     menuDisabled = Color("#6b7280"),
     menuHover = Color("rgba(255,255,255,0.10)"),
     dragPlaceholder = Color("transparent"),   // drop preview reads as a gap through to the rainbow
-    dragPlaceholderImage = "@bg",             // paint the page background (fixed) so it cuts through the column
+    dragPlaceholderFill = DragPreviewFill.AppBackground,   // the preview cuts through to the page background
     dragMirrorBg = Color("rgba(18,18,24,0.95)"),
     shadow = Color("rgba(0,0,0,0.5)"),
     icon = Color("#e4e4e7"),
@@ -352,7 +377,7 @@ val smoothDarkTheme = Theme(
     menuHover = Color("rgba(255,255,255,0.08)"),
     dragPlaceholder = Color("#2e2e32"),    // subtle border around the preview
     // centre holds the canvas/column bg (not the card); only the very edge eases into a faint warm "burn"
-    dragPlaceholderImage = "radial-gradient(100% 100% at 50% 50%, #1b1b1f 0%, #1b1b1f 65%, #141210 100%)",
+    dragPlaceholderFill = DragPreviewFill.Image("radial-gradient(100% 100% at 50% 50%, #1b1b1f 0%, #1b1b1f 65%, #141210 100%)"),
     dragMirrorBg = Color("#202127"),
     shadow = Color("rgba(0,0,0,0.4)"),
     icon = Color("#dfdfd6"),
@@ -396,7 +421,7 @@ val hackerTheme = Theme(
     cardRadius = 4.px,
     cardMargin = 12.px,
     cardPadding = 12.px,
-    headingLetterSpacing = 0.em,
+    headingLetterSpacing = 0.18.em,     // wider tracking for the uppercase bitmap caps
     heading1PadBottom = 0.1.em,
     heading1 = Color("#00ff66"),                   // neon green
     headingGlow = Color("rgba(0,255,90,0.55)"),    // Matrix glow
@@ -413,7 +438,6 @@ val hackerTheme = Theme(
     menuDisabled = Color("#2f5f3f"),
     menuHover = Color("rgba(0,255,80,0.10)"),
     dragPlaceholder = Color("#00ff66"),
-    dragPlaceholderImage = "none",
     dragMirrorBg = Color("#03120a"),
     shadow = Color("rgba(0,40,0,0.6)"),
     icon = Color("#43ea66"),
@@ -429,6 +453,7 @@ val hackerTheme = Theme(
  */
 val poodleRocksTheme = Theme(
     name = "Poodle Rocks",
+    headingDropShadow = Color.transparent,
     editorTheme = "ace/theme/chrome",
     fontFamily = "Roboto, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Arial, sans-serif",
     borderStyle = "solid",
@@ -496,7 +521,6 @@ val poodleRocksTheme = Theme(
     menuDisabled = Color("#9aa0a6"),
     menuHover = Color("rgba(60,64,67,0.08)"),
     dragPlaceholder = Color("#e8f0fe"),    // Google blue-50 selection fill
-    dragPlaceholderImage = "none",
     dragMirrorBg = Color("#ffffff"),
     shadow = Color("rgba(60,64,67,0.30)"),
     icon = Color("#5f6368"),
@@ -506,19 +530,21 @@ val poodleRocksTheme = Theme(
 )
 
 /**
- * "Immaterial" — a light, reading-first theme borrowing Medium's typography: a serif body at a large
- * size with generous 1.58 line-height on near-white, sans-serif headings, no card chrome (text flows
- * with whitespace), and Medium's green for links/accents.
+ * "Long Form" — a nod at Medium's editorial reading surface: near-black serif body text on flat
+ * white, content separated by whitespace (no card chrome), the green accent, and the three-dot
+ * section break. Type leads with Source Serif 4 (bundled via index.html) so every platform gets
+ * the serif voice, with Charter/Georgia as native fallbacks.
  */
-val immaterialTheme = Theme(
-    name = "Immaterial",
+val longFormTheme = Theme(
+    name = "Long Form",
+    headingDropShadow = Color.transparent,
     editorTheme = "ace/theme/github",
-    fontFamily = "Charter, 'Iowan Old Style', 'Source Serif 4', Georgia, 'Times New Roman', serif",
+    fontFamily = "'Source Serif 4', Charter, 'Iowan Old Style', Georgia, 'Times New Roman', serif",
     borderStyle = "solid",
     borderWidth = 1.px,
     baseFontSize = 19.px,                  // larger base for comfortable reading
     lineHeight = "1.58",                   // Medium's body line-height
-    headingFont = "'Sohne', 'Helvetica Neue', Inter, ui-sans-serif, system-ui, Arial, sans-serif",
+    headingFont = "'Roboto', 'Helvetica Neue', ui-sans-serif, system-ui, Arial, sans-serif",   // loaded sans (Sohne stand-in)
     heading1FontSize = 2.5.rem,
     heading2FontSize = 1.6.rem,
     headingLetterSpacing = (-0.02).em,     // tight tracking like Medium titles
@@ -542,7 +568,8 @@ val immaterialTheme = Theme(
     cardRadius = 0.px,
     cardMargin = 16.px,                    // generous spacing between blocks
     cardPadding = 8.px,
-    cardFooterFlourish = true,             // ornamental centered divider at the foot of content cards
+    cardFooterFlourish = true,
+    flourishStyle = FlourishStyle.DOTS,    // Medium's "· · ·" section break, not the line-and-diamond
     heading1 = Color("#242424"),
     headingGlow = Color("transparent"),
     headingGradient = "",
@@ -558,7 +585,6 @@ val immaterialTheme = Theme(
     menuDisabled = Color("#b3b3b3"),
     menuHover = Color("rgba(0,0,0,0.05)"),
     dragPlaceholder = Color("#f2f2f2"),
-    dragPlaceholderImage = "none",
     dragMirrorBg = Color("#ffffff"),
     shadow = Color("rgba(0,0,0,0.12)"),
     icon = Color("#6b6b6b"),
@@ -575,6 +601,7 @@ val immaterialTheme = Theme(
  */
 val metroTheme = Theme(
     name = "Metro",
+    headingDropShadow = Color.transparent,
     editorTheme = "ace/theme/clouds_midnight",
     // Segoe UI is the authentic Microsoft face (present on Windows); graceful fallback elsewhere.
     fontFamily = "\"Segoe UI\", \"Segoe UI Web (West European)\", system-ui, -apple-system, \"Helvetica Neue\", Arial, sans-serif",
@@ -639,7 +666,6 @@ val metroTheme = Theme(
     menuDisabled = Color("#6d6d6d"),
     menuHover = Color("rgba(255,255,255,0.14)"),
     dragPlaceholder = Color("rgba(255,255,255,0.25)"),
-    dragPlaceholderImage = "none",
     dragMirrorBg = Color("#1f1f1f"),
     shadow = Color("rgba(0,0,0,0.5)"),
     icon = Color("#ffffff"),
@@ -650,7 +676,7 @@ val metroTheme = Theme(
 
 /** All selectable themes, in menu order. */
 val themes = listOf(blueRoomTheme, dosTheme, rainbowGapsTheme, smoothDarkTheme, hackerTheme,
-    poodleRocksTheme, immaterialTheme, metroTheme)
+    poodleRocksTheme, longFormTheme, metroTheme)
 
 /** Holds the active theme. Switching applies on the next render (callers trigger a re-render). */
 object ThemeManager {

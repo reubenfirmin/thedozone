@@ -2,11 +2,11 @@
 
 To run in watch mode for development:
 
-./gradlew watch
+./watch.sh
 
 To build for production deploy:
 
-./gradlew clean jsBrowserProductionWebpack
+./gradlew clean build-production
 
 ## CI / Deploy
 
@@ -35,6 +35,6 @@ CI is GitHub Actions (`.github/workflows/ci.yml`):
 
 ### Local deploy (optional)
 
-    ./gradlew clean build-style jsBrowserDistribution
+    ./gradlew clean jsBrowserDistribution
     CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... npx wrangler deploy
 

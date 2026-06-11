@@ -9,7 +9,7 @@ import tdz.view.theme.ThemeManager
  * swap point if/when the theme exposes dedicated tokens.
  */
 object SyncColors {
-    val modalOverlay get() = Color("rgba(0, 0, 0, 0.55)")
+    val modalOverlay get() = ThemeManager.current.scrimBg
     val border get() = ThemeManager.current.menuBorder
 
     // Primary call-to-action: the theme accent (`link`) as a light fill with dark (menu-bg) text. Every

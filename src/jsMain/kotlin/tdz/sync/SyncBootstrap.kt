@@ -1,17 +1,24 @@
 package tdz.sync
 
-import kotlinx.browser.document
-import org.w3c.dom.events.KeyboardEvent
-import tdz.controller.events.EventBus
+import kotlinx.browser.window
+import tdz.canvasPages
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.model.Model
 import tdz.view.sync.LocalFolderModal
 import tdz.view.sync.SyncModal
 import tdz.view.sync.SyncIndicator
+import web.dom.document
+import web.events.EventType
+import web.events.addEventListener
+import web.keyboard.KeyboardEvent
+import zoned.framework.routing.Router
 
 /**
  * Single entry point that assembles the cloud-sync vertical without touching other agents' files.
- * Builds the controller, modal, and self-healing indicator; starts reconcile; and installs an
- * interim Ctrl+Shift+D trigger to open the modal alongside the context-menu entry.
+ * Builds the controller, modal, and indicator (a permanent body-level zone — canvas refreshes swap
+ * only the canvas zone, so it needs no self-healing); starts reconcile; and installs an interim
+ * Ctrl+Shift+D trigger to open the modal alongside the context-menu entry.
  */
 object SyncBootstrap {
 
@@ -22,28 +29,27 @@ object SyncBootstrap {
     lateinit var localFolderModal: LocalFolderModal
         private set
 
-    fun init(model: Model, eventBus: EventBus) {
+    fun init(model: Model, eventBus: EventBus<Event>) {
         controller = SyncController(model, eventBus)
-        val dismiss: () -> Unit = { zoned.framework.routing.Router.navigate(tdz.App.index.resource.currentCanvasUrl()) }
+        val dismiss: () -> Unit = { Router.navigate(canvasPages.resource.currentCanvasUrl()) }
         modal = SyncModal(model, eventBus, controller, onDismiss = dismiss)
         localFolderModal = LocalFolderModal(model, eventBus, controller, onDismiss = dismiss)
-        SyncIndicator(eventBus) {
-            if (kotlinx.browser.window.location.pathname != "/settings/sync") {
-                zoned.framework.routing.Router.navigate("/settings/sync")
-            }
-        }.attach()
+        SyncIndicator(eventBus) { openSyncSettings() }.attach()
 
-        document.addEventListener("keydown", { event ->
-            val e = event as KeyboardEvent
+        document.addEventListener(EventType<KeyboardEvent>("keydown"), { e ->
             if (e.ctrlKey && e.shiftKey && (e.key == "D" || e.key == "d")) {
                 e.preventDefault()
-                if (kotlinx.browser.window.location.pathname != "/settings/sync") {
-                    zoned.framework.routing.Router.navigate("/settings/sync")
-                }
+                openSyncSettings()
             }
         })
 
         controller.start()   // no-ops when not configured
+    }
+
+    private fun openSyncSettings() {
+        if (window.location.pathname != "/settings/sync") {
+            Router.navigate("/settings/sync")
+        }
     }
 
     /** Hide any open sync modal — used by the canvas route when returning from a /settings route. */

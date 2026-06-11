@@ -1,9 +1,12 @@
 package tdz.controller.io
 
-import kotlinx.browser.document
-import org.w3c.dom.HTMLInputElement
-import org.w3c.files.FileReader
-import org.w3c.files.get
+import web.dom.document
+import web.events.EventType
+import web.events.addEventListener
+import web.file.FileReader
+import web.html.HTMLInputElement
+import web.html.InputType
+import web.html.file
 
 /**
  * Opens a transient file dialog and hands back the chosen file's text. This is the only impure,
@@ -14,28 +17,28 @@ object FilePicker {
 
     fun pick(accept: String, onText: (name: String, content: String) -> Unit) {
         val input = (document.createElement("input") as HTMLInputElement).apply {
-            type = "file"
+            type = InputType.file
             this.accept = accept
             style.display = "none"
         }
 
-        input.addEventListener("change", {
-            val file = input.files?.get(0)
+        input.addEventListener(EventType("change"), {
+            val file = input.files?.item(0)
             if (file == null) {
                 input.remove()
             } else {
                 val reader = FileReader()
-                reader.onload = {
+                reader.addEventListener(EventType("load"), {
                     onText(file.name, reader.result as String)
                     input.remove()
-                }
-                reader.onerror = { input.remove() }
+                })
+                reader.addEventListener(EventType("error"), { input.remove() })
                 reader.readAsText(file)
             }
         })
 
         // Some browsers only fire 'change' for an in-document input; removed again once read.
-        document.body?.appendChild(input)
+        document.body.appendChild(input)
         input.click()
     }
 }

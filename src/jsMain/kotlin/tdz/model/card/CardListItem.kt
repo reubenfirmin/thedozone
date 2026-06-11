@@ -79,10 +79,7 @@ fun List<CardListItem>.toGroup(): ListGroup {
         }
     }.flatten()
 
-    // TODO something like this
-    // Optional: Merge adjacent numbered lists at same level
-    // This would handle cases like: 1,2,[sublist],3,4 -> 1,2,3,4[sublist]
-    /*
+        /*
     if (baseType == ListMemberType.NUMBERED) {
         val mergedMembers = members.filterIsInstance<CardListItem>()
         val subgroups = members.filterIsInstance<ListGroup>()

@@ -5,42 +5,55 @@ import kotlinx.html.div
 import kotlinx.html.id
 import tdz.ACE_TAB_SIZE
 import tdz.controller.events.ColumnEdited
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.ExitEditor
 import tdz.controller.events.NavigateColumn
 import tdz.model.Canvas
 import tdz.model.CanvasName
+import tdz.model.ColumnId
 import tdz.model.Card
 import tdz.model.Direction
 import tdz.model.markdown.MarkdownService
-import web.dom.ElementId
-import web.dom.document
-import web.html.HTMLStyleElement
 import zoned.framework.dom.onMount
 import kotlinx.css.*
+import kotlinx.css.properties.*
 import zoned.framework.interop.css
 import zoned.framework.interop.getHtmlElement
-import zoned.framework.libs.Ace
+import zoned.framework.interop.important
+import tdz.view.theme.themedStyleSheet
 import zoned.framework.libs.AceEditor
 import zoned.framework.libs.aceCommand
 import zoned.framework.libs.aceRange
-import zoned.framework.libs.ensureAceResolver
+import zoned.framework.libs.loadAce
 import tdz.view.theme.ThemeManager
 
 /**
- * Editor mode for a column using Ace editor
+ * Editor mode for a column using Ace editor.
+ *
+ * Kept ALIVE across mode toggles (Ace init — DOM build, tokenizer, mode load — is the app's
+ * heaviest single interaction): [detach] saves and parks the live editor element, and the next
+ * [render] re-adopts it, refreshing the buffer from the model. [destroy] is real teardown, called
+ * only when the canvas render is disposed ([CanvasColumns.saveEditors]).
  */
 class EditorColumn(
     val canvas: Canvas,
-    val cards: List<Card>,
-    val columnId: Int,
-    val eventBus: EventBus
+    val columnId: ColumnId,
+    val eventBus: EventBus<Event>
 ) {
 
     private var aceEditor: AceEditor? = null
+    /** The editor's root element, parked here across detach/re-adopt (Ace's DOM lives inside). */
+    private var rootEl: web.html.HTMLElement? = null
+    /** Number of full Ace initializations — the reuse contract is that toggles keep this at 1. */
+    internal var initCount = 0
+        private set
 
-    fun FlowContent.render() {
-        val editorId = "editor-$columnId"
+    fun FlowContent.render(cards: List<Card>) {
+        val editorId = DomIds.editor(columnId)
+        val text = MarkdownService.toMd(cards, false).let {
+            if (it.isNotEmpty()) "$it\n" else it
+        }
 
         div {
             id = editorId
@@ -53,9 +66,32 @@ class EditorColumn(
 
             // Setup Ace editor after DOM is ready
             onMount {
-                ensureAceResolver()   // wire webpack-bundled theme/mode/worker URLs before edit
-                aceEditor = Ace.edit(editorId)
-                aceEditor?.let { editor ->
+                val parked = rootEl
+                val existing = aceEditor
+                if (parked != null && existing != null) {
+                    // Re-adopt the parked editor: swap the freshly built (empty) div for the parked
+                    // element with the live Ace DOM, refresh the buffer from the model (the column
+                    // may have changed while in CARD mode), and resize to the new slot.
+                    getHtmlElement(editorId)?.let { fresh ->
+                        fresh.parentElement?.replaceChild(parked, fresh)
+                    }
+                    if (existing.getValue() != text) {
+                        existing.setValue(text)
+                        existing.clearSelection()
+                    }
+                    existing.focus()
+                    existing.resize()
+                    return@onMount
+                }
+
+                // Ace is code-split: nobody pays its load/parse until the first editor opens.
+                loadAce().then { ace ->
+                    // The chunk fetch yielded; bail if the column was re-rendered/toggled meanwhile.
+                    val el = getHtmlElement(editorId) ?: return@then
+                    initCount++
+                    rootEl = el
+                    val editor = ace.edit(editorId)
+                    aceEditor = editor
                     // Configure editor
                     editor.setTheme(ThemeManager.current.editorTheme)
                     editor.setFontSize(16)
@@ -70,10 +106,6 @@ class EditorColumn(
                     installEditorShortcuts(editor)
                     ensureEditorMarkdownStyles()
 
-                    // Load content from cards
-                    val text = MarkdownService.toMd(cards, false).let {
-                        if (it.isNotEmpty()) "$it\n" else it
-                    }
                     editor.setValue(text)
                     editor.clearSelection()
                     editor.focus()
@@ -81,6 +113,18 @@ class EditorColumn(
                 }
             }
         }
+    }
+
+    /** The current buffer text (test seam). */
+    internal fun text(): String = aceEditor?.getValue() ?: ""
+
+    /**
+     * Save and PARK (not destroy): the root element is pulled out of the DOM before the column
+     * rebuild discards its parent, keeping Ace's DOM alive for the next [render] to re-adopt.
+     */
+    fun detach() {
+        save()
+        rootEl?.remove()
     }
 
     /**
@@ -175,20 +219,33 @@ class EditorColumn(
      */
     private fun ensureEditorMarkdownStyles() {
         val t = ThemeManager.current
-        val css = """
-            .ace_editor .ace_markup.ace_heading, .ace_editor .ace_heading { color: ${t.heading1} !important; background-color: transparent !important; font-weight: 700; }
-            .ace_editor .ace_markup.ace_list, .ace_editor .ace_list { color: ${t.heading2} !important; background-color: transparent !important; }
-            .ace_editor .ace_string.ace_strong { color: ${t.heading2} !important; font-weight: 700; }
-            .ace_editor .ace_string.ace_emphasis { font-style: italic; }
-            .ace_editor .ace_markup.ace_underline { color: ${t.link} !important; text-decoration: underline; }
-            .ace_editor .ace_string.ace_blockquote { color: ${t.menuTitle} !important; font-style: italic; }
-        """.trimIndent()
-        val style = (getHtmlElement("tdz-editor-md") as? HTMLStyleElement)
-            ?: (document.createElement("style") as HTMLStyleElement).also {
-                it.id = ElementId("tdz-editor-md")
-                document.head.appendChild(it)
+        themedStyleSheet("tdz-editor-md") {
+            // !important throughout: Ace's own theme stylesheet wins specificity otherwise.
+            rule(".ace_editor .ace_markup.ace_heading, .ace_editor .ace_heading") {
+                important("color", t.heading1)
+                important("background-color", "transparent")
+                fontWeight = FontWeight.w700
             }
-        style.textContent = css
+            rule(".ace_editor .ace_markup.ace_list, .ace_editor .ace_list") {
+                important("color", t.heading2)
+                important("background-color", "transparent")
+            }
+            rule(".ace_editor .ace_string.ace_strong") {
+                important("color", t.heading2)
+                fontWeight = FontWeight.w700
+            }
+            rule(".ace_editor .ace_string.ace_emphasis") {
+                fontStyle = FontStyle.italic
+            }
+            rule(".ace_editor .ace_markup.ace_underline") {
+                important("color", t.link)
+                textDecoration = TextDecoration(setOf(TextDecorationLine.underline))
+            }
+            rule(".ace_editor .ace_string.ace_blockquote") {
+                important("color", t.menuTitle)
+                fontStyle = FontStyle.italic
+            }
+        }
     }
 
     /** Focus the editor (e.g. after the column is repositioned in the DOM, which blurs it). */
@@ -206,6 +263,10 @@ class EditorColumn(
     fun destroy() {
         save()
         aceEditor?.destroy()
+        // Idempotent: beforeRemoval can run more than once (column re-render + canvas dispose);
+        // a second destroy/save against the torn-down Ace instance must be a no-op.
+        aceEditor = null
+        rootEl = null
     }
 }
 

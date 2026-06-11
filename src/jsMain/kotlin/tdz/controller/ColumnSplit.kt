@@ -23,8 +23,8 @@ object ColumnSplit {
         if (containedBy.contains.size == 1) {
             return addColumn(canvas, columnId, split)
         }
-        val newSplitLayoutIdx = canvas.columns.last() + 1
-        val newColumnId = newSplitLayoutIdx + 1
+        val newSplitLayoutIdx = canvas.columns.last().next()
+        val newColumnId = newSplitLayoutIdx.next()
 
         val updatedColumns = canvas.columns + listOf(newSplitLayoutIdx, newColumnId)
 
@@ -45,7 +45,7 @@ object ColumnSplit {
     fun addColumn(canvas: Canvas, columnId: ColumnId, split: Split): Canvas {
         val containedBy = canvas.layouts.firstOrNull { it.contains.contains(columnId) }
             ?: throw Exception("Could not find container for $columnId ; $canvas")
-        val newColumnId = canvas.columns.last() + 1
+        val newColumnId = canvas.columns.last().next()
 
         return if (split != containedBy.split && containedBy.contains.size > 1) {
             // Different direction than the containing layout => split the column instead.
@@ -116,7 +116,10 @@ object ColumnSplit {
                     updatedLayouts,
                 )
                 val replacement = grandparent?.let { gp ->
-                    val siblings = updated.layoutMap[gp]!!.contains
+                    // The grandparent layout was rewritten (not removed) in the mapNotNull above,
+                    // so it must be present; a miss means the layout tree is corrupt.
+                    val siblings = updated.layoutMap[gp]?.contains
+                        ?: error("Grandparent layout $gp missing after collapsing $columnId — layout tree is corrupt")
                     fanOutFrom(siblings.indexOf(updatedContains[0]), siblings, updated.layoutMap.keys.toSet())
                 } ?: updated.columns.first { !updated.layoutMap.containsKey(it) }
                 updated to replacement

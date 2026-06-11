@@ -8,7 +8,8 @@ import kotlinx.html.InputType
 import kotlinx.html.div
 import kotlinx.html.id
 import kotlinx.html.input
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.SyncConflict
 import tdz.controller.events.SyncStatusChanged
 import tdz.model.Model
@@ -17,6 +18,8 @@ import tdz.sync.SyncController
 import tdz.sync.SyncProvider
 import tdz.sync.SyncState
 import tdz.sync.SyncStateStore
+import tdz.view.ZLayer
+import tdz.view.modalButton
 import tdz.view.theme.ThemeManager
 import web.dom.ElementId
 import web.dom.document
@@ -42,21 +45,31 @@ import zoned.framework.interop.css
  */
 class SyncModal(
     private val model: Model,
-    private val eventBus: EventBus,
+    private val eventBus: EventBus<Event>,
     private val controller: SyncController,
     private val onDismiss: (() -> Unit)? = null,
 ) {
     private var rootEl: HTMLElement? = null
     private var shownConnected = false
+    private var shownNeedsAuth = false
     private var editingFolder = false
     private var selectedProvider: SyncProvider =
         model.readSyncConfig().provider.coerceCloud()
 
     init {
+        // The status LINE updates live (statusRef below); the BUTTON ROW must re-render whenever
+        // either input it depends on changes: connectedness, or auth lapsing (NeedsReconnect/Error
+        // swaps "Sync now" for a primary "Reconnect").
         eventBus.on<SyncStatusChanged> {
-            if (rootEl != null && connected() != shownConnected) { editingFolder = false; render() }
+            if (rootEl != null && (connected() != shownConnected || needsAuth() != shownNeedsAuth)) {
+                editingFolder = false
+                render()
+            }
         }
     }
+
+    private fun needsAuth(): Boolean =
+        SyncStateStore.current is SyncState.Error || SyncStateStore.current == SyncState.NeedsReconnect
 
     private fun connected(): Boolean = model.readSyncConfig().cloudConnected
 
@@ -69,9 +82,13 @@ class SyncModal(
     fun hide() { rootEl?.remove(); rootEl = null }
 
     private fun render() {
+        // A rebuild (provider click, connect/disconnect flip) replaces the folder input; carry the
+        // user's in-progress text across, falling back to the stored folder on first paint.
+        val pendingFolder = (document.getElementById(ElementId(ROOT_ID)) as? HTMLInputElement)?.value
         hide()
         val cfg = model.readSyncConfig()
         shownConnected = cfg.cloudConnected
+        shownNeedsAuth = needsAuth()
         val connecting = SyncStateStore.current == SyncState.Connecting
         val r = Ref<HTMLElement>()
         val statusRef = Ref<HTMLElement>()
@@ -81,7 +98,7 @@ class SyncModal(
                 css {
                     position = Position.fixed
                     top = 0.px; left = 0.px; right = 0.px; bottom = 0.px
-                    zIndex = 10001
+                    zIndex = ZLayer.MODAL
                     display = Display.flex
                     alignItems = Align.center
                     justifyContent = JustifyContent.center
@@ -118,7 +135,7 @@ class SyncModal(
 
                     // Folder: editable before connect or while changing it; read-only otherwise.
                     if (!shownConnected || editingFolder) {
-                        field(folderHint(), ROOT_ID, cfg.rootFolder)
+                        field(folderHint(), ROOT_ID, pendingFolder ?: cfg.rootFolder)
                     } else {
                         div {
                             css { marginBottom = 8.px; fontSize = 13.px }
@@ -175,8 +192,7 @@ class SyncModal(
                                 // Reconnect is the primary action whenever auth lapsed: an expected Google
                                 // session timeout (NeedsReconnect) or a genuine Error (e.g. a revoked
                                 // Dropbox refresh token). The user gesture drives the consent popup.
-                                val needsAuth = SyncStateStore.current is SyncState.Error ||
-                                    SyncStateStore.current == SyncState.NeedsReconnect
+                                val needsAuth = needsAuth()
                                 if (needsAuth) {
                                     button("Reconnect", primary = true) { controller.connect() }
                                 }
@@ -185,7 +201,11 @@ class SyncModal(
                                 }
                                 button("Change folder") { editingFolder = true; render() }
                                 button("Disconnect") { controller.disconnect() }
-                                button("Restore last backup") {
+                                // The pre-pull safety net: LocalBackup snapshots all local data
+                                // before every reconcile; this rolls back to the newest snapshot.
+                                button("Restore last backup", hint =
+                                    "Roll local data back to the snapshot taken automatically " +
+                                    "before the last sync — recovers from a bad merge or pull.") {
                                     if (controller.restoreLastBackup())
                                         window.alert("Restored the most recent pre-sync backup.")
                                     else
@@ -285,30 +305,8 @@ class SyncModal(
     }
 
     private fun FlowContent.button(
-        text: String, primary: Boolean = false, enabled: Boolean = true, onPress: () -> Unit,
-    ) {
-        div {
-            css {
-                padding = Padding(vertical = 7.px, horizontal = 14.px)
-                marginRight = 8.px
-                cursor = if (enabled) Cursor.pointer else Cursor.default
-                if (!enabled) opacity = 0.5
-                borderRadius = 4.px
-                fontSize = 13.px
-                fontWeight = if (primary) FontWeight.w600 else FontWeight.normal
-                textAlign = TextAlign.center
-                userSelect = UserSelect.none
-                backgroundColor = if (primary) SyncColors.primaryBg else SyncColors.buttonBg
-                color = if (primary) SyncColors.primaryFg else SyncColors.buttonFg
-                border = Border(
-                    1.px, BorderStyle.solid,
-                    if (primary) SyncColors.primaryBg else SyncColors.buttonBorder,
-                )
-            }
-            if (enabled) onClick { onPress() }
-            +text
-        }
-    }
+        text: String, primary: Boolean = false, enabled: Boolean = true, hint: String? = null, onPress: () -> Unit,
+    ) = modalButton(text, primary, enabled, hint, onPress)
 
     companion object {
         private const val ROOT_ID = "tdz-sync-root"

@@ -1,5 +1,5 @@
 package tdz.model.localstorage
 
-interface HasKey: JsonAble {
+interface HasKey: Persistable {
     val key: String
 }

@@ -1,8 +1,19 @@
 package tdz.model.localstorage
 
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import tdz.sync.SyncProvider
-import kotlin.js.Json
-import kotlin.js.json
+
+@Serializable
+private data class SyncConfigWire(
+    /** Legacy configs predate `provider`; absence means the only provider that existed: Dropbox. */
+    val provider: String? = null,
+    val enabled: Boolean,
+    val rootFolder: String,
+    val refreshToken: String? = null,
+    val accountEmail: String? = null,
+    val localFolderName: String? = null,
+)
 
 /**
  * Singleton sync configuration, shared by every [SyncProvider]. The Dropbox [refreshToken] is stored
@@ -37,13 +48,8 @@ data class SyncConfigDoc(
     /** True when the local folder is the active, connected backend (used by the Local Folder modal). */
     val localConnected: Boolean get() = provider == SyncProvider.LOCAL_FOLDER && localFolderName != null
 
-    override fun toJson(): Json = json(
-        "provider" to provider.name,
-        "enabled" to enabled,
-        "rootFolder" to rootFolder,
-        "refreshToken" to refreshToken,
-        "accountEmail" to accountEmail,
-        "localFolderName" to localFolderName,
+    override fun encode(): String = storageJson.encodeToString(
+        SyncConfigWire(provider.name, enabled, rootFolder, refreshToken, accountEmail, localFolderName)
     )
 
     companion object {
@@ -54,14 +60,18 @@ data class SyncConfigDoc(
             enabled = false, rootFolder = "", refreshToken = null, accountEmail = null,
         )
 
-        fun fromJson(json: Json) = SyncConfigDoc(
-            // Legacy configs predate `provider`; absence means the only provider that existed: Dropbox.
-            provider = (json["provider"] as? String)?.let { SyncProvider.valueOf(it) } ?: SyncProvider.DROPBOX,
-            enabled = json["enabled"] as Boolean,
-            rootFolder = json["rootFolder"] as String,
-            refreshToken = json["refreshToken"] as String?,
-            accountEmail = json["accountEmail"] as String?,
-            localFolderName = json["localFolderName"] as String?,
-        )
+        fun decode(raw: String): SyncConfigDoc {
+            val wire = storageJson.decodeFromString<SyncConfigWire>(raw)
+            return SyncConfigDoc(
+                // Unknown/absent provider falls back to Dropbox (the original sole provider).
+                provider = wire.provider?.let { p -> SyncProvider.entries.firstOrNull { it.name == p } }
+                    ?: SyncProvider.DROPBOX,
+                enabled = wire.enabled,
+                rootFolder = wire.rootFolder,
+                refreshToken = wire.refreshToken,
+                accountEmail = wire.accountEmail,
+                localFolderName = wire.localFolderName,
+            )
+        }
     }
 }

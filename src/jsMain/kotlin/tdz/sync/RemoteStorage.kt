@@ -49,7 +49,7 @@ interface RemoteStorage {
         val colId = SyncPaths.parseColumn(path)?.second ?: return emptyMap()
         return runCatching {
             val (content, _) = download(manifestPath)
-            ManifestVv.readOne(JSON.parse<Json>(content), colId)
+            ManifestVv.readOne(content, colId)
         }.getOrDefault(emptyMap())
     }
 }

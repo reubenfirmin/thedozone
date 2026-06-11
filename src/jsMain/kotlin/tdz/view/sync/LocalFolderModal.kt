@@ -2,13 +2,16 @@ package tdz.view.sync
 
 import kotlinx.css.*
 import kotlinx.html.div
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.SyncConflict
 import tdz.controller.events.SyncStatusChanged
 import tdz.model.Model
 import tdz.sync.SyncController
 import tdz.sync.SyncState
 import tdz.sync.SyncStateStore
+import tdz.view.ZLayer
+import tdz.view.modalButton
 import tdz.view.theme.ThemeManager
 import web.html.HTMLElement
 import zoned.framework.dom.Ref
@@ -27,14 +30,25 @@ import zoned.framework.interop.css
  */
 class LocalFolderModal(
     private val model: Model,
-    private val eventBus: EventBus,
+    private val eventBus: EventBus<Event>,
     private val controller: SyncController,
     private val onDismiss: (() -> Unit)? = null,
 ) {
     private var rootEl: HTMLElement? = null
+    private var shownConnected = false
+    private var shownNeedsReconnect = false
 
     init {
-        eventBus.on<SyncStatusChanged> { if (rootEl != null) render() }
+        // Rebuild only when the button row's inputs change — NOT on every state tick. A blanket
+        // re-render replaced the open dialog under the user (killing e.g. an in-flight OS folder
+        // picker) every time a background sync changed state.
+        eventBus.on<SyncStatusChanged> {
+            if (rootEl != null &&
+                (model.readSyncConfig().localConnected != shownConnected ||
+                 (SyncStateStore.current == SyncState.NeedsReconnect) != shownNeedsReconnect)) {
+                render()
+            }
+        }
     }
 
     fun show() = render()
@@ -47,6 +61,8 @@ class LocalFolderModal(
         val state = SyncStateStore.current
         val needsReconnect = state == SyncState.NeedsReconnect
         val connected = cfg.localConnected
+        shownConnected = connected
+        shownNeedsReconnect = needsReconnect
         val r = Ref<HTMLElement>()
         val statusRef = Ref<HTMLElement>()
         addToBody {
@@ -55,7 +71,7 @@ class LocalFolderModal(
                 css {
                     position = Position.fixed
                     top = 0.px; left = 0.px; right = 0.px; bottom = 0.px
-                    zIndex = 10001
+                    zIndex = ZLayer.MODAL
                     display = Display.flex
                     alignItems = Align.center
                     justifyContent = JustifyContent.center
@@ -123,27 +139,6 @@ class LocalFolderModal(
 
     // --- button helper (kotlinx.html receiver), copied from SyncModal's style ---
     private fun kotlinx.html.FlowContent.button(
-        text: String, primary: Boolean = false, onPress: () -> Unit,
-    ) {
-        div {
-            css {
-                padding = Padding(vertical = 7.px, horizontal = 14.px)
-                marginRight = 8.px
-                cursor = Cursor.pointer
-                borderRadius = 4.px
-                fontSize = 13.px
-                fontWeight = if (primary) FontWeight.w600 else FontWeight.normal
-                textAlign = TextAlign.center
-                userSelect = UserSelect.none
-                backgroundColor = if (primary) SyncColors.primaryBg else SyncColors.buttonBg
-                color = if (primary) SyncColors.primaryFg else SyncColors.buttonFg
-                border = Border(
-                    1.px, BorderStyle.solid,
-                    if (primary) SyncColors.primaryBg else SyncColors.buttonBorder,
-                )
-            }
-            onClick { onPress() }
-            +text
-        }
-    }
+        text: String, primary: Boolean = false, enabled: Boolean = true, onPress: () -> Unit,
+    ) = modalButton(text, primary, enabled, onPress = onPress)
 }

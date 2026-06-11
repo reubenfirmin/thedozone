@@ -1,5 +1,7 @@
 package tdz.model.markdown
 
+import tdz.model.ColumnId
+
 import tdz.model.markdown.MarkdownReader.metadataLine
 
 object MarkdownCardMetadata {
@@ -8,8 +10,8 @@ object MarkdownCardMetadata {
         // right now this is column/width. only column is used...width could be repurposed
         val proposedMetadata = metadataMarker(trimmed)
         return if (proposedMetadata != null) {
-            if (proposedMetadata.first != state.getCurrentColumn()) {
-                state.newColumn(proposedMetadata.first)
+            if (ColumnId(proposedMetadata.first) != state.getCurrentColumn()) {
+                state.newColumn(ColumnId(proposedMetadata.first))
             }
             true
         } else {
@@ -17,7 +19,7 @@ object MarkdownCardMetadata {
         }
     }
 
-    // TODO remove width
+    // The width group (second) is vestigial; kept because stored files carry it (see MarkdownWriter).
     private fun metadataMarker(line: String): Pair<Int, Int>? {
         val metadataMatch = metadataLine.matchEntire(line)
         return if (metadataMatch != null) {

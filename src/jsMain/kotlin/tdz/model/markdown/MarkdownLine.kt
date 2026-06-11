@@ -13,10 +13,8 @@ class MarkdownLine(line: String) {
         val found = mutableListOf<RichText>()
 
         val currentText = StringBuilder()
-        val description = StringBuilder()
         val codeBlock = StringBuilder()
         var buildingLink = false
-        var buildingLinkDescription = false
         var buildingCode = false
 
         fun storeCurrent() {
@@ -26,23 +24,27 @@ class MarkdownLine(line: String) {
             }
         }
 
+        fun storeLink(body: String) {
+            // The label is the LAST "(...)" group, so a link whose target itself contains parens —
+            // "[map(40.5, -73.9) (My Location)]" — keeps its target intact. (Splitting on the FIRST
+            // "(" used to mangle labeled map links into unparseable canvas links.)
+            val split = Regex("""^(.*?)\s*\(([^()]*)\)$""").matchEntire(body.trim())
+            if (split != null) {
+                found.add(LinkFactory(split.groupValues[1].trim(), split.groupValues[2]).resolve())
+            } else {
+                found.add(LinkFactory(body.trim(), "").resolve())
+            }
+        }
+
         line.forEach { character ->
             if (character == '[') {
                 storeCurrent()
                 buildingLink = true
                 currentText.append(character)
             } else if (buildingLink && character == ']') {
-                // remove space between link and description
-                found.add(LinkFactory(currentText.substring(1).trim(), description.toString()).resolve())
+                storeLink(currentText.substring(1))
                 currentText.clear()
-                description.clear()
                 buildingLink = false
-            } else if (buildingLink && character == '(') {
-                buildingLinkDescription = true
-            } else if (buildingLinkDescription && character == ')') {
-                buildingLinkDescription = false
-            } else if (buildingLinkDescription) {
-                description.append(character)
             } else if (character == '`') {
                 buildingCode = if (buildingCode) {
                     found.add(CardCodeBlock(codeBlock.toString()))

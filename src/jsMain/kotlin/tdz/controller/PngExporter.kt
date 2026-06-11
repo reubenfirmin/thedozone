@@ -1,10 +1,9 @@
 package tdz.controller
 
-import kotlinx.browser.document
-import org.w3c.dom.HTMLElement
-import org.w3c.dom.HTMLImageElement
-import org.w3c.dom.asList
-import web.dom.Element as WebElement
+import web.dom.ElementId
+import web.dom.document
+import web.html.HTMLElement
+import web.html.HTMLImageElement
 import zoned.framework.libs.HtmlToPngOptions
 import zoned.framework.libs.dataURLtoBlob
 import zoned.framework.libs.saveAs
@@ -20,23 +19,24 @@ import zoned.framework.libs.toPng
 class PngExporter {
 
     fun export(elementId: String, fileName: String, onComplete: () -> Unit) {
-        val element = document.getElementById(elementId) as? HTMLElement
+        val element = document.getElementById(ElementId(elementId)) as? HTMLElement
         if (element == null) {
             onComplete()
             return
         }
 
-        element.querySelectorAll("img").asList()
-            .filterIsInstance<HTMLImageElement>()
-            .filter { !it.hasAttribute("crossorigin") && !it.src.contains("tile.osm") }
-            .forEach { it.remove() }
+        val images = element.querySelectorAll("img")
+        for (i in 0 until images.length) {
+            val img = images[i] as? HTMLImageElement ?: continue
+            if (!img.hasAttribute("crossorigin") && !img.src.contains("tile.osm")) img.remove()
+        }
 
         val options = object : HtmlToPngOptions {
             override val width = element.scrollWidth
             override val height = element.scrollHeight
         }
 
-        toPng(element.unsafeCast<WebElement>(), options).then { dataUrl ->
+        toPng(element, options).then { dataUrl ->
             saveAs(dataURLtoBlob(dataUrl), fileName)
             onComplete()
         }.catch { error ->

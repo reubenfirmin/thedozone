@@ -56,8 +56,8 @@ class CanvasImporter(private val store: CanvasStore) {
             val columnCount = doc.cards.map { it.metadata.columnId }.distinct().size
             store.addCanvas(
                 Canvas(
-                    name, currentCanvas.name, (0..columnCount).toList(),
-                    listOf(ColumnLayoutSpec(0, Split.VERTICAL, (1..columnCount).toList())),
+                    name, currentCanvas.name, (0..columnCount).map(::ColumnId),
+                    listOf(ColumnLayoutSpec(ColumnId(0), Split.VERTICAL, (1..columnCount).map(::ColumnId))),
                 )
             )
         }
@@ -73,7 +73,8 @@ class CanvasImporter(private val store: CanvasStore) {
 
     /** Save cards grouped by their source column, remapping any non-leaf target onto the first leaf. */
     private fun saveCardsInto(canvasName: CanvasName, cards: List<Card>): List<ColumnId> {
-        val canvas = store.getCanvas(canvasName)!!
+        val canvas = store.getCanvas(canvasName)
+            ?: error("Import target canvas '${canvasName.normalized()}' not found")
         val leaves = canvas.columns.filterNot { canvas.layoutMap.containsKey(it) }.toSet()
         val changed = mutableListOf<ColumnId>()
         for ((columnId, group) in cards.groupBy { it.metadata.columnId }) {

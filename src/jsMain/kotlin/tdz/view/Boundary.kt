@@ -69,7 +69,6 @@ data class Boundary(val leftX: Int, val topY: Int, val width: Int, val height: I
          * Calculate the boundary of this particular sibling in the given direction within the parent
          */
         fun calculateBoundary(split: Split, parentBoundary: Boundary, siblingIdx: Int, numSiblings: Int): Boundary {
-            // TODO experiment with supporting flex
             return when (split) {
                 Split.HORIZONTAL -> {
                     val width = parentBoundary.width

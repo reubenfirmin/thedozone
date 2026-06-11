@@ -4,6 +4,9 @@ import tdz.ACE_TAB_SIZE
 import tdz.model.card.*
 import tdz.model.card.ListMemberType.*
 
+/** The leading marker that flags a list item as done — written by [MarkdownWriter], read here. */
+internal const val DONE_MARKER = "/"
+
 internal object MarkdownListElement {
 
     private val numbered = "[\\t ]*[0-9]*\\.(.*)".toRegex()
@@ -51,15 +54,15 @@ internal object MarkdownListElement {
             }
         }
 
-        if (type == null) return null
+        if (type == null || text == null) return null
 
-        val trimmed = text!!.trim()
+        val trimmed = text.trim()
         if (trimmed.isEmpty()) return null
 
         var done = false
-        val cleaned = if (trimmed.startsWith("/")) {
+        val cleaned = if (trimmed.startsWith(DONE_MARKER)) {
             done = true
-            trimmed.substring(1)
+            trimmed.substring(DONE_MARKER.length)
         } else {
             trimmed
         }
@@ -72,7 +75,7 @@ internal object MarkdownListElement {
         val trimmed = arrow.groupValues[2].trim()
         if (trimmed.isEmpty()) return null
         // Callouts have no done state; strip a stray leading done-marker for parity with list items.
-        val cleaned = if (trimmed.startsWith("/")) trimmed.substring(1) else trimmed
+        val cleaned = if (trimmed.startsWith(DONE_MARKER)) trimmed.substring(DONE_MARKER.length) else trimmed
         return Callout(MarkdownLine(cleaned).elements(), levelOf(line), weight)
     }
 

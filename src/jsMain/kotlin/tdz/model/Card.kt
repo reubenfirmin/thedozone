@@ -2,7 +2,16 @@ package tdz.model
 
 import tdz.model.card.*
 
-data class CardMetadata(val columnId: Int)
+data class CardMetadata(val columnId: ColumnId)
+
+/**
+ * A card's positional identity: its column and its index within it (its position at last render).
+ * Cards have no stable ids by design — the markdown file is the source of truth and cards are
+ * projections — so a ref is only valid until the column is next rewritten.
+ */
+data class CardRef(val columnId: ColumnId, val index: Int)
+
+val Card.ref: CardRef get() = CardRef(metadata.columnId, index)
 
 data class Card(val segments: List<CardSegment>, val metadata: CardMetadata, val index: Int) {
 
@@ -68,11 +77,20 @@ data class Card(val segments: List<CardSegment>, val metadata: CardMetadata, val
         }
 
         /**
-         * @return column to card index in column
+         * The card's checkable items in RENDER order — list groups in segment order, nested groups
+         * depth-first — matching CardRenderer's traversal exactly. This is the positional contract
+         * the delegated task-click handler relies on: the clicked row's ordinal among the card's
+         * task-row elements indexes into this list.
          */
-        fun tagIdToCardIndex(tag: String): Pair<Int, Int> {
-            val tokens = tag.split("_")
-            return tokens[1].toInt() to tokens[2].toInt()
+        fun Card.taskItems(): List<CardListItem> {
+            fun collect(group: ListGroup): List<CardListItem> = group.members.flatMap { member ->
+                when (member) {
+                    is CardListItem -> listOf(member)
+                    is ListGroup -> collect(member)
+                    else -> emptyList()
+                }
+            }
+            return segments.filterIsInstance<ListGroup>().flatMap { collect(it) }
         }
     }
 }

@@ -1,7 +1,8 @@
 package tdz.view
 
 import kotlinx.browser.window
-import tdz.controller.events.EventBus
+import tdz.controller.events.Event
+import zoned.framework.events.EventBus
 import tdz.controller.events.SwitchToCanvas
 import tdz.model.CanvasName
 import tdz.model.Model
@@ -39,7 +40,7 @@ fun switcherIndexForKey(key: String, count: Int): Int? =
     key.toIntOrNull()?.minus(1)?.takeIf { it in 0 until count }
 
 /** Show the child-board switcher centered on screen (Page Down). No-op when there are no sub-boards. */
-fun showCanvasSwitcher(model: Model, eventBus: EventBus) {
+fun showCanvasSwitcher(model: Model, eventBus: EventBus<Event>) {
     val links = childBoardLinks(model, model.currentCanvas().name)
     if (links.isEmpty()) return
     val select = { target: CanvasName -> eventBus.fire(SwitchToCanvas(target)) }

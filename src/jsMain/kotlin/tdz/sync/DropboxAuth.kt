@@ -1,14 +1,26 @@
 package tdz.sync
 
+import js.typedarrays.Uint8Array
 import kotlinx.browser.localStorage
 import kotlinx.coroutines.await
-import web.events.Event
+import web.crypto.crypto
 import web.events.EventType
 import web.events.addEventListener
 import web.events.removeEventListener
+import web.messaging.MessageEvent
+import web.timers.clearInterval
+import web.timers.setInterval
 import web.window.window
 import kotlin.js.Promise
 import kotlin.js.json
+
+/** Shape of the message `oauth.html` posts back to the opener. */
+private external interface OauthMessage {
+    val source: String?
+    val error: String?
+    val state: String?
+    val code: String?
+}
 
 /** Result of a successful connect: the long-lived refresh token + the account's email. */
 data class DropboxCredentials(val refreshToken: String, val accountEmail: String)
@@ -61,33 +73,40 @@ object DropboxAuth {
         return DropboxCredentials(refreshToken, email)
     }
 
+    /** 16 cryptographically-random bytes as lowercase hex (the OAuth CSRF `state` value). */
     private fun randomState(): String {
-        val hex = js("(function() { var arr = new Uint8Array(16); crypto.getRandomValues(arr); return Array.from(arr, function(b) { return b.toString(16).padStart(2, '0'); }).join(''); })()")
-        return hex as String
+        val bytes = crypto.getRandomValues(Uint8Array(16))
+        return buildString {
+            for (i in 0 until bytes.length) {
+                append((bytes[i].toInt() and 0xff).toString(16).padStart(2, '0'))
+            }
+        }
     }
 
     /** Open the auth popup and resolve with the `code` from its postMessage. */
     private suspend fun awaitPopupCode(url: String, expectedState: String): String =
         Promise<String> { resolve, reject ->
-            val popup = window.asDynamic().open(url, "tdz-dropbox", "width=560,height=720")
-            if (popup == null || popup == undefined) {
+            // kotlinx.browser's open(): typed, takes plain strings, and its Window exposes `closed`.
+            val popup = kotlinx.browser.window.open(url, "tdz-dropbox", "width=560,height=720")
+            if (popup == null) {
                 reject(Exception("Popup blocked — allow popups for this site and retry."))
                 return@Promise
             }
-            var handler: ((Event) -> Unit)? = null
-            var closedPoll = 0
+            var handler: ((MessageEvent<OauthMessage?>) -> Unit)? = null
+            var closedPoll: web.timers.Interval? = null
             fun cleanup() {
                 handler?.let { window.removeEventListener(EventType("message"), it) }
-                if (closedPoll != 0) window.asDynamic().clearInterval(closedPoll)
+                closedPoll?.let { clearInterval(it) }
             }
             handler = { event ->
-                val msg = event.asDynamic().data
+                val msg = event.data
                 if (msg != null && msg.source == "tdz-dropbox-oauth") {
                     cleanup()
+                    val code = msg.code
                     when {
                         msg.error != null -> reject(Exception("Dropbox: ${msg.error}"))
                         msg.state != expectedState -> reject(Exception("OAuth state mismatch"))
-                        msg.code != null -> resolve(msg.code as String)
+                        code != null -> resolve(code)
                         else -> reject(Exception("No authorization code returned"))
                     }
                 }
@@ -95,11 +114,11 @@ object DropboxAuth {
             window.addEventListener(EventType("message"), handler)
             // If the user closes the popup without authorizing, no message ever arrives. Poll for it
             // so connect() doesn't hang forever in the locked Connecting state (blocking overlay up).
-            closedPoll = window.asDynamic().setInterval({
-                if (popup.closed == true) {
+            closedPoll = setInterval({
+                if (popup.closed) {
                     cleanup()
                     reject(Exception("Dropbox authorization was cancelled."))
                 }
-            }, 500) as Int
+            }, 500)
         }.await()
 }

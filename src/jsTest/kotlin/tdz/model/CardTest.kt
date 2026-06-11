@@ -1,5 +1,6 @@
 package tdz.model
 
+import tdz.model.ColumnId
 import tdz.model.Card.Companion.cardsUnderH1
 import tdz.model.card.Callout
 import tdz.model.card.CardHeading
@@ -13,7 +14,7 @@ import kotlin.test.assertTrue
 class CardTest {
 
     private fun card(vararg segments: tdz.model.card.CardSegment) =
-        Card(segments.toList(), CardMetadata(0), 0)
+        Card(segments.toList(), CardMetadata(ColumnId(0)), 0)
 
     private fun h1(text: String) = card(CardHeading(text, 1))
     private fun text(text: String) = card(CardText(listOf(Text(text))))

@@ -28,7 +28,9 @@ class LinkFactory(val link: String, val label: String) {
                 lat.toDouble(),
                 long.toDouble(),
                 zoom.toIntOrNull(),
-                height.toIntOrNull()
+                height.toIntOrNull(),
+                // The raw user label, not the resolve() fallback (which would bake the map string in).
+                label.trim(),
             )
         } else {
             debug("Not a map! $input", mapLog)

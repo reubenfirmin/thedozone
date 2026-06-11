@@ -1,6 +1,7 @@
 package tdz.sync
 
 import tdz.model.CanvasName
+import tdz.model.ColumnId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -13,23 +14,23 @@ class SyncPathsTest {
     @Test
     fun columnPathWithRoot() {
         // Case is preserved (normalized() does not lowercase) so paths round-trip to the model key.
-        assertEquals("/notes/Groceries/col-2.md", SyncPaths.columnPath("/notes", canvas, 2))
+        assertEquals("/notes/Groceries/col-2.md", SyncPaths.columnPath("/notes", canvas, ColumnId(2)))
     }
 
     @Test
     fun columnPathEmptyRoot() {
-        assertEquals("/Groceries/col-0.md", SyncPaths.columnPath("", canvas, 0))
+        assertEquals("/Groceries/col-0.md", SyncPaths.columnPath("", canvas, ColumnId(0)))
     }
 
     @Test
     fun rootIsNormalizedWithLeadingSlashNoTrailing() {
-        assertEquals("/notes/Groceries/col-0.md", SyncPaths.columnPath("notes/", canvas, 0))
+        assertEquals("/notes/Groceries/col-0.md", SyncPaths.columnPath("notes/", canvas, ColumnId(0)))
     }
 
     @Test
     fun normalizesUnsafeCharsInCanvasName() {
         // spaces -> dashes, parens stripped (CanvasName.normalized()), case preserved
-        assertEquals("/My-List/col-0.md", SyncPaths.columnPath("", CanvasName("My (List)"), 0))
+        assertEquals("/My-List/col-0.md", SyncPaths.columnPath("", CanvasName("My (List)"), ColumnId(0)))
     }
 
     @Test
@@ -39,17 +40,17 @@ class SyncPathsTest {
 
     @Test
     fun parseColumnRoundTrips() {
-        val path = SyncPaths.columnPath("/notes", canvas, 7)
+        val path = SyncPaths.columnPath("/notes", canvas, ColumnId(7))
         val parsed = SyncPaths.parseColumn(path)
         assertEquals(CanvasName("Groceries"), parsed?.first)
-        assertEquals(7, parsed?.second)
+        assertEquals(ColumnId(7), parsed?.second)
     }
 
     @Test
     fun parseColumnYieldsSameModelKeyAsOriginal() {
         // The invariant the SyncController relies on: parsed canvas normalizes to the same key.
         val original = CanvasName("My Trips")
-        val path = SyncPaths.columnPath("/n", original, 3)
+        val path = SyncPaths.columnPath("/n", original, ColumnId(3))
         val parsed = SyncPaths.parseColumn(path)!!.first
         assertEquals(original.normalized(), parsed.normalized())
     }
