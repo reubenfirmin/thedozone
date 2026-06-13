@@ -1,6 +1,5 @@
 package tdz.sync
 
-import zoned.framework.Debugger
 import kotlinx.browser.window as browserWindow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +16,7 @@ import tdz.model.CanvasName
 import tdz.model.ColumnId
 import tdz.model.Model
 import tdz.model.localstorage.CanvasDoc
+import tdz.model.localstorage.CanvasStorageKeys
 import tdz.model.localstorage.Namespace
 import tdz.model.localstorage.SyncEntry
 import tdz.model.localstorage.SyncStateDoc
@@ -120,7 +120,9 @@ class SyncController(
     }
 
     private fun buildEngine(storage: RemoteStorage) = SyncEngine(
-        storage = storage,
+        // Instrumented: every remote call is timed and tallied (SyncLog.summary) so a slow sync
+        // says where its time went instead of just "Syncing…".
+        storage = InstrumentedStorage(storage),
         readLocal = { path -> readLocal(path) },
         writeLocal = { path, content -> writeLocal(path, content) },
         deleteLocal = { path -> deleteLocal(path) },
@@ -182,6 +184,18 @@ class SyncController(
 
     // ---- push side ----
 
+    /**
+     * True while local changes must be RECORDED but never pushed: auth/permission has lapsed
+     * (NeedsReconnect / Error) or we're offline. Pushing anyway is worse than useless — with Drive
+     * every push attempt mints a token, and a failed silent mint surfaces the Google auth popup,
+     * one per edit. Blocked edits are marked pending (rev = null) with their version vector
+     * bumped, so the reconcile that follows reconnect/online delivers them.
+     */
+    private fun pushesBlocked(): Boolean = when (SyncStateStore.current) {
+        SyncState.NeedsReconnect, SyncState.Offline, is SyncState.Error -> true
+        else -> false
+    }
+
     private fun onColumnChanged(canvasName: CanvasName, columnId: ColumnId) {
         val eng = engine ?: return
         val path = SyncPaths.columnPath(root(), canvasName, columnId)
@@ -190,6 +204,12 @@ class SyncController(
         val prev = state().entries[path]
         val stamped = (prev ?: SyncEntry(rev = null, localUpdatedAt = now))
             .copy(localUpdatedAt = now, vv = bump(prev?.vv ?: emptyMap(), self))
+        if (pushesBlocked()) {
+            // rev = null: without it a remote whose rev never moved reads as "up to date" on the
+            // next pull, and the reconcile's pending sweep would skip this edit forever.
+            saveState(state().with(path, stamped.copy(rev = null)))
+            return
+        }
         saveState(state().with(path, stamped))
         debouncePush(path) {
             // The column may have been deleted between the change and the debounce firing; the
@@ -230,6 +250,8 @@ class SyncController(
         val prev = state().entries[manifestPath]
         saveState(state().with(manifestPath,
             (prev ?: SyncEntry(rev = null, localUpdatedAt = now)).copy(rev = null, localUpdatedAt = now)))
+        // Already marked pending above — the post-reconnect/online reconcile retries it.
+        if (pushesBlocked()) return
         // Debounced per canvas: a burst of structural events (split + delete + import) coalesces
         // into one manifest push + orphan sweep, and this canvas's state writes serialize.
         debouncePush(manifestPath) {
@@ -254,7 +276,16 @@ class SyncController(
         pushTimers[path]?.let { browserWindow.clearTimeout(it) }
         pushTimers[path] = browserWindow.setTimeout({
             pushTimers.remove(path)
-            scope.launch { runCatching { block() }.onFailure { fail(it) } }
+            scope.launch {
+                val t0 = Date.now()
+                SyncLog.resetCounters()
+                runCatching { block() }
+                    .onSuccess { SyncLog.log("push '$path' done in ${SyncLog.since(t0)} — ${SyncLog.summary()}") }
+                    .onFailure {
+                        SyncLog.log("push '$path' FAILED after ${SyncLog.since(t0)} — ${SyncLog.summary()}: ${it.message}")
+                        fail(it)
+                    }
+            }
         }, pushDebounceMs)
     }
 
@@ -267,7 +298,18 @@ class SyncController(
             SyncStateStore.set(SyncState.Offline, eventBus)
             return
         }
+        // Auth not in hand (expired Drive token on startup): do NOT attempt remote ops — they'd each
+        // fire a blocked auth popup and abort. Bail to NeedsReconnect quietly; the local state
+        // (edits AND deletions) stays recorded and propagates on the next reconcile after the user
+        // clicks Reconnect (the gesture that's allowed to pop the consent window).
+        if (!eng.isReady()) {
+            SyncStateStore.set(SyncState.NeedsReconnect, eventBus)
+            return
+        }
         reconciling = true        // set synchronously so a rapid second call is rejected above
+        val t0 = Date.now()
+        SyncLog.resetCounters()
+        SyncLog.log("reconcile started")
         scope.launch {
             // try/finally, not just runCatching: if ANYTHING here escapes (snapshot, fail() itself),
             // a stuck reconciling=true would silently freeze every future reconcile this session.
@@ -275,9 +317,32 @@ class SyncController(
             SyncStateStore.set(SyncState.Reconciling, eventBus)
             runCatching {
                 LocalBackup.snapshot()   // recoverable safety net before any pull can overwrite/delete local
+                // Local deletions must STICK: anything still tracked in state but gone locally was
+                // deleted here, and the pull below would otherwise RE-IMPORT it. This covers THREE
+                // cases — a column dropped from its canvas, AND (for a deleted board) both its
+                // columns AND its `_canvas.json` MANIFEST. The manifest is the seed: sweep the
+                // columns but leave the manifest and the next pull re-imports it and regrows the
+                // board as an empty husk (the reported "canvases came back on reconnect"). A path is
+                // only in OUR state if we synced it, so a now-missing canvas is a real local
+                // deletion to propagate, not a remote-only board we never pulled. Sweep before the
+                // pull; a failure aborts the reconcile (better no sync than a resurrection).
+                val orphans = state().entries.keys.filter { p ->
+                    val col = SyncPaths.parseColumn(p)
+                    when {
+                        col != null -> model.getCanvas(col.first)?.let { col.second !in it.columns } ?: true
+                        SyncPaths.isManifest(p) -> manifestCanvas(p)?.let { model.getCanvas(it) == null } ?: false
+                        else -> false
+                    }
+                }
+                if (orphans.isNotEmpty()) {
+                    SyncLog.log("propagating ${orphans.size} locally-deleted file(s) (columns + manifests) to the remote")
+                    saveState(eng.deleteRemoteBatch(orphans, state()))
+                }
+                val tPull = Date.now()
                 val result = eng.pull(root(), state())
                 var s = result.state
-                Debugger.debug("[sync] pull: ${result.changedPaths.size} changed, ${result.keptLocalPaths.size} kept-local")
+                SyncLog.log("pull: ${result.changedPaths.size} changed, " +
+                    "${result.keptLocalPaths.size} kept-local (${SyncLog.since(tPull)})")
                 // Two-way reconcile: push files the remote doesn't have yet (pending, rev == null) and
                 // those where local won last-write-wins. Without this, edits made while pushes were
                 // failing (e.g. an expired Drive token) would never reach the remote on a plain Sync now.
@@ -291,15 +356,20 @@ class SyncController(
                     content?.let { PushItem(p, it, s.entries[p]?.localUpdatedAt ?: Date.now()) }
                 }
                 if (items.isNotEmpty()) {
-                    Debugger.debug("[sync] reconcile pushing ${items.size} pending/local-newer file(s)")
+                    val tPush = Date.now()
                     val (pushed, conflicts) = eng.pushBatch(items, s)
                     s = pushed
                     conflicts.forEach { (path, w) -> fireConflict(path, w) }
+                    SyncLog.log("pushed ${items.size} pending/local-newer file(s) (${SyncLog.since(tPush)})")
                 }
                 saveState(s)
                 // writeLocal already fired refresh events per changed file
                 SyncStateStore.set(SyncState.Synced, eventBus)
-            }.onFailure { fail(it) }
+                SyncLog.log("reconcile finished in ${SyncLog.since(t0)} — ${SyncLog.summary()}")
+            }.onFailure {
+                SyncLog.log("reconcile FAILED after ${SyncLog.since(t0)} — ${SyncLog.summary()}: ${it.message}")
+                fail(it)
+            }
             } finally {
                 reconciling = false
             }
@@ -326,6 +396,12 @@ class SyncController(
         model.writeSyncConfig(config().copy(provider = provider))
     }
 
+    /** Test seam: bypasses the provider's interactive consent popup in suites. */
+    internal var connectOverride: (suspend (SyncProvider) -> ConnectResult)? = null
+
+    private suspend fun providerConnect(provider: SyncProvider): ConnectResult =
+        connectOverride?.invoke(provider) ?: SyncProviders.connect(provider)
+
     fun connect() {
         SyncStateStore.set(SyncState.Connecting, eventBus)
         // Fresh connect: drop any stale per-path bookkeeping from a prior provider/session so the first
@@ -334,7 +410,7 @@ class SyncController(
         saveState(SyncStateDoc.EMPTY)
         val provider = config().provider
         scope.launch {
-            runCatching { SyncProviders.connect(provider) }
+            runCatching { providerConnect(provider) }
                 .onSuccess { creds ->
                     // Blank root means "use the provider default" (Drive needs a concrete base folder).
                     val cfg = config()
@@ -346,10 +422,40 @@ class SyncController(
                         localFolderName = null,
                     )
                     model.writeSyncConfig(newCfg)
-                    val storage = SyncProviders.storage(newCfg)
+                    val storage = storageOverride ?: SyncProviders.storage(newCfg)
                     if (storage == null) { fail(Exception("Connect produced no storage")); return@onSuccess }
                     engine = buildEngine(storage)
                     initialSync()
+                }
+                .onFailure { fail(it) }
+        }
+    }
+
+    /**
+     * Re-authorize an ALREADY-configured cloud sync and resume. Unlike [connect] this PRESERVES
+     * the local sync bookkeeping: the fresh-connect wipe (correct for a new provider/folder)
+     * discards the version vectors stamped on edits made while auth was lapsed, so the post-auth
+     * pull judged the remote causally ahead and silently reverted those edits. With the state
+     * kept, a plain [reconcile] pushes the pending/local-newer files up instead.
+     */
+    fun reconnect() {
+        val cfg = config()
+        if (cfg.provider == SyncProvider.LOCAL_FOLDER) { reconnectLocalFolder(); return }
+        if (!cfg.cloudConnected) { connect(); return }   // never finished a first connect
+        SyncStateStore.set(SyncState.Connecting, eventBus)
+        scope.launch {
+            runCatching { providerConnect(cfg.provider) }
+                .onSuccess { creds ->
+                    // Keep existing credentials when the provider returns none (Drive has no
+                    // refresh token; its in-memory access token was just re-minted by connect).
+                    model.writeSyncConfig(config().copy(
+                        refreshToken = creds.refreshToken ?: config().refreshToken,
+                        accountEmail = creds.accountEmail ?: config().accountEmail,
+                    ))
+                    val storage = storageOverride ?: SyncProviders.storage(config())
+                    if (storage == null) { fail(Exception("Reconnect produced no storage")); return@onSuccess }
+                    engine = buildEngine(storage)
+                    reconcile()
                 }
                 .onFailure { fail(it) }
         }
@@ -421,6 +527,9 @@ class SyncController(
         val eng = engine ?: return
         SyncStateStore.set(SyncState.Reconciling, eventBus)
         reconciling = true
+        val t0 = Date.now()
+        SyncLog.resetCounters()
+        SyncLog.log("initial sync started")
         LocalBackup.snapshot()   // recoverable safety net before any pull can overwrite/delete local
         try {
             runCatching {
@@ -428,11 +537,20 @@ class SyncController(
                 // silently overwritten by a remote that another device already seeded (REMOTE_DOMINATES).
                 var s = seedLocalVvs(state())
                 saveState(s)
-                s = eng.pull(root(), s).state               // remote -> local
+                val tPull = Date.now()
+                val pulled = eng.pull(root(), s)            // remote -> local
+                s = pulled.state
+                SyncLog.log("initial pull: ${pulled.changedPaths.size} changed (${SyncLog.since(tPull)})")
+                val tPush = Date.now()
                 s = pushAllLocal(eng, s)                    // local -> remote (manifests + columns)
+                SyncLog.log("initial push-all done (${SyncLog.since(tPush)})")
                 saveState(s)
                 SyncStateStore.set(SyncState.Synced, eventBus)
-            }.onFailure { fail(it) }
+                SyncLog.log("initial sync finished in ${SyncLog.since(t0)} — ${SyncLog.summary()}")
+            }.onFailure {
+                SyncLog.log("initial sync FAILED after ${SyncLog.since(t0)} — ${SyncLog.summary()}: ${it.message}")
+                fail(it)
+            }
         } finally {
             reconciling = false
         }
@@ -549,12 +667,81 @@ class SyncController(
 
     fun syncNow() = reconcile()
 
-    /** User-triggered recovery: restore the most recent pre-sync snapshot and re-render. Returns
-     *  false if there was no backup to restore. */
-    fun restoreLastBackup(): Boolean {
-        val id = LocalBackup.latest() ?: return false
-        val ok = LocalBackup.restore(id)
-        if (ok) eventBus.fire(RefreshCanvas(model.currentCanvas().name))
-        return ok
+    /**
+     * User-triggered recovery: roll the CURRENT board back to the periodic backup
+     * ([PeriodicBackup]). Scoped strictly to that canvas — its manifest, columns, and column
+     * modes; other boards, the sync bookkeeping, and the theme are untouched. The kept sync
+     * vectors are the ones that match/dominate the remote's, so after re-stamping the board's
+     * files as pending/newest the reconcile pushes the restored content UP, instead of the next
+     * pull "correcting" the rollback with the remote's newer-but-unwanted content. Columns the
+     * rollback removed (created after the backup) are DELETED on the remote before that reconcile
+     * — the rollback is authoritative; they must not re-import. The pre-restore state is
+     * snapshotted into the pre-sync ring first, so a mis-restore is itself recoverable.
+     * Returns false when no periodic backup exists or it doesn't contain this board.
+     */
+    fun restoreAutoBackup(): Boolean {
+        val name = model.currentCanvas().name
+        val manifestKey = CanvasStorageKeys.manifest(name)
+        val backupCanvas = LocalBackup.autoValue(manifestKey)?.let { CanvasDoc.decode(it) }
+            ?: return false   // the board didn't exist when the backup was taken
+        LocalBackup.snapshot()
+        // Exact keys, from BOTH manifests: backup columns are replayed, columns that only exist
+        // now are removed (rollback), and key shapes never rely on name-prefix matching (canvas
+        // names may contain each other).
+        val currentColumns = model.getCanvas(name)?.columns ?: emptyList()
+        val keys = buildSet {
+            add(manifestKey)
+            for (col in (backupCanvas.columns + currentColumns).distinct()) {
+                add(CanvasStorageKeys.column(name, col))
+                add(CanvasStorageKeys.columnMode(name, col))
+            }
+        }
+        if (!LocalBackup.restoreAutoKeys(keys)) return false
+        stampCanvasAsPending(name)
+        model.changeCanvas(name)   // the in-memory canvas predates the rollback — reload it
+        eventBus.fire(RefreshCanvas(name, remote = true))
+        // Columns the rollback removed must die on the remote BEFORE the reconcile pulls — a
+        // listed-but-untracked-locally file would otherwise re-import. Tracked-only paths: a
+        // never-synced column has nothing remote to delete.
+        val removed = currentColumns.filter { it !in backupCanvas.columns }
+            .map { SyncPaths.columnPath(root(), name, it) }
+            .filter { it in state().entries }
+        scope.launch {
+            runCatching {
+                val eng = engine
+                if (removed.isNotEmpty() && eng != null) saveState(eng.deleteRemoteBatch(removed, state()))
+            }.onFailure {
+                // Remote deletion failed (offline / auth lapsed): do NOT reconcile into a
+                // re-import; the local rollback stands and the user can sync once healthy.
+                fail(it)
+                return@launch
+            }
+            reconcile()
+        }
+        return true
+    }
+
+    /**
+     * Mark one canvas's manifest and columns pending (rev = null, fresh timestamp) and bump each
+     * column's version vector, all on top of the CURRENT bookkeeping: this makes the board's
+     * local content causally ahead of the remote, so the next reconcile pushes it up (or 3-way
+     * merges against genuinely concurrent edits from other devices).
+     */
+    private fun stampCanvasAsPending(name: CanvasName) {
+        val canvas = model.getCanvas(name) ?: return
+        val now = Date.now()
+        val self = DeviceId.get()
+        var s = state()
+        val manifestPath = SyncPaths.manifestPath(root(), name)
+        s = s.with(manifestPath, (s.entries[manifestPath] ?: SyncEntry(rev = null, localUpdatedAt = now))
+            .copy(rev = null, localUpdatedAt = now))
+        for (col in canvas.columns) {
+            if (model.getCanvasColumnRaw(name, col) == null) continue   // layout cols have no content
+            val colPath = SyncPaths.columnPath(root(), name, col)
+            val prev = s.entries[colPath]
+            s = s.with(colPath, (prev ?: SyncEntry(rev = null, localUpdatedAt = now))
+                .copy(rev = null, localUpdatedAt = now, vv = bump(prev?.vv ?: emptyMap(), self)))
+        }
+        saveState(s)
     }
 }

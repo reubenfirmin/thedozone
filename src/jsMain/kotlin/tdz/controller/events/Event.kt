@@ -7,11 +7,16 @@ import tdz.model.CardRef
 import tdz.model.ColumnId
 import tdz.model.Direction
 import tdz.model.Split
-import tdz.model.card.CardListItem
 
 interface Event
 
-data class TaskToggleDone(val canvasName: CanvasName, val card: Card, val segment: CardListItem): Event
+/**
+ * A task row was clicked: flip the [ordinal]-th checkable item of [card] (its position in
+ * [tdz.model.Card.Companion.taskItems], i.e. render order). Identity is POSITIONAL — list items
+ * are data classes, so two tasks with identical text are structurally equal and carrying the
+ * segment itself would make them indistinguishable (toggling one toggled its twins).
+ */
+data class TaskToggleDone(val canvasName: CanvasName, val card: Card, val ordinal: Int): Event
 
 /**
  * A column's persisted markdown was replaced (editor save, properties modal). [refresh] asks the

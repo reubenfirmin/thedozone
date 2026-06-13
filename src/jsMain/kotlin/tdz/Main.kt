@@ -82,6 +82,12 @@ fun main() {
         themes.firstOrNull { it.name == saved }
             ?: longFormTheme.takeIf { saved == "Immaterial" }   // theme renamed; honor old saves
     }?.let { ThemeManager.use(it) }
+    zoned.framework.Debugger.debugOn()          // debug on
+    tdzModel.purgeOrphans().let { (purged, orphanContent) ->
+        zoned.framework.Debugger.debug("[storage] purged $purged orphaned mode/legacy key(s); " +
+            "${orphanContent.size} orphaned content column(s) left for review: $orphanContent")
+    }
+    tdz.model.localstorage.StorageDump.dump()   // debug-gated; prints only with ?debug
     tdz.sync.SyncBootstrap.init(tdzModel, eventBus)
     // Passing the collections IS their registration — an unmounted collection contributes no
     // routes, and any typed Route.path() link to it fails loudly naming the missing mount.

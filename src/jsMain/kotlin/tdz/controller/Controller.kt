@@ -22,7 +22,7 @@ class Controller(eventBus: EventBus<Event>, model: Model) {
 
     init {
         eventBus.on<TaskToggleDone> { event ->
-            model.toggleDone(event.canvasName, event.card, event.segment)
+            model.toggleDone(event.canvasName, event.card, event.ordinal)
             val changed = setOf(event.card.metadata.columnId)
             eventBus.fire(ColumnsChanged(event.canvasName, changed))
             // Toggling rewrites the card's content but not the column's order, so the card's ref is
@@ -35,7 +35,8 @@ class Controller(eventBus: EventBus<Event>, model: Model) {
             // the existing header so editing cards doesn't drop the column's wallpaper/color.
             val style = model.getColumnStyle(event.canvasName, event.columnId)
             model.updateColumn(event.canvasName, event.columnId,
-                MarkdownService.columnStyleHeader(style) + MarkdownService.stripColumnStyle(event.markdown))
+                MarkdownService.columnStyleHeader(style) +
+                    MarkdownService.stripTrailingEmptyListItems(MarkdownService.stripColumnStyle(event.markdown)))
             eventBus.fire(ColumnsChanged(event.canvasName, setOf(event.columnId)))
             if (event.refresh) {
                 eventBus.fire(RefreshColumns(event.canvasName, setOf(event.columnId)))
@@ -94,13 +95,27 @@ class Controller(eventBus: EventBus<Event>, model: Model) {
 
         eventBus.on<DeleteColumn> { event ->
             model.getCanvas(event.canvasName)?.let { canvas ->
-                val (updated, _) = ColumnSplit.deleteColumn(canvas, event.columnId)
-                model.deleteColumn(event.canvasName, event.columnId)   // discard the column's cards
-                if (updated != canvas) {
+                // A corrupt/foreign layout tree must never crash mid-delete (a half-applied delete
+                // is how a board loses its last columns) — refuse on throw.
+                val updated = runCatching { ColumnSplit.deleteColumn(canvas, event.columnId).first }
+                    .getOrElse { t ->
+                        console.error("[delete-column] refused, layout tree not deletable: ${t.message}")
+                        return@let
+                    }
+                // FUNDAMENTAL INVARIANT: a canvas always keeps at least one CONTENT column. Apply the
+                // delete only if its result still has one; otherwise this was the last content column
+                // (or ColumnSplit produced an empty/corrupt result) — EMPTY the target instead of
+                // removing it. Emptying (not deleting the file) also avoids the sync re-import: a
+                // null file gets pulled back from the remote; an empty file is a model fact that
+                // converges. This guard does not trust ColumnSplit's own count — it checks the result.
+                val contentAfter = updated.columns.filterNot { updated.layoutMap.containsKey(it) }
+                if (updated != canvas && contentAfter.isNotEmpty()) {
+                    model.deleteColumn(event.canvasName, event.columnId)   // discard the column's cards
                     model.addCanvas(updated)        // persist rearranged layout (overwrites)
+                } else {
+                    model.updateColumn(event.canvasName, event.columnId, "")
+                    eventBus.fire(ColumnsChanged(event.canvasName, setOf(event.columnId)))
                 }
-                // When ColumnSplit refuses (the last remaining column), the layout is unchanged but we
-                // still cleared its cards above — so the canvas drops back to the empty "welcome" state.
                 model.changeCanvas(event.canvasName)
                 eventBus.fire(RefreshCanvas(event.canvasName))
             }

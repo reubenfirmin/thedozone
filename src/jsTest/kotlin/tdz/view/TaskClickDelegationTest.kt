@@ -2,8 +2,10 @@ package tdz.view
 
 import kotlinx.html.div
 import kotlinx.html.id
+import tdz.controller.Controller
 import tdz.controller.events.Event
 import tdz.controller.events.TaskToggleDone
+import tdz.model.Card.Companion.taskItems
 import tdz.model.CanvasName
 import tdz.model.ColumnId
 import tdz.model.LayoutTemplate.SINGLE_PANE
@@ -69,7 +71,8 @@ class TaskClickDelegationTest {
 
         val event = toggled
         assertNotNull(event, "the delegated listener fires the toggle")
-        assertEquals("nested child", (event.segment.text.first() as Text).text.trim(),
+        assertEquals("nested child",
+            (event.card.taskItems()[event.ordinal].text.first() as Text).text.trim(),
             "the SECOND row resolves to the nested child, not its parent")
         assertEquals(canvas, event.canvasName)
 
@@ -77,8 +80,38 @@ class TaskClickDelegationTest {
         toggled = null
         click(rows[2] as HTMLElement)
         assertEquals("other card task",
-            (toggled?.segment?.text?.first() as? Text)?.text?.trim(),
+            (toggled?.let { it.card.taskItems()[it.ordinal] }?.text?.first() as? Text)?.text?.trim(),
             "rows resolve per enclosing card")
+    }
+
+    /**
+     * Identical rows are structurally EQUAL data classes, so any equality-based lookup in the
+     * model flips them all: checking one of two "15 mins - ISO" rows checked the other too (and a
+     * later Clear Done then removed items the user never touched). Identity must stay positional
+     * end-to-end: click ordinal -> event -> model.
+     */
+    @Test
+    fun clickingTheSecondOfTwoIdenticalTasksTogglesOnlyThatRow() {
+        val bus = EventBus<Event>()
+        val model = Model(canvas)
+        Controller(bus, model)   // full round-trip: click -> TaskToggleDone -> model mutation
+        model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))
+        model.updateColumn(canvas, column, "# Routine\n* 15 mins - ISO\n* 15 mins - ISO\n")
+        val spec = model.getCanvas(canvas) ?: error("setup")
+        val columns = CanvasColumns(spec, bus, model) { id -> model.cards(canvas, id) }
+        addToBody {
+            div {
+                id = "tcd-host2"
+                with(columns) { render(spec.columns.filter { !spec.layoutMap.containsKey(it) }) }
+            }
+        }
+
+        val rows = document.querySelectorAll(".tdz-task")
+        assertEquals(2, rows.length, "setup: both twins render")
+        click(rows[1] as HTMLElement)
+
+        assertEquals(listOf(false, true), model.cards(canvas, column).first().taskItems().map { it.done },
+            "identical twins are distinct rows — only the CLICKED one toggles")
     }
 
     @Test

@@ -194,26 +194,22 @@ class SyncModal(
                                 // Dropbox refresh token). The user gesture drives the consent popup.
                                 val needsAuth = needsAuth()
                                 if (needsAuth) {
-                                    button("Reconnect", primary = true) { controller.connect() }
+                                    // reconnect(), NOT connect(): a fresh connect wipes the sync
+                                    // bookkeeping, and with it the version vectors of edits made
+                                    // while auth was lapsed — the first pull would revert them.
+                                    button("Reconnect", primary = true) { controller.reconnect() }
                                 }
                                 button("Sync now", primary = !needsAuth) {
                                     controller.syncNow()
                                 }
                                 button("Change folder") { editingFolder = true; render() }
                                 button("Disconnect") { controller.disconnect() }
-                                // The pre-pull safety net: LocalBackup snapshots all local data
-                                // before every reconcile; this rolls back to the newest snapshot.
-                                button("Restore last backup", hint =
-                                    "Roll local data back to the snapshot taken automatically " +
-                                    "before the last sync — recovers from a bad merge or pull.") {
-                                    if (controller.restoreLastBackup())
-                                        window.alert("Restored the most recent pre-sync backup.")
-                                    else
-                                        window.alert("No backup available yet.")
-                                }
                             }
                         }
                     }
+
+                    // Board restore lives in the canvas context menu (Backup & Restore), not here:
+                    // the rolling backup is not a property of cloud sync.
 
                     onMount {
                         rootEl = r.element

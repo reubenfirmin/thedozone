@@ -44,10 +44,11 @@ class CanvasColumnsRenderTest {
 
             val col1 = getHtmlElement("column-1")
             assertNotNull(col1)
-            assertTrue(
-                col1.style.overflowY == "auto",
-                "a CARD-mode column keeps its scroll behavior after a re-render (got '${col1.style.overflowY}')",
-            )
+            // CARD columns scroll by wheel/touchpad but never SHOW a scrollbar — the to-date look
+            // (no visible overflow chrome) with long columns still reachable.
+            assertEquals("auto", col1.style.overflowY, "card columns are wheel/touch scrollable")
+            assertEquals("none", col1.style.getPropertyValue("scrollbar-width"),
+                "but the scrollbar itself is hidden")
         } finally {
             getHtmlElement("rr-host")?.remove()
         }

@@ -14,8 +14,11 @@ import tdz.controller.events.Event
 import zoned.framework.events.EventBus
 import tdz.controller.events.RefreshCanvas
 import tdz.controller.events.SplitColumn
+import kotlinx.browser.window
 import tdz.model.Model
 import tdz.model.Split
+import tdz.sync.LocalBackup
+import tdz.sync.SyncBootstrap
 import tdz.view.menu.MenuItem
 import tdz.view.menu.MenuSection
 import tdz.view.menu.splitIcon
@@ -38,8 +41,14 @@ interface CanvasMenuActions {
     fun downloadPng()             // rasterize the canvas to a .png image
     fun uploadNewCanvas()         // pick a .tdz file and import it as a new canvas
     fun uploadCardsHere()         // pick a .tdz file and merge its cards into the current canvas
+    fun restoreBoardBackup()      // roll THIS board back to the rolling 30-minute backup
     fun clearDone()
     fun openDoc(path: String)     // navigate to an in-app help route (e.g. /help/shortcuts)
+}
+
+/** "14:05" — the rolling backup's age, shown right on the menu item. */
+private fun backupTimeLabel(ts: Double): String = kotlin.js.Date(ts).let { d ->
+    "${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}"
 }
 
 /**
@@ -50,6 +59,8 @@ fun canvasSections(
     columnMode: Mode?,
     actions: CanvasMenuActions,
     localFolderSupported: Boolean = true,
+    /** When the rolling 30-minute backup was taken (epoch ms), or null when none exists yet. */
+    backupTimestamp: Double? = null,
 ): List<MenuSection> = listOf(
     MenuSection(
         items = listOf(
@@ -78,12 +89,18 @@ fun canvasSections(
     MenuSection(
         items = listOf(
             MenuItem(
-                label = "Backups & Export",
+                label = "Backup & Restore",
                 submenu = listOf(
                     MenuItem(label = "Download PNG", onSelect = actions::downloadPng),
                     MenuItem(label = "Download", onSelect = actions::download),
                     MenuItem(label = "Upload as New Canvas", onSelect = actions::uploadNewCanvas),
                     MenuItem(label = "Upload Cards Here", onSelect = actions::uploadCardsHere),
+                    MenuItem(
+                        label = backupTimestamp?.let { "Restore this board (${backupTimeLabel(it)})" }
+                            ?: "Restore this board",
+                        enabled = backupTimestamp != null,
+                        onSelect = actions::restoreBoardBackup,
+                    ),
                 ),
             ),
         ),
@@ -179,7 +196,15 @@ fun canvasMenu(
         }
         override fun uploadNewCanvas() { uploader.upload(ImportMode.NEW_CANVAS) }
         override fun uploadCardsHere() { uploader.upload(ImportMode.HERE) }
+        override fun restoreBoardBackup() {
+            val ts = LocalBackup.autoTimestamp() ?: return
+            if (window.confirm("Restore this board from the ${backupTimeLabel(ts)} backup? " +
+                    "Changes to it made since then will be lost.")) {
+                if (SyncBootstrap.controller.restoreAutoBackup()) window.alert("Board restored.")
+                else window.alert("No backup of this board available yet.")
+            }
+        }
         override fun openDoc(path: String) { zoned.framework.routing.Router.navigate(path) }
     }
-    canvasSections(mode, actions, tdz.sync.local.HandleStore.supported())
+    canvasSections(mode, actions, tdz.sync.local.HandleStore.supported(), LocalBackup.autoTimestamp())
 }

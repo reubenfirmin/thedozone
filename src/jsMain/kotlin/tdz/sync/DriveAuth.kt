@@ -55,22 +55,37 @@ object DriveAuth {
         return DriveCredentials(email)
     }
 
+    /**
+     * True when a live access token is in hand — so a remote op can proceed WITHOUT any interactive
+     * popup. Pure check, never mints: lets the automatic reconcile bail to NeedsReconnect quietly
+     * instead of firing a (startup-blocked) auth popup per request. Reconnect is the user gesture
+     * that actually re-auths.
+     */
+    fun hasUsableToken(): Boolean {
+        val cached = accessToken
+        return cached != null && Date.now() < expiresAtMs - SKEW_MS
+    }
+
     /** A valid access token: cached (memory/storage) if live, else minted silently. */
     suspend fun token(): String {
         val cached = accessToken
-        if (cached != null && Date.now() < expiresAtMs - SKEW_MS) {
-            Debugger.debug("[sync/auth] token cache hit (${remainingSec()}s left)")
-            return cached
-        }
-        if (cached == null) Debugger.debug("[sync/auth] no usable token in memory/storage (likely page reload); trying silent renewal")
-        else Debugger.debug("[sync/auth] token expired/expiring (${remainingSec()}s); trying silent renewal")
+        // Cache hits are deliberately NOT logged: every remote op fetches a token, and a hit is
+        // memory-only — logging it would drown the useful lines.
+        if (cached != null && Date.now() < expiresAtMs - SKEW_MS) return cached
+        SyncLog.log(when {
+            cached == null -> "auth: no usable token (page reload?); trying silent renewal"
+            remainingSec() < 0 -> "auth: token expired ${-remainingSec()}s ago; trying silent renewal"
+            else -> "auth: token expiring (${remainingSec()}s left); trying silent renewal"
+        })
+        val t0 = Date.now()
         DriveApi.awaitReady()
         return try {
             val resp = DriveApi.requestToken(GoogleApp.CLIENT_ID, GoogleApp.SCOPE, prompt = "none")
             cache(resp)
-            Debugger.debug("[sync/auth] silent renewal OK (expires in ${resp.expiresInSec}s)")
+            SyncLog.log("auth: silent renewal OK in ${SyncLog.since(t0)} (expires in ${resp.expiresInSec}s)")
             resp.accessToken
         } catch (e: Throwable) {
+            SyncLog.log("auth: silent renewal FAILED after ${SyncLog.since(t0)}: ${e.message}")
             console.warn("[sync/auth] silent renewal failed: ${e.message}")
             throw NeedsInteractiveAuthException("Google session expired — click Reconnect to keep syncing.")
         }

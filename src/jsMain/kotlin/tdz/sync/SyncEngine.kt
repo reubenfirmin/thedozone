@@ -44,6 +44,9 @@ class SyncEngine(
     private val deleteLocal: (path: String) -> Unit,
 ) {
 
+    /** True when remote ops can proceed without an interactive auth prompt (see [RemoteStorage.isReady]). */
+    fun isReady(): Boolean = storage.isReady()
+
     /**
      * Push one file. Optimistic concurrency with the known rev; on conflict, download remote and
      * resolve last-write-wins. Returns the updated [state] and the [Winner] (null when no conflict).
@@ -106,8 +109,18 @@ class SyncEngine(
         } catch (e: RevConflictException) {
             val (remoteContent, remoteMeta) = storage.download(path)
             if (SyncPaths.parseColumn(path) != null) {
+                if (remoteContent == content) {
+                    // Stale rev token, not a real edit (Drive bumps `version` more than once per
+                    // write): the content already matches the remote, so adopt its rev instead of
+                    // forcing a redundant re-upload.
+                    return SyncEntry(remoteMeta.rev, localUpdatedAt, base = content, vv = knownVv) to null
+                }
                 val remoteVv = storage.columnVv(path)
-                when (compareVv(knownVv, remoteVv)) {
+                // Same no-history rule as pull (see there): a fabricated/absent local clock cannot
+                // prove either side has seen the other's content — merge, never silently adopt.
+                val causal = if (knownRev == null && knownBase == null) Causal.CONCURRENT
+                             else compareVv(knownVv, remoteVv)
+                when (causal) {
                     Causal.REMOTE_DOMINATES -> {
                         // remote is causally ahead (has seen all local edits): adopt remote, nothing lost.
                         writeLocal(path, remoteContent)
@@ -174,6 +187,9 @@ class SyncEngine(
      * CONCURRENTLY, delete locally any tracked file that vanished remotely. Returns the new state and
      * the set of local paths that changed so the controller can fire refresh events.
      */
+    /** One prefetched remote file: its content, fresh metadata, and (columns) version vector. */
+    private class Fetched(val content: String, val meta: RemoteFile, val vv: VersionVector)
+
     suspend fun pull(root: String, state: SyncStateDoc): PullResult = coroutineScope {
         val listing = storage.list(root)
         val remote = listing.files.associateBy { it.path }
@@ -181,28 +197,60 @@ class SyncEngine(
         val keptLocal = mutableSetOf<String>()
         var next = state
 
-        // Intentionally sequential: a 3-way merge needs the downloaded remote content inline, so the
-        // previous parallel download pass was traded for merge clarity (one round-trip per diverged file).
+        // Network phase: fetch every file the decision loop will need CONCURRENTLY (content + vv).
+        // The loop below stays sequential for merge clarity, but its per-file round trips —
+        // previously ~1.5s each, in series, the whole cost of a slow sync — collapse into one
+        // parallel wave (the browser pipelines per-host).
+        val fetched: Map<String, Fetched> = remote.values
+            .filter { meta ->
+                readLocal(meta.path) == null || state.entries[meta.path]?.rev != meta.rev
+            }
+            .map { meta ->
+                async {
+                    val (content, m) = storage.download(meta.path)
+                    val vv = if (SyncPaths.parseColumn(meta.path) != null) storage.columnVv(meta.path)
+                             else emptyMap<String, Long>()
+                    meta.path to Fetched(content, m, vv)
+                }
+            }.awaitAll().toMap()
+
         for (meta in remote.values) {
             val known = next.entries[meta.path]
             val localContent = readLocal(meta.path)
             when {
                 localContent == null -> {                                   // we don't have it -> import
-                    val (content, m) = storage.download(meta.path)
-                    writeLocal(m.path, content)
-                    val vv = if (SyncPaths.parseColumn(m.path) != null) storage.columnVv(m.path) else emptyMap()
-                    next = next.with(m.path, SyncEntry(m.rev, m.serverModified, base = baseFor(m.path, content), vv = vv))
+                    val f = fetched.getValue(meta.path)
+                    val m = f.meta
+                    writeLocal(m.path, f.content)
+                    next = next.with(m.path, SyncEntry(m.rev, m.serverModified, base = baseFor(m.path, f.content), vv = f.vv))
                     changed += m.path
                 }
                 known != null && known.rev == meta.rev -> { /* up to date */ }
                 else -> {                                                   // divergence (incl. first connect)
-                    val (remoteContent, m) = storage.download(meta.path)
+                    val f = fetched.getValue(meta.path)
+                    val remoteContent = f.content
+                    val m = f.meta
                     if (SyncPaths.parseColumn(meta.path) != null) {
                         val localVv = known?.vv ?: emptyMap()
-                        // Perf: on real backends this downloads the canvas manifest once per divergent
-                        // column; caching it per-pull is a deferred optimization.
-                        val remoteVv = storage.columnVv(meta.path)
-                        when (compareVv(localVv, remoteVv)) {
+                        val remoteVv = f.vv
+                        if (remoteContent == localContent) {
+                            // Byte-identical: only Drive's rev token moved (its `version` bumps more
+                            // than once per write, so our recorded rev lags the listing even when
+                            // nothing changed). Adopt the rev to converge — re-pushing identical
+                            // bytes would just bump it again, the self-sustaining churn that
+                            // re-uploaded every file every sync. Not changed, not kept-local.
+                            next = next.with(m.path, SyncEntry(m.rev, known?.localUpdatedAt ?: m.serverModified,
+                                base = remoteContent, vv = pointwiseMax(localVv, remoteVv)))
+                        } else {
+                        // With NO local sync history for this file (no rev, no merge base — fresh
+                        // connect, or content created while sync was off) the vv comparison proves
+                        // nothing about the local CONTENT: the remote may carry THIS device's clock
+                        // from a previous sync life (DeviceId survives disconnect) and look
+                        // "causally ahead" of a brand-new board. No history -> nothing silently
+                        // wins -> CONCURRENT (a null-base merge unions both sides).
+                        val causal = if (known?.rev == null && known?.base == null) Causal.CONCURRENT
+                                     else compareVv(localVv, remoteVv)
+                        when (causal) {
                             Causal.REMOTE_DOMINATES -> {                     // remote causally ahead -> adopt
                                 writeLocal(m.path, remoteContent)
                                 next = next.with(m.path, SyncEntry(m.rev, m.serverModified, base = remoteContent, vv = remoteVv))
@@ -233,6 +281,17 @@ class SyncEngine(
                                 }
                             }
                         }
+                        }
+                    } else if (SyncPaths.isManifest(meta.path) && known == null) {
+                        // A manifest with NO sync history (first connect): LWW would default local
+                        // to 0.0, so a stale remote always won and silently orphaned every
+                        // local-only column. Union instead — remote shape, local-only content
+                        // columns appended — and push the union back up.
+                        val merged = ManifestMerge.union(local = localContent, remote = remoteContent)
+                        writeLocal(m.path, merged)
+                        next = next.with(m.path, SyncEntry(m.rev, m.serverModified))
+                        changed += m.path
+                        if (merged != remoteContent) keptLocal += m.path
                     } else {
                         // Manifests / non-columns: existing last-write-wins (they carry vectors but aren't merged).
                         when (resolveConflict(known?.localUpdatedAt ?: 0.0, m.serverModified)) {

@@ -47,4 +47,32 @@ object MarkdownService {
     /** The markdown with any column-style header removed (the card body alone). */
     fun stripColumnStyle(markdown: String): String =
         markdown.lineSequence().filterNot { it.trimStart().startsWith(PREFIX) }.joinToString("\n").trimStart('\n')
+
+    // A list marker with no text (optionally just the done "/"): not a list item to the parser
+    // (MarkdownListElement returns null for empty text), so it renders as a stray text line.
+    // Mirrors the reader's bullet/numbered syntax; dash lines are excluded — a bare "---" may be
+    // someone's deliberate visual divider.
+    private val emptyListMarker = Regex("[\\t ]*([*|+]+|[0-9]*\\.)[\\t ]*(/[\\t ]*)?")
+
+    /**
+     * Drop empty list markers a save left dangling at the END of the column — the "I hit enter on
+     * the last bullet and saved" artifact. Only the trailing run goes; blank lines stranded behind
+     * it go with it; everything else (including final-newline presence) is untouched, so this is
+     * the identity for any content that doesn't end in an empty marker.
+     */
+    fun stripTrailingEmptyListItems(markdown: String): String {
+        val endsWithNewline = markdown.endsWith("\n")
+        val lines = markdown.split("\n").toMutableList()
+        if (endsWithNewline) lines.removeAt(lines.size - 1)   // split artifact after the final \n
+        var dropped = false
+        while (true) {
+            val last = lines.indexOfLast { it.isNotBlank() }
+            if (last < 0 || !emptyListMarker.matches(lines[last])) break
+            lines.removeAt(last)
+            dropped = true
+        }
+        if (!dropped) return markdown
+        while (lines.isNotEmpty() && lines.last().isBlank()) lines.removeAt(lines.size - 1)
+        return if (lines.isEmpty()) "" else lines.joinToString("\n") + if (endsWithNewline) "\n" else ""
+    }
 }

@@ -264,6 +264,46 @@ class SyncEngineTest {
     }
 
     @Test
+    fun pullAdoptsNewRevWithoutRepushWhenContentIdentical() = runTest {
+        // The churn bug: Drive's `version` bumps more than once per write, so our recorded rev lags
+        // the listing even when nothing changed. The rev mismatch must NOT cause a re-push of
+        // byte-identical content (which would bump the rev again — the self-sustaining loop that
+        // re-uploaded all 17 files every reconcile). Adopt the new rev silently and converge.
+        val remote = RemoteFile("/n/_/col-0.md", "rNEW", 10.0)
+        val storage = FakeStorage(listOf(remote to "same body\n"),
+            remoteVv = mapOf("/n/_/col-0.md" to mapOf("me" to 1L)))
+        val local = mutableMapOf("/n/_/col-0.md" to "same body\n")
+        val state = SyncStateDoc.EMPTY.with("/n/_/col-0.md",
+            SyncEntry("rOLD", 5.0, base = "same body\n", vv = mapOf("me" to 1L)))
+
+        val result = engine(storage, local).pull(root = "/n", state = state)
+
+        assertFalse(result.keptLocalPaths.contains("/n/_/col-0.md"), "identical content must NOT be re-pushed")
+        assertFalse(result.changedPaths.contains("/n/_/col-0.md"), "nothing actually changed")
+        assertEquals("rNEW", result.state.entries["/n/_/col-0.md"]?.rev, "but the new rev is adopted so it converges")
+    }
+
+    @Test
+    fun pushConflictAdoptsRevWithoutReuploadWhenContentIdentical() = runTest {
+        // A push that rev-conflicts but whose content already matches the remote (stale rev token,
+        // not a real edit) must adopt the rev and NOT force a redundant re-upload.
+        val remote = RemoteFile("/n/_/col-0.md", "rNEW", 50.0)
+        val storage = FakeStorage(listOf(remote to "identical\n"),
+            remoteVv = mapOf("/n/_/col-0.md" to mapOf("me" to 1L)))
+        val local = mutableMapOf("/n/_/col-0.md" to "identical\n")
+        val state = SyncStateDoc.EMPTY.with("/n/_/col-0.md",
+            SyncEntry("rOLD", 200.0, base = "identical\n", vv = mapOf("me" to 1L)))
+
+        val (next, winner) = engine(storage, local)
+            .push("/n/_/col-0.md", "identical\n", localUpdatedAt = 200.0, state = state, self = "me")
+
+        assertNull(winner, "no conflict outcome — content already matches")
+        assertEquals("rNEW", next.entries["/n/_/col-0.md"]?.rev, "adopt the remote rev")
+        assertEquals("rNEW", storage.files.getValue("/n/_/col-0.md").first.rev,
+            "no re-upload happened — the remote rev was not bumped")
+    }
+
+    @Test
     fun pullDoesNotDeletePendingLocalCreation() = runTest {
         // A column edited/created locally whose push never succeeded: tracked with rev == null, absent
         // from the remote. Pull must NOT delete it (the reported "blows away local changes" bug).

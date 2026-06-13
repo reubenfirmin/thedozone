@@ -44,6 +44,7 @@ object SyncBootstrap {
         })
 
         controller.start()   // no-ops when not configured
+        PeriodicBackup.init(eventBus)
     }
 
     private fun openSyncSettings() {

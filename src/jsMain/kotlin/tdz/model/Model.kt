@@ -151,34 +151,72 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
         fs.deleteColumn(canvasName, columnId)
     }
 
-    fun toggleDone(canvasName: CanvasName, card: Card, taskStep: CardListItem) {
+    /** Remove our orphaned keys (mode flags + legacy config); returns (purged, orphanContentKeys). */
+    fun purgeOrphans(): Pair<Int, List<String>> = fs.purgeOrphans()
+
+    /** Every canvas with a manifest in storage — the "all boards" list source. */
+    fun allCanvasNames(): List<CanvasName> = fs.allCanvasNames()
+
+    /** True when a board has no content columns, or every content column is empty. */
+    fun isCanvasEmpty(canvasName: CanvasName): Boolean {
+        val canvas = getCanvas(canvasName) ?: return true
+        val content = canvas.columns.filterNot { canvas.layoutMap.containsKey(it) }
+        return content.all { cards(canvasName, it).isEmpty() }
+    }
+
+    /**
+     * Fully delete a board LOCALLY: its manifest, every column's content, and column-mode flags.
+     * Offline-first and sync-agnostic — it touches NO remote and NO sync bookkeeping. Sync, as an
+     * independent listener, propagates the deletion to the remote on its next reconcile (its
+     * orphan-sweep sees the columns gone from local state). Caller handles backup + re-render.
+     */
+    fun deleteCanvas(canvasName: CanvasName) {
+        getCanvas(canvasName)?.columns?.forEach { col -> fs.deleteColumn(canvasName, col) }
+        fs.deleteCanvas(canvasName)
+    }
+
+    /**
+     * Flip the [ordinal]-th checkable item of [card] — the position in [Card.Companion.taskItems]
+     * (render order), counted depth-first through the nested [ListGroup]s. Identity is POSITIONAL,
+     * never structural: list items are data classes, so two tasks with identical text are == and
+     * an equality match would flip every twin at once.
+     */
+    fun toggleDone(canvasName: CanvasName, card: Card, ordinal: Int) {
+        var seen = 0
+        fun toggleInGroup(group: ListGroup): ListGroup =
+            group.copy(members = group.members.map { member ->
+                when (member) {
+                    is CardListItem -> if (seen++ == ordinal) member.copy(done = !member.done) else member
+                    is ListGroup -> toggleInGroup(member)
+                    else -> member
+                }
+            })
         // List items live inside a ListGroup (card.segments holds the group, not the item),
-        // so recurse into the group(s) to flip the matching item's done flag.
+        // so recurse into the group(s) to flip the target item's done flag.
         val updated = card.segments.map { segment ->
-            if (segment is ListGroup) toggleInGroup(segment, taskStep) else segment
+            if (segment is ListGroup) toggleInGroup(segment) else segment
         }
         replace(canvasName, card, card.copy(segments = updated))
     }
 
-    private fun toggleInGroup(group: ListGroup, target: CardListItem): ListGroup =
-        group.copy(members = group.members.map { member ->
-            when (member) {
-                is CardListItem -> if (member == target) member.copy(done = !member.done) else member
-                is ListGroup -> toggleInGroup(member, target)
-                else -> member
-            }
-        })
-
     fun clearDone(canvasName: CanvasName): List<ColumnId> {
-        val changedCols = mutableSetOf<ColumnId>()
-        allCards(canvasName).flatten().forEach { card ->
-            val cleared = card.withoutDoneItems()
-            if (cleared != card) {
-                replace(canvasName, card, cleared)
-                changedCols.add(card.metadata.columnId)
+        val canvas = getCanvas(canvasName)
+            ?: error("Canvas '${canvasName.normalized()}' not found")
+        val changedCols = mutableListOf<ColumnId>()
+        for (col in canvas.columns) {
+            // ONE atomic write per column — never per-card replace()s against a snapshot. A card
+            // that was nothing but done items clears to empty and vanishes on the serialize→parse
+            // round trip, so every later snapshot index would point one card too far right: each
+            // later replace then destroyed an unrelated card (its unchecked items included).
+            val before = cards(canvasName, col)
+            val cleared = before.map { it.withoutDoneItems() }
+            if (cleared != before) {
+                // Drop fully-cleared cards explicitly rather than serializing empty husks.
+                saveCards(canvasName, col, cleared.filterNot { it.segments.isEmpty() })
+                changedCols.add(col)
             }
         }
-        return changedCols.toList()
+        return changedCols
     }
 
     fun size(canvasName: CanvasName, column: ColumnId) = cards(canvasName, column).size

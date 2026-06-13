@@ -5,6 +5,9 @@ import tdz.model.card.*
 
 internal object MarkdownWriter {
 
+    /** Mirror of CardRenderer's nesting ceiling; parsing never exceeds 2, so beyond this is malformed. */
+    private const val MAX_WRITE_LIST_DEPTH = 32
+
     /** Ordinal state for numbered lists — created per [generate] call, never shared across calls. */
     private class Numbering {
         var count = 1
@@ -52,19 +55,22 @@ internal object MarkdownWriter {
     private fun renderListGroup(group: ListGroup, numbering: Numbering): String {
         val lines = mutableListOf<String>()
         var lastItem: CardListItem? = null
-        fun walk(g: ListGroup) {
+        fun walk(g: ListGroup, depth: Int) {
+            // Match the renderer's guard: a malformed/cyclic group must not infinite-loop on save
+            // (which would freeze the tab and lose the write) any more than it may on render.
+            if (depth > MAX_WRITE_LIST_DEPTH) return
             for (member in g.members) {
                 when (member) {
                     is CardListItem -> {
                         lines.add(listItemLine(member, lastItem, numbering))
                         lastItem = member
                     }
-                    is ListGroup -> walk(member)
+                    is ListGroup -> walk(member, depth + 1)
                     else -> {}
                 }
             }
         }
-        walk(group)
+        walk(group, 0)
         return lines.joinToString("\n")
     }
 

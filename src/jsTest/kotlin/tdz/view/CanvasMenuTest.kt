@@ -36,6 +36,7 @@ class CanvasMenuTest {
         var downloadedPng = 0
         var uploadedNew = 0
         var uploadedHere = 0
+        var restoredBackup = 0
         val openedDocs = mutableListOf<String>()
         override fun toggleColumn() { toggled++ }
         override fun columnProperties() { columnProps++ }
@@ -49,6 +50,7 @@ class CanvasMenuTest {
         override fun downloadPng() { downloadedPng++ }
         override fun uploadNewCanvas() { uploadedNew++ }
         override fun uploadCardsHere() { uploadedHere++ }
+        override fun restoreBoardBackup() { restoredBackup++ }
         override fun clearDone() { clearedDone = true }
         override fun openDoc(path: String) { openedDocs += path }
     }
@@ -195,9 +197,27 @@ class CanvasMenuTest {
     }
 
     @Test
+    fun restoreBoardLivesInBackupsSubmenuWithTimestampedLabel() {
+        val actions = RecordingActions()
+        val top = canvasSections(Mode.CARD, actions, backupTimestamp = 0.0).flatMap { it.items }
+        val backups = assertNotNull(top.firstOrNull { it.label == "Backup & Restore" }?.submenu)
+        val restore = backups.first { it.label.startsWith("Restore this board (") }
+        assertTrue(restore.enabled, "enabled when a backup exists")
+        restore.onSelect()
+        assertEquals(1, actions.restoredBackup)
+    }
+
+    @Test
+    fun restoreBoardDisabledWhenNoBackupExists() {
+        val items = allItems(canvasSections(Mode.CARD, RecordingActions(), backupTimestamp = null))
+        val restore = items.first { it.label == "Restore this board" }
+        assertFalse(restore.enabled, "no backup yet: visible but disabled, no timestamp")
+    }
+
+    @Test
     fun backupsAndHelpAreSubmenus() {
         val top = canvasSections(Mode.CARD, RecordingActions()).flatMap { it.items }
-        val backups = assertNotNull(top.firstOrNull { it.label == "Backups & Export" }?.submenu)
+        val backups = assertNotNull(top.firstOrNull { it.label == "Backup & Restore" }?.submenu)
         assertTrue(backups.any { it.label == "Download" && it.enabled }, "Download stays wired inside the submenu")
         val docs = assertNotNull(top.firstOrNull { it.label == "Help" }?.submenu)
         assertTrue(docs.any { it.label == "Release Notes" }, "Help submenu holds its entries")
