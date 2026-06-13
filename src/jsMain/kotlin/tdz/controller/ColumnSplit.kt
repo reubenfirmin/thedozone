@@ -11,9 +11,15 @@ import tdz.model.Split
  * - [splitColumn] ("even"): divide a column into two equal panes in the given direction.
  * - [addColumn] ("distribute"): add a pane to the containing layout in the given direction.
  *
- * Column ids are allocated as `columns.last() + 1` (ids may have gaps from prior deletions).
+ * Column ids are allocated past the MAX existing id (not `last()+1`): the column list is NOT kept
+ * sorted — a sync manifest LWW/union or a wormhole import can leave a lower id last — so `last()+1`
+ * could collide with an existing id and fold the layout tree into a cycle. max+1 can never collide.
  */
 object ColumnSplit {
+
+    /** Lowest id strictly greater than every existing column/layout id — collision-proof. */
+    private fun nextId(canvas: Canvas): ColumnId =
+        ColumnId((canvas.columns.maxOfOrNull { it.value } ?: -1) + 1)
 
     /** Split [columnId] into two equal panes in direction [split]. */
     fun splitColumn(canvas: Canvas, columnId: ColumnId, split: Split): Canvas {
@@ -23,7 +29,7 @@ object ColumnSplit {
         if (containedBy.contains.size == 1) {
             return addColumn(canvas, columnId, split)
         }
-        val newSplitLayoutIdx = canvas.columns.last().next()
+        val newSplitLayoutIdx = nextId(canvas)
         val newColumnId = newSplitLayoutIdx.next()
 
         val updatedColumns = canvas.columns + listOf(newSplitLayoutIdx, newColumnId)
@@ -45,7 +51,7 @@ object ColumnSplit {
     fun addColumn(canvas: Canvas, columnId: ColumnId, split: Split): Canvas {
         val containedBy = canvas.layouts.firstOrNull { it.contains.contains(columnId) }
             ?: throw Exception("Could not find container for $columnId ; $canvas")
-        val newColumnId = canvas.columns.last().next()
+        val newColumnId = nextId(canvas)
 
         return if (split != containedBy.split && containedBy.contains.size > 1) {
             // Different direction than the containing layout => split the column instead.
@@ -71,8 +77,18 @@ object ColumnSplit {
      * column (returns the canvas unchanged). The deleted column's cards are handled by the caller.
      */
     fun deleteColumn(canvas: Canvas, columnId: ColumnId): Pair<Canvas, ColumnId> {
+        // The "always one column" invariant is STRUCTURAL: count content columns (not layout
+        // containers). Synced/merged manifests can carry extra ids that broke a size-based check.
+        val contentColumns = canvas.columns.filterNot { canvas.layoutMap.containsKey(it) }
+        if (columnId in contentColumns && contentColumns.size <= 1) return canvas to columnId
         val containedBy = canvas.layouts.firstOrNull { it.contains.contains(columnId) }
-            ?: throw Exception("Could not find container for $columnId ; $canvas")
+            ?: run {
+                // A column outside the layout tree (e.g. appended by a first-connect manifest
+                // union): no layout to rewrite — plain removal from the columns list.
+                val updated = Canvas(canvas.name, canvas.parent,
+                    canvas.columns.filterNot { it == columnId }, canvas.layouts)
+                return updated to (contentColumns.firstOrNull { it != columnId } ?: columnId)
+            }
         val updatedContains = containedBy.contains.filterNot { it == columnId }
         return when {
             // Special case: never delete the last column.
@@ -123,6 +139,24 @@ object ColumnSplit {
                     fanOutFrom(siblings.indexOf(updatedContains[0]), siblings, updated.layoutMap.keys.toSet())
                 } ?: updated.columns.first { !updated.layoutMap.containsKey(it) }
                 updated to replacement
+            }
+
+            // The layout contained ONLY the deleted column (a shape merges can produce): the
+            // emptied container collapses too, and its parent stops referencing it.
+            updatedContains.isEmpty() -> {
+                val updatedLayouts = canvas.layouts.mapNotNull {
+                    when {
+                        it.columnId == containedBy.columnId -> null
+                        it.contains.contains(containedBy.columnId) ->
+                            ColumnLayoutSpec(it.columnId, it.split,
+                                it.contains.filterNot { c -> c == containedBy.columnId })
+                        else -> it
+                    }
+                }
+                val updated = Canvas(canvas.name, canvas.parent,
+                    canvas.columns.filterNot { it == columnId || it == containedBy.columnId },
+                    updatedLayouts)
+                updated to (updated.columns.firstOrNull { !updated.layoutMap.containsKey(it) } ?: columnId)
             }
 
             else -> throw Exception("Unexpected delete case: $canvas $columnId")

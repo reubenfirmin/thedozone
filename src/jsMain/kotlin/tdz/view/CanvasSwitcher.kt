@@ -39,15 +39,23 @@ fun childBoardSections(links: List<CanvasLink>, onSelect: (CanvasName) -> Unit):
 fun switcherIndexForKey(key: String, count: Int): Int? =
     key.toIntOrNull()?.minus(1)?.takeIf { it in 0 until count }
 
-/** Show the child-board switcher centered on screen (Page Down). No-op when there are no sub-boards. */
+/** Show the child-board switcher centered on screen (Page Down). Always offers "All boards…" — the
+ *  global, searchable list — so boards no card links to are still reachable. */
 fun showCanvasSwitcher(model: Model, eventBus: EventBus<Event>) {
     val links = childBoardLinks(model, model.currentCanvas().name)
-    if (links.isEmpty()) return
     val select = { target: CanvasName -> eventBus.fire(SwitchToCanvas(target)) }
+    // "All boards…" only when there's more than one board to go to.
+    val allBoards = if (model.allCanvasNames().size > 1)
+        listOf(MenuSection(items = listOf(
+            MenuItem(label = "All boards…", onSelect = { AllBoards.show(model, eventBus) }),
+        )))
+    else emptyList()
+    val sections = childBoardSections(links, select) + allBoards
+    if (sections.isEmpty()) return   // nothing to switch to
     ContextMenu.show(
         window.innerWidth / 2 - 120,
         window.innerHeight / 2 - 120,
-        childBoardSections(links, select),
+        sections,
     ) { event ->
         // 1..9 jump straight to that board (matching the numbered labels).
         switcherIndexForKey(event.key, links.size)?.let { select(links[it].canvasName); true } ?: false

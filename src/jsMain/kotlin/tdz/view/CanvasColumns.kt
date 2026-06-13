@@ -101,16 +101,32 @@ class CanvasColumns(val canvas: Canvas,
 
     /** Render the layout tree, (re)building the LEAF columns listed in [regenerateColumns]. */
     fun FlowContent.render(regenerateColumns: List<ColumnId>) {
+        // Card columns scroll (wheel/touchpad) but never SHOW a scrollbar. Chrome/Firefox honor
+        // the inline scrollbar-width:none (columnCss); WebKit needs this pseudo-element rule,
+        // which inline styles cannot express. Idempotent: keyed stylesheet, replaced per render.
+        styleSheet("tdz-column-scrollbar") {
+            rule("[id^=\"column-\"]::-webkit-scrollbar") { display = Display.none }
+        }
         val rootBoundary = rootBoundary()
         val rootColumnId = canvas.root().columnId
         boundaries[rootColumnId] = rootBoundary
-        renderLayoutTree(true, rootColumnId, rootBoundary, regenerateColumns)
+        renderLayoutTree(true, rootColumnId, rootBoundary, regenerateColumns, emptySet())
     }
 
     fun rootBoundary() = Boundary(0, 0, window.innerWidth, window.innerHeight)
 
     // resolve a particular column layout, adding dom elements to it
-    private fun FlowContent.renderLayoutTree(root: Boolean, parentIndex: ColumnId, parentBoundary: Boundary, regenerateColumns: List<ColumnId>) {
+    private fun FlowContent.renderLayoutTree(root: Boolean, parentIndex: ColumnId, parentBoundary: Boundary, regenerateColumns: List<ColumnId>, ancestors: Set<ColumnId>) {
+
+        // Cycle guard: a corrupt manifest can reference a layout that's already an ancestor (0→1→0…).
+        // Without this the recursion never terminates and stack-overflows, aborting the whole board
+        // render (the board goes blank). Break the cycle, log, and render the rest.
+        if (parentIndex in ancestors) {
+            console.error("[layout] cycle at column $parentIndex in canvas '${canvas.name.normalized()}' — " +
+                "skipping (manifest layout tree is corrupt: ${canvas.layouts}).")
+            return
+        }
+        val nextAncestors = ancestors + parentIndex
 
         val layoutSpec = canvas.layoutMap[parentIndex] ?: throw Exception("Layout $parentIndex not found in ${canvas.layoutMap}")
 
@@ -142,8 +158,8 @@ class CanvasColumns(val canvas: Canvas,
             layoutSpec.contains.mapIndexed { idx, columnId ->
                 val boundary = calculateBoundary(layoutSpec.split, parentBoundary, idx, layoutSpec.contains.size)
                 if (canvas.layoutMap.containsKey(columnId)) {
-                    // recursive
-                    renderLayoutTree(false, columnId, boundary, regenerateColumns)
+                    // recursive (cycle-guarded via ancestors)
+                    renderLayoutTree(false, columnId, boundary, regenerateColumns, nextAncestors)
                 } else {
                     if (columnId in regenerateColumns) {
                         val columnContainer = setupColumnContainer(columnId)
@@ -244,8 +260,8 @@ class CanvasColumns(val canvas: Canvas,
             val rows = cardEl.querySelectorAll(".${CssClasses.TASK}")
             val ordinal = (0 until rows.length).indexOfFirst { rows[it] === row }
             val card = model.getCardByIndex(canvas.name, ref)
-            val segment = card.taskItems().getOrNull(ordinal) ?: return@addEventListener
-            eventBus.fire(TaskToggleDone(canvas.name, card, segment))
+            if (card.taskItems().getOrNull(ordinal) == null) return@addEventListener
+            eventBus.fire(TaskToggleDone(canvas.name, card, ordinal))
             event.stopPropagation()
             event.preventDefault()
         })
@@ -317,16 +333,21 @@ class CanvasColumns(val canvas: Canvas,
     }
 
     /**
-     * A leaf column's themed chrome and mode behavior: CARD columns scroll, EDITOR columns clip
-     * (Ace scrolls itself). min-width:0 lets the column shrink to its grid track rather than its
-     * content's min-content (which would overflow into the next column).
+     * A leaf column's themed chrome and mode behavior: CARD columns scroll by wheel/touchpad but
+     * never SHOW a scrollbar (scrollbar-width here + the ::-webkit-scrollbar rule in [render] —
+     * the visual spec has always been "no overflow chrome"); EDITOR columns clip (Ace scrolls
+     * itself). min-width:0 lets the column shrink to its grid track rather than its content's
+     * min-content (which would overflow into the next column).
      */
     private fun CssBuilder.columnCss(columnId: ColumnId, mode: Mode) {
         val t = ThemeManager.current
         width = 100.pct
         height = 100.pct
         when (mode) {
-            Mode.CARD -> overflowY = Overflow.auto
+            Mode.CARD -> {
+                overflowY = Overflow.auto
+                put("scrollbar-width", "none")
+            }
             Mode.EDITOR -> overflow = Overflow.hidden
         }
         minWidth = 0.px

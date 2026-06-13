@@ -39,6 +39,9 @@ import zoned.framework.libs.loadNomnoml
  */
 object CardRenderer {
 
+    /** Sane ceiling on list nesting depth; parsing never exceeds 2, so beyond this is malformed. */
+    private const val MAX_LIST_DEPTH = 32
+
     private val circledNumbers = listOf("⓪", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩",
                                         "⑪", "⑫", "⑬", "⑭", "⑮", "⑯", "⑰", "⑱", "⑲", "⑳", "㉑",
                                         "㉒", "㉓", "㉔", "㉕", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜",
@@ -154,7 +157,16 @@ object CardRenderer {
         }
     }
 
-    fun FlowContent.renderSegment(canvasName: CanvasName, segment: ListGroup, card: Card, eventBus: EventBus<Event>) {
+    fun FlowContent.renderSegment(canvasName: CanvasName, segment: ListGroup, card: Card, eventBus: EventBus<Event>, depth: Int = 0) {
+        // Hard recursion guard: normal parsing (toGroup) never nests deeper than 2, so any depth past
+        // this is a malformed or cyclic group. Truncate and warn instead of recursing forever — an
+        // unbounded list render once froze the tab for 22s and stack-overflowed, aborting the WHOLE
+        // board render (the board went blank). A bad card must degrade to a truncated card, never a crash.
+        if (depth > MAX_LIST_DEPTH) {
+            console.warn("[render] list nesting exceeded $MAX_LIST_DEPTH on card '${card.tagId()}' — " +
+                "truncating (the group is malformed/cyclic).")
+            return
+        }
 
         var index = 0
 
@@ -163,8 +175,8 @@ object CardRenderer {
                 if (listMember is CardListItem) {
                     renderSegment(canvasName, listMember, card, index++, eventBus)
                 } else if (listMember is ListGroup) {
-                    // recursive
-                    renderSegment(canvasName, listMember, card, eventBus)
+                    // recursive (depth-bounded above)
+                    renderSegment(canvasName, listMember, card, eventBus, depth + 1)
                 }
             }
         }

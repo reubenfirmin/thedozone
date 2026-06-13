@@ -19,6 +19,7 @@ object ColumnMerge {
 
     fun mergeColumn(local: String, base: String?, remote: String): MergeResult {
         val trailingNewline = local.endsWith("\n")
+        val noAncestor = base.isNullOrEmpty()
         val a = lines(local)
         val o = lines(base ?: "")
         val b = lines(remote)
@@ -30,12 +31,22 @@ object ColumnMerge {
             if (ok != null && ok != undefined) {
                 (ok as Array<String>).forEach { out.append(it).append('\n') }
             } else {
-                conflict = true
-                // Keep local's side so local content is never silently lost; conflict is reported so the
-                // caller applies LWW + backup rather than trusting this body as canonical.
-                val confA = region.conflict?.a
-                if (confA != null && confA != undefined) {
-                    (confA as Array<String>).forEach { out.append(it).append('\n') }
+                val confA = dynLines(region.conflict?.a)
+                val confB = dynLines(region.conflict?.b)
+                if (noAncestor) {
+                    // No shared ancestor (first connect / never-synced content): an "overlap" here
+                    // is just both sides' content occupying the same position — neither derives
+                    // from a common original, so neither may be chosen over the other. Keep BOTH
+                    // (local first), deduping identical sides; this is the documented union, not
+                    // a conflict to tiebreak away.
+                    confA.forEach { out.append(it).append('\n') }
+                    if (!confA.contentEquals(confB)) confB.forEach { out.append(it).append('\n') }
+                } else {
+                    conflict = true
+                    // Keep local's side so local content is never silently lost; conflict is
+                    // reported so the caller applies LWW + backup rather than trusting this body
+                    // as canonical.
+                    confA.forEach { out.append(it).append('\n') }
                 }
             }
         }
@@ -48,4 +59,7 @@ object ColumnMerge {
 
     private fun lines(s: String): Array<String> =
         if (s.isEmpty()) emptyArray() else s.removeSuffix("\n").split("\n").toTypedArray()
+
+    private fun dynLines(side: dynamic): Array<String> =
+        if (side != null && side != undefined) side.unsafeCast<Array<String>>() else emptyArray()
 }

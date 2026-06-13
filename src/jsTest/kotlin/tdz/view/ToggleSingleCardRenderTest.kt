@@ -67,10 +67,8 @@ class ToggleSingleCardRenderTest {
         val siblingElBefore = getHtmlElement(DomIds.card(cards[1].ref))
         assertNotNull(taskCardElBefore); assertNotNull(siblingElBefore)
         val markerBefore = taskCardElBefore.querySelector(".tdz-task label > span")?.textContent
-        val item = (taskCard.segments.first { it is ListGroup } as ListGroup)
-            .members.filterIsInstance<CardListItem>().first()
 
-        bus.fire(TaskToggleDone(canvas, taskCard, item))
+        bus.fire(TaskToggleDone(canvas, taskCard, ordinal = 0))
 
         val taskCardElAfter = getHtmlElement(DomIds.card(taskCard.ref))
         assertNotNull(taskCardElAfter, "the card keeps its id (toggle doesn't change order)")

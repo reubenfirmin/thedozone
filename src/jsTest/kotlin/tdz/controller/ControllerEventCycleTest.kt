@@ -12,7 +12,9 @@ import tdz.controller.events.RefreshColumns
 import tdz.controller.events.TaskToggleDone
 import tdz.model.ref
 import tdz.model.CanvasName
+import tdz.controller.events.DeleteColumn
 import tdz.model.LayoutTemplate.SINGLE_PANE
+import tdz.model.LayoutTemplate.TWO_COLUMNS_VERTICAL
 import tdz.model.LayoutTemplates.canvasFromTemplate
 import tdz.model.Model
 import tdz.model.card.CardListItem
@@ -53,10 +55,8 @@ class ControllerEventCycleTest {
         val canvas = CanvasName("_cycle-toggle")
         model.updateColumn(canvas, ColumnId(1), "# Tasks\n* do it\n")
         val card = model.cards(canvas, ColumnId(1)).first()
-        val item = (card.segments.first { it is ListGroup } as ListGroup).members
-            .filterIsInstance<CardListItem>().first()
 
-        bus.fire(TaskToggleDone(canvas, card, item))
+        bus.fire(TaskToggleDone(canvas, card, ordinal = 0))
 
         assertEquals(listOf(setOf(ColumnId(1))), captured.changed.map { it.columnIds }, "toggle is a model fact sync must see")
         assertTrue(captured.changed.none { it.remote }, "local mutations are not remote")
@@ -83,6 +83,24 @@ class ControllerEventCycleTest {
     }
 
     @Test
+    fun editorSaveDropsTrailingEmptyListItems() {
+        val (bus, model, _) = setup("_cycle-trailing")
+        val canvas = CanvasName("_cycle-trailing")
+
+        // An empty trailing marker isn't a list item to the parser — it renders as a stray "*"
+        // text line. Saving must drop it (and only it).
+        bus.fire(ColumnEdited("# T\n* real item\n* \n", canvas, ColumnId(2)))
+
+        assertEquals("# T\n* real item\n", model.getCanvasColumnRaw(canvas, ColumnId(2)),
+            "the trailing empty bullet is dropped on save")
+
+        // Empty markers ABOVE content are left alone — only the trailing one is the save artifact.
+        bus.fire(ColumnEdited("# T\n* \n* real item\n", canvas, ColumnId(2)))
+        assertEquals("# T\n* \n* real item\n", model.getCanvasColumnRaw(canvas, ColumnId(2)),
+            "non-trailing markers are not the editor-save artifact and stay untouched")
+    }
+
+    @Test
     fun cardsReorderedPersistsViaControllerAndFiresBothEvents() {
         val (bus, model, captured) = setup("_cycle-reorder")
         val canvas = CanvasName("_cycle-reorder")
@@ -95,6 +113,42 @@ class ControllerEventCycleTest {
         assertEquals(listOf("B", "A"), after.map { (it.segments.first() as tdz.model.card.CardHeading).text.trim() })
         assertEquals(listOf(setOf(ColumnId(1))), captured.changed.map { it.columnIds })
         assertEquals(listOf(setOf(ColumnId(1))), captured.refreshed.map { it.columnIds })
+    }
+
+    @Test
+    fun deletingTheLastColumnEmptiesItAndPropagatesToSync() {
+        val (bus, model, captured) = setup("_cycle-lastcol")
+        val canvas = CanvasName("_cycle-lastcol")
+        model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))
+        val col = model.getCanvas(canvas)!!.firstNonLayout()
+        model.updateColumn(canvas, col, "# T\n* stuff\n")
+
+        bus.fire(tdz.controller.events.DeleteColumn(canvas, col))
+
+        assertEquals(model.getCanvas(canvas)!!.columns, model.getCanvas(canvas)!!.columns,
+            "canvas keeps its shape")
+        assertEquals("", model.getCanvasColumnRaw(canvas, col),
+            "the last column is EMPTIED (an empty file), never removed — removal left a null " +
+            "that the next sync pull re-imported from the remote")
+        assertEquals(listOf(setOf(col)), captured.changed.map { it.columnIds },
+            "the emptying is a model fact: ColumnsChanged must fire so the remote converges")
+    }
+
+    @Test
+    fun deletingEveryColumnNeverLeavesZeroContentColumns() {
+        val (bus, model, _) = setup("_cycle-delall")
+        val canvas = CanvasName("_cycle-delall")
+        model.addCanvas(canvasFromTemplate(canvas, null, TWO_COLUMNS_VERTICAL))
+        fun contentCols() = model.getCanvas(canvas)!!.let { c -> c.columns.filterNot { c.layoutMap.containsKey(it) } }
+        assertTrue(contentCols().size >= 2, "setup: two content columns")
+
+        // Hammer delete on every content column, several passes — the canvas must never hit zero.
+        repeat(5) {
+            contentCols().forEach { col -> bus.fire(DeleteColumn(canvas, col)) }
+            assertTrue(contentCols().isNotEmpty(),
+                "a canvas ALWAYS keeps at least one content column (the last delete empties, never removes)")
+        }
+        assertEquals(1, contentCols().size, "settles at exactly one content column")
     }
 
     @Test

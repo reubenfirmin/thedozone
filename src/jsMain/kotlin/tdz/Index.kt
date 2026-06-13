@@ -139,7 +139,10 @@ class Index(val model: Model, val eventBus: EventBus<Event>) {
             // Zone-granular: CanvasView.swap saves open editors and detaches the old render's
             // subscriptions; body-level siblings (badge, portals, overlays) are never torn down.
             currentCanvasName = null      // force past the idempotency guard
-            index(model.currentCanvas())
+            // dismissOverlays = false: this is a data refresh, not a route change. A reconcile's
+            // pulled manifest lands here, and dismissing the sync modal as a side effect strands
+            // the URL at /settings/sync (the modal's own dismissal is what navigates away).
+            index(model.currentCanvas(), dismissOverlays = false)
         }
     }
 
@@ -298,7 +301,19 @@ class Index(val model: Model, val eventBus: EventBus<Event>) {
         }
     }
 
-    fun index(canvas: Canvas) {
+    fun index(rawCanvas: Canvas, dismissOverlays: Boolean = true) {
+        // Self-heal a corrupt/empty layout BEFORE rendering: a cyclic synced manifest, or a board
+        // deleted down to zero columns before the delete-invariant existed, would otherwise render
+        // nothing with no way to add a column. repaired() rebuilds a flat layout over the existing
+        // content columns (preserving their cards) or one fresh empty column. Persist the repair so
+        // it sticks and the valid manifest syncs out.
+        val canvas = rawCanvas.repaired()
+        if (canvas != rawCanvas) {
+            console.warn("[canvas] repaired unsound layout for '${canvas.name.normalized()}' " +
+                "(was: ${rawCanvas.layouts}); rebuilt as a flat single-row layout.")
+            model.addCanvas(canvas)
+            model.changeCanvas(canvas.name)
+        }
         document.body.let { body ->
             val theme = ThemeManager.current
             body.css {
@@ -311,8 +326,9 @@ class Index(val model: Model, val eventBus: EventBus<Event>) {
                 fontSize = theme.baseFontSize
             }
         }
-        // Returning to a canvas route always dismisses any open overlay/modal layered on top.
-        closeOverlays()
+        // Returning to a canvas ROUTE always dismisses any open overlay/modal layered on top;
+        // sync-triggered refreshes pass dismissOverlays = false (see setupRefreshHandler).
+        if (dismissOverlays) closeOverlays()
         ensureShell()
 
         // Idempotent: if this exact canvas is already mounted, don't tear down and rebuild the

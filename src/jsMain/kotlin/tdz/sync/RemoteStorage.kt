@@ -40,6 +40,14 @@ interface RemoteStorage {
     suspend fun revoke()
 
     /**
+     * True when remote ops can proceed WITHOUT an interactive prompt (a live token, or a refresh
+     * token that renews silently). The automatic reconcile checks this so it never fires an
+     * auth popup on startup; when false it bails to NeedsReconnect and the pending local state
+     * (edits, deletions) is pushed once the user reconnects. Default true (local folder / fakes).
+     */
+    fun isReady(): Boolean = true
+
+    /**
      * The version vector recorded for the column at [path], read from its canvas manifest's `vv`
      * section. Empty if the manifest or vector is absent. Default impl uses [download]; backends need
      * not override it (the test fake does, to serve in-memory vectors).
