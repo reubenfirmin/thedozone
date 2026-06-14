@@ -24,7 +24,9 @@ class CanvasColumnsRenderTest {
         val bus = EventBus<Event>()
         val model = Model(CanvasName("_rr-test"))
         val canvas = canvasFromTemplate(CanvasName("_rr-test"), null, TWO_COLUMNS_VERTICAL)
-        val columns = CanvasColumns(canvas, bus, model) { emptyList() }
+        // Multi-column layout assertions are a desktop concern; pin desktop so the test is
+        // independent of the (narrow) headless test viewport.
+        val columns = CanvasColumns(canvas, bus, model, isMobile = { false }) { emptyList() }
         addToBody {
             div {
                 id = "rr-host"

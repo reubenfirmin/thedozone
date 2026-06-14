@@ -37,6 +37,7 @@ class CanvasMenuTest {
         var uploadedNew = 0
         var uploadedHere = 0
         var restoredBackup = 0
+        var installed = 0
         val openedDocs = mutableListOf<String>()
         override fun toggleColumn() { toggled++ }
         override fun columnProperties() { columnProps++ }
@@ -53,6 +54,7 @@ class CanvasMenuTest {
         override fun restoreBoardBackup() { restoredBackup++ }
         override fun clearDone() { clearedDone = true }
         override fun openDoc(path: String) { openedDocs += path }
+        override fun installApp() { installed++ }
     }
 
     // Recurse into submenus so items moved into flyouts are still found.
@@ -242,6 +244,22 @@ class CanvasMenuTest {
         val items = allItems(canvasSections(Mode.CARD, RecordingActions(), localFolderSupported = false))
         val local = items.first { it.label == "Local Folder Sync (Chrome only)" }
         assertFalse(local.enabled)
+    }
+
+    @Test
+    fun installItemAbsentWhenNotInstallable() {
+        val items = allItems(canvasSections(Mode.CARD, RecordingActions(), installAvailable = false))
+        assertFalse(items.any { it.label == "Install app" }, "no Install app item when not installable")
+    }
+
+    @Test
+    fun installItemPresentAndWiredWhenInstallable() {
+        val actions = RecordingActions()
+        val item = allItems(canvasSections(Mode.CARD, actions, installAvailable = true))
+            .first { it.label == "Install app" }
+        assertTrue(item.enabled)
+        item.onSelect()
+        assertEquals(1, actions.installed)
     }
 
     @Test

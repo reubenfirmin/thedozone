@@ -116,6 +116,28 @@ class Index(val model: Model, val eventBus: EventBus<Event>) {
         setupNavigationHandler()
         setupEditorHandlers()
         setupRefreshHandler()
+        setupResizeHandler()
+    }
+
+    /**
+     * Re-render the board when the viewport crosses the mobile breakpoint (rotation, responsive
+     * resize), so it flips between full-layout and single-column ([CanvasColumns] decides which).
+     * Installed once for the app's life; debounced, and only fires on an actual flip. structural=false
+     * because a layout-mode change is purely local UI and must not push to sync.
+     */
+    private fun setupResizeHandler() {
+        var wasMobile = kotlinx.browser.window.innerWidth <= CanvasColumns.MOBILE_BREAKPOINT
+        var debounce = 0
+        kotlinx.browser.window.addEventListener("resize", {
+            kotlinx.browser.window.clearTimeout(debounce)
+            debounce = kotlinx.browser.window.setTimeout({
+                val nowMobile = kotlinx.browser.window.innerWidth <= CanvasColumns.MOBILE_BREAKPOINT
+                if (nowMobile != wasMobile) {
+                    wasMobile = nowMobile
+                    eventBus.fire(RefreshCanvas(model.currentCanvas().name, structural = false))
+                }
+            }, 150)
+        })
     }
 
     /** Editor-originated keys (Alt+arrow, Esc) reach the column model via events. */

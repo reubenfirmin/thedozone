@@ -28,7 +28,9 @@ class CanvasColumnsFocusTest {
         val bus = EventBus<Event>()
         val model = Model(CanvasName("_focus-test"))
         val canvas = canvasFromTemplate(CanvasName("_focus-test"), null, TWO_COLUMNS_VERTICAL)
-        val columns = CanvasColumns(canvas, bus, model) { emptyList() }
+        // Cross-column boundary resolution is a desktop concern (mobile renders one column with one
+        // boundary); pin desktop so the two-boundary shared-edge case is actually exercised.
+        val columns = CanvasColumns(canvas, bus, model, isMobile = { false }) { emptyList() }
         addToBody {
             div {
                 id = "focus-host"
