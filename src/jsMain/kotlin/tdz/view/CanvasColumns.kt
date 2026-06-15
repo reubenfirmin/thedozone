@@ -46,7 +46,14 @@ import zoned.framework.interop.styleSheet
 class CanvasColumns(val canvas: Canvas,
                     val eventBus: EventBus<Event>,
                     val model: Model,
+                    /** Viewport-width seam (overridable in tests): true => render only the first column. */
+                    val isMobile: () -> Boolean = { window.innerWidth <= MOBILE_BREAKPOINT },
                     val cards: (columnId: ColumnId) -> List<Card>) {
+
+    companion object {
+        /** At/below this viewport width the board collapses to its first column only (see [render]). */
+        const val MOBILE_BREAKPOINT = 768
+    }
 
     private val boundaries = mutableMapOf<ColumnId, Boundary>()
     private val columnModes = mutableMapOf<ColumnId, Mode>()
@@ -107,6 +114,12 @@ class CanvasColumns(val canvas: Canvas,
         styleSheet("tdz-column-scrollbar") {
             rule("[id^=\"column-\"]::-webkit-scrollbar") { display = Display.none }
         }
+        // Mobile: show ONLY the first leaf column, full viewport. The layout tree and every other
+        // column are skipped entirely (not in the DOM, no editors built), so they're unreachable.
+        if (isMobile()) {
+            renderSingleColumn()
+            return
+        }
         val rootBoundary = rootBoundary()
         val rootColumnId = canvas.root().columnId
         boundaries[rootColumnId] = rootBoundary
@@ -114,6 +127,44 @@ class CanvasColumns(val canvas: Canvas,
     }
 
     fun rootBoundary() = Boundary(0, 0, window.innerWidth, window.innerHeight)
+
+    /**
+     * The first leaf (content) column in layout order — the top-left-most, found by descending the
+     * first child of each layout. This is the one column shown on mobile. Falls back to the first
+     * declared content column if the tree is degenerate/cyclic.
+     */
+    fun firstLeafColumn(): ColumnId {
+        var id = canvas.root().columnId
+        val guard = mutableSetOf<ColumnId>()
+        while (canvas.layoutMap.containsKey(id) && guard.add(id)) {
+            id = canvas.layoutMap[id]?.contains?.firstOrNull() ?: break
+        }
+        return if (canvas.layoutMap.containsKey(id)) canvas.firstNonLayout() else id
+    }
+
+    /** Render just the first leaf column, filling the viewport (mobile single-column mode). */
+    private fun FlowContent.renderSingleColumn() {
+        val leaf = firstLeafColumn()
+        boundaries[leaf] = rootBoundary()
+        focusedColumn = leaf
+        renderLeafColumn(leaf)
+    }
+
+    /** Render one leaf (content) column: its themed container, painted cards, and mounted handlers. */
+    private fun FlowContent.renderLeafColumn(columnId: ColumnId) {
+        val columnContainer = setupColumnContainer(columnId)
+        div {
+            id = DomIds.column(columnId)
+            css { columnCss(columnId, columnContainer.mode) }
+            with(columnContainer) {
+                paint()
+            }
+            // Set up event handlers after DOM element is inserted
+            onMount {
+                setupColumnHandlers(columnId, columnContainer)
+            }
+        }
+    }
 
     // resolve a particular column layout, adding dom elements to it
     private fun FlowContent.renderLayoutTree(root: Boolean, parentIndex: ColumnId, parentBoundary: Boundary, regenerateColumns: List<ColumnId>, ancestors: Set<ColumnId>) {
@@ -162,18 +213,7 @@ class CanvasColumns(val canvas: Canvas,
                     renderLayoutTree(false, columnId, boundary, regenerateColumns, nextAncestors)
                 } else {
                     if (columnId in regenerateColumns) {
-                        val columnContainer = setupColumnContainer(columnId)
-                        div {
-                            id = DomIds.column(columnId)
-                            css { columnCss(columnId, columnContainer.mode) }
-                            with(columnContainer) {
-                                paint()
-                            }
-                            // Set up event handlers after DOM element is inserted
-                            onMount {
-                                setupColumnHandlers(columnId, columnContainer)
-                            }
-                        }
+                        renderLeafColumn(columnId)
                     }
                 }
                 boundaries[columnId] = boundary
@@ -293,7 +333,7 @@ class CanvasColumns(val canvas: Canvas,
         }
         // Show/hide the first-run welcome card based on whether the canvas has any cards now. Runs on
         // every column (re)render, so it appears on an empty canvas and clears the instant one is added.
-        IntroCard.evaluate(model, canvas)
+        IntroCard.evaluate(model, canvas, eventBus) { modeOf(it) }
     }
 
     /** Paint a column's per-column overrides (wallpaper image + background color) over the theme defaults. */

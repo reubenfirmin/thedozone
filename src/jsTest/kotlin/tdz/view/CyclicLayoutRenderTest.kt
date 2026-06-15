@@ -25,7 +25,7 @@ import kotlin.test.assertTrue
  */
 class CyclicLayoutRenderTest {
 
-    @AfterTest fun cleanup() { document.body?.asDynamic()?.innerHTML = "" }
+    @AfterTest fun cleanup() { document.body.asDynamic()?.innerHTML = "" }
 
     @Test
     fun cyclicLayoutRendersWithoutOverflowing() {
@@ -42,7 +42,9 @@ class CyclicLayoutRenderTest {
         )
         model.addCanvas(canvas)
         val bus = EventBus<Event>()
-        val columns = CanvasColumns(canvas, bus, model) { emptyList() }
+        // Desktop layout-tree render: the cycle guard lives in renderLayoutTree (mobile shows a
+        // single column and never walks the tree). Pin desktop so the test is viewport-independent.
+        val columns = CanvasColumns(canvas, bus, model, isMobile = { false }) { emptyList() }
 
         // Must not throw "Maximum call stack size exceeded".
         addToBody {

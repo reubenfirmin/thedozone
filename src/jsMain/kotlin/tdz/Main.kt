@@ -82,7 +82,12 @@ fun main() {
         themes.firstOrNull { it.name == saved }
             ?: longFormTheme.takeIf { saved == "Immaterial" }   // theme renamed; honor old saves
     }?.let { ThemeManager.use(it) }
-    zoned.framework.Debugger.debugOn()          // debug on
+    // Debug instrumentation (verbose console logging + sync logs) is off in production, enabled
+    // on demand via the `?debug` URL flag.
+    val debugEnabled = kotlinx.browser.window.location.search
+        .removePrefix("?").split("&").any { it == "debug" || it.startsWith("debug=") }
+    if (debugEnabled) zoned.framework.Debugger.debugOn()
+    tdz.sync.SyncLog.enabled = debugEnabled
     tdzModel.purgeOrphans().let { (purged, orphanContent) ->
         zoned.framework.Debugger.debug("[storage] purged $purged orphaned mode/legacy key(s); " +
             "${orphanContent.size} orphaned content column(s) left for review: $orphanContent")

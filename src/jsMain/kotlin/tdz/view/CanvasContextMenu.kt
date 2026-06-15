@@ -44,6 +44,8 @@ interface CanvasMenuActions {
     fun restoreBoardBackup()      // roll THIS board back to the rolling 30-minute backup
     fun clearDone()
     fun openDoc(path: String)     // navigate to an in-app help route (e.g. /help/shortcuts)
+    fun reportBug()               // open the issue tracker in a new browser tab
+    fun installApp()              // fire the captured PWA install prompt
 }
 
 /** "14:05" — the rolling backup's age, shown right on the menu item. */
@@ -61,11 +63,13 @@ fun canvasSections(
     localFolderSupported: Boolean = true,
     /** When the rolling 30-minute backup was taken (epoch ms), or null when none exists yet. */
     backupTimestamp: Double? = null,
+    /** Whether the browser has offered a PWA install prompt we can fire (adds an "Install app" item). */
+    installAvailable: Boolean = false,
 ): List<MenuSection> = listOf(
     MenuSection(
         items = listOf(
             MenuItem(
-                label = columnMode?.let { "Switch to ${it.invert().displayName()}" } ?: "Switch column",
+                label = columnMode?.let { if (it == Mode.CARD) "Edit" else "Save" } ?: "Switch column",
                 enabled = columnMode != null,
                 onSelect = actions::toggleColumn,
             ),
@@ -142,10 +146,16 @@ fun canvasSections(
                         onSelect = { actions.openDoc(helpPages.shortcuts.path()) }),
                     MenuItem(label = "Card Formatting", shortcut = "F2",
                         onSelect = { actions.openDoc(helpPages.formatting.path()) }),
+                    MenuItem(label = "Report a Bug", onSelect = actions::reportBug),
                 ),
             ),
         ),
     ),
+) + listOfNotNull(
+    // Only present when the browser reported the app is installable (and not already installed).
+    if (installAvailable) MenuSection(
+        items = listOf(MenuItem(label = "Install app", onSelect = actions::installApp)),
+    ) else null,
 )
 
 /**
@@ -205,6 +215,9 @@ fun canvasMenu(
             }
         }
         override fun openDoc(path: String) { zoned.framework.routing.Router.navigate(path) }
+        override fun reportBug() { window.open("https://github.com/reubenfirmin/thedozone2", "_blank", "noopener") }
+        override fun installApp() { PwaInstall.prompt() }
     }
-    canvasSections(mode, actions, tdz.sync.local.HandleStore.supported(), LocalBackup.autoTimestamp())
+    canvasSections(mode, actions, tdz.sync.local.HandleStore.supported(), LocalBackup.autoTimestamp(),
+        PwaInstall.isAvailable())
 }

@@ -37,6 +37,8 @@ class CanvasMenuTest {
         var uploadedNew = 0
         var uploadedHere = 0
         var restoredBackup = 0
+        var installed = 0
+        var bugReports = 0
         val openedDocs = mutableListOf<String>()
         override fun toggleColumn() { toggled++ }
         override fun columnProperties() { columnProps++ }
@@ -53,6 +55,8 @@ class CanvasMenuTest {
         override fun restoreBoardBackup() { restoredBackup++ }
         override fun clearDone() { clearedDone = true }
         override fun openDoc(path: String) { openedDocs += path }
+        override fun reportBug() { bugReports++ }
+        override fun installApp() { installed++ }
     }
 
     // Recurse into submenus so items moved into flyouts are still found.
@@ -62,16 +66,16 @@ class CanvasMenuTest {
     private fun allItems(sections: List<MenuSection>) = flatten(sections.flatMap { it.items })
 
     @Test
-    fun cardModeShowsSwitchToEditorEnabled() {
+    fun cardModeOffersEditEnabled() {
         val toggle = canvasSections(Mode.CARD, RecordingActions()).first().items.first()
-        assertEquals("Switch to Editor", toggle.label)
+        assertEquals("Edit", toggle.label)
         assertTrue(toggle.enabled)
     }
 
     @Test
-    fun editorModeShowsSwitchToCard() {
+    fun editorModeOffersSave() {
         val toggle = canvasSections(Mode.EDITOR, RecordingActions()).first().items.first()
-        assertEquals("Switch to Card", toggle.label)
+        assertEquals("Save", toggle.label)
         assertTrue(toggle.enabled)
     }
 
@@ -140,6 +144,14 @@ class CanvasMenuTest {
         assertTrue(item.enabled)
         item.onSelect()
         assertTrue(actions.clearedDone)
+    }
+
+    @Test
+    fun helpOffersReportABug() {
+        val actions = RecordingActions()
+        val report = allItems(canvasSections(Mode.CARD, actions)).first { it.label == "Report a Bug" }
+        report.onSelect()
+        assertEquals(1, actions.bugReports, "Report a Bug fires the report action")
     }
 
     @Test
@@ -242,6 +254,22 @@ class CanvasMenuTest {
         val items = allItems(canvasSections(Mode.CARD, RecordingActions(), localFolderSupported = false))
         val local = items.first { it.label == "Local Folder Sync (Chrome only)" }
         assertFalse(local.enabled)
+    }
+
+    @Test
+    fun installItemAbsentWhenNotInstallable() {
+        val items = allItems(canvasSections(Mode.CARD, RecordingActions(), installAvailable = false))
+        assertFalse(items.any { it.label == "Install app" }, "no Install app item when not installable")
+    }
+
+    @Test
+    fun installItemPresentAndWiredWhenInstallable() {
+        val actions = RecordingActions()
+        val item = allItems(canvasSections(Mode.CARD, actions, installAvailable = true))
+            .first { it.label == "Install app" }
+        assertTrue(item.enabled)
+        item.onSelect()
+        assertEquals(1, actions.installed)
     }
 
     @Test

@@ -48,7 +48,7 @@ class FirstConnectProtectionTest {
         storage = storage,
         readLocal = { local[it] },
         writeLocal = { p, c -> local[p] = c },
-        deleteLocal = { local.remove(it); Unit },
+        deleteLocal = { local.remove(it) },
     )
 
     /** The reported bug: seeded {me:1} vs a stale remote carrying this device's OLD clock {me:5}. */

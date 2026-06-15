@@ -24,7 +24,7 @@ class LocalBackupTest {
         window.localStorage.removeItem("newcanvas:_")
         window.localStorage.removeItem("col-0:_")
 
-        LocalBackup.restore(id!!)
+        LocalBackup.restore(id)
 
         assertEquals("canvas-data", window.localStorage.getItem("newcanvas:_"))
         assertEquals("card markdown", window.localStorage.getItem("col-0:_"))

@@ -31,7 +31,7 @@ class ContextMenuShowTest {
                 ),
             ),
         )
-        val bodyText = document.body?.textContent ?: ""
+        val bodyText = document.body.textContent ?: ""
         assertTrue(bodyText.contains("Download"), "menu should render into body; got: '$bodyText'")
         assertTrue(bodyText.contains("Backups & Export"), "section title should render; got: '$bodyText'")
     }

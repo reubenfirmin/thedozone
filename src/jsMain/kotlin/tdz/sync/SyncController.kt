@@ -473,7 +473,7 @@ class SyncController(
                 val handle = promise.await()                       // picker grants read-write here
                 HandleStore.save(handle)
                 localHandle = handle
-                val name = (handle.name as? String) ?: "folder"
+                val name = handle.name
                 model.writeSyncConfig(config().copy(
                     provider = SyncProvider.LOCAL_FOLDER,
                     enabled = true,

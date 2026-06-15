@@ -44,7 +44,7 @@ object HandleStore {
         val result = runStore(db, "readonly") { store -> store.get(KEY) }.await()
         // IDB values are untyped by nature; this is the one narrowing at the storage boundary
         // (external interfaces cannot be `as?`-checked).
-        return if (result == null || result == undefined) null
+        return if (result == null) null
             else result.unsafeCast<FileSystemDirectoryHandle>()
     }
 

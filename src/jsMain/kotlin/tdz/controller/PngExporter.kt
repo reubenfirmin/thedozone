@@ -19,7 +19,7 @@ import zoned.framework.libs.toPng
 class PngExporter {
 
     fun export(elementId: String, fileName: String, onComplete: () -> Unit) {
-        val element = document.getElementById(ElementId(elementId)) as? HTMLElement
+        val element = document.getElementById(ElementId(elementId))
         if (element == null) {
             onComplete()
             return

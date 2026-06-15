@@ -14,7 +14,7 @@ class LocalFolderStorageTest {
     // (no Date.now) so rev changes are predictable.
     private class FakeFile(var content: String, var lastModified: Double) : LocalFile {
         override suspend fun read() = content
-        override suspend fun write(c: String) { content = c; lastModified += 1000.0 }
+        override suspend fun write(content: String) { this.content = content; lastModified += 1000.0 }
         override suspend fun meta() = FileMeta(lastModified, content.length.toDouble())
     }
     private class FakeDir : LocalDir {

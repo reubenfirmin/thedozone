@@ -14,7 +14,7 @@ class MarkdownBlockquoteTest {
         assertEquals(1, cards.size, "a blockquote should produce one card")
         val seg = cards.first().segments.single()
         assertTrue(seg is Blockquote, "quote lines should parse to a Blockquote, got $seg")
-        assertEquals("hello\nworld", (seg as Blockquote).text)
+        assertEquals("hello\nworld", seg.text)
     }
 
     @Test
