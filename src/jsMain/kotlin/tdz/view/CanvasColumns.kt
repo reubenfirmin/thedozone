@@ -333,7 +333,7 @@ class CanvasColumns(val canvas: Canvas,
         }
         // Show/hide the first-run welcome card based on whether the canvas has any cards now. Runs on
         // every column (re)render, so it appears on an empty canvas and clears the instant one is added.
-        IntroCard.evaluate(model, canvas)
+        IntroCard.evaluate(model, canvas, eventBus) { modeOf(it) }
     }
 
     /** Paint a column's per-column overrides (wallpaper image + background color) over the theme defaults. */

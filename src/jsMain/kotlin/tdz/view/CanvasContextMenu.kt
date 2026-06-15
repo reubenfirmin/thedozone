@@ -44,6 +44,7 @@ interface CanvasMenuActions {
     fun restoreBoardBackup()      // roll THIS board back to the rolling 30-minute backup
     fun clearDone()
     fun openDoc(path: String)     // navigate to an in-app help route (e.g. /help/shortcuts)
+    fun reportBug()               // open the issue tracker in a new browser tab
     fun installApp()              // fire the captured PWA install prompt
 }
 
@@ -68,7 +69,7 @@ fun canvasSections(
     MenuSection(
         items = listOf(
             MenuItem(
-                label = columnMode?.let { "Switch to ${it.invert().displayName()}" } ?: "Switch column",
+                label = columnMode?.let { if (it == Mode.CARD) "Edit" else "Save" } ?: "Switch column",
                 enabled = columnMode != null,
                 onSelect = actions::toggleColumn,
             ),
@@ -145,6 +146,7 @@ fun canvasSections(
                         onSelect = { actions.openDoc(helpPages.shortcuts.path()) }),
                     MenuItem(label = "Card Formatting", shortcut = "F2",
                         onSelect = { actions.openDoc(helpPages.formatting.path()) }),
+                    MenuItem(label = "Report a Bug", onSelect = actions::reportBug),
                 ),
             ),
         ),
@@ -213,6 +215,7 @@ fun canvasMenu(
             }
         }
         override fun openDoc(path: String) { zoned.framework.routing.Router.navigate(path) }
+        override fun reportBug() { window.open("https://github.com/reubenfirmin/thedozone2", "_blank", "noopener") }
         override fun installApp() { PwaInstall.prompt() }
     }
     canvasSections(mode, actions, tdz.sync.local.HandleStore.supported(), LocalBackup.autoTimestamp(),

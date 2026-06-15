@@ -90,11 +90,13 @@ object CardRenderer {
     private fun cardClasses(card: Card, loose: Boolean): String {
         val t = ThemeManager.current
         val chromeless = card.isH1Only()
+        val imageOnly = card.isImageLink()
         val leadingHeading = card.segments.firstOrNull() is CardHeading
         return buildString {
             append(CssClasses.CARD)
             if (!chromeless && t.cardElevation.isNotEmpty()) append(" ${CssClasses.CARD_ELEV}")
             if (chromeless) append(" ${CssClasses.CARD_CHROMELESS}")
+            else if (imageOnly) append(" ${CssClasses.CARD_IMAGE}")    // photo fills the card, no inner frame
             else if (t.titleInStrip && leadingHeading) append(" ${CssClasses.CARD_STRIP}")
             else if (t.titleInBorder && leadingHeading) append(" ${CssClasses.CARD_FRAMED}")
             if (loose) append(" ${CssClasses.CARD_LOOSE}")
@@ -321,6 +323,25 @@ object CardRenderer {
             // between the segments within them (the .tdz-loose-seg wrappers).
             rule(".${CssClasses.CARD_LOOSE}") { marginBottom = 24.px }
             rule(".${CssClasses.LOOSE_SEG}") { marginBottom = 12.px }
+            // A card that is nothing but an image renders the photo full-bleed: no margin, no
+            // padding, no frame — just the picture, clipped to the card's own rounded corners.
+            rule(".${CssClasses.CARD_IMAGE}") {
+                margin = Margin(0.px)
+                padding = Padding(0.px)
+                borderStyle = BorderStyle.none
+                overflow = Overflow.hidden
+            }
+            // The image lives inside a text wrapper (div) then a span; flatten both so nothing
+            // around the picture adds space, and let the image fill the card edge to edge.
+            rule(".${CssClasses.CARD_IMAGE} div, .${CssClasses.CARD_IMAGE} span") {
+                display = Display.block
+                margin = Margin(0.px)
+                padding = Padding(0.px)
+            }
+            rule(".${CssClasses.CARD_IMAGE} img") {
+                display = Display.block
+                width = 100.pct
+            }
             // Material header strip variant: full-bleed band, so the card zeroes its own padding
             // (the .tdz-card-body supplies it back) and clips the strip to the rounded corners.
             if (t.titleInStrip) {

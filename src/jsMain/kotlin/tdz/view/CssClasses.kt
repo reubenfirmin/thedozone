@@ -15,6 +15,7 @@ object CssClasses {
     const val CARD_FRAMED = "tdz-card-framed"
     const val CARD_FRAME_TITLE = "tdz-card-frame-title"
     const val CARD_LOOSE = "tdz-card-loose"
+    const val CARD_IMAGE = "tdz-card-image"
     const val CARD_HEADER = "tdz-card-header"
     const val CARD_BODY = "tdz-card-body"
     const val CARD_FLOURISH = "tdz-card-flourish"

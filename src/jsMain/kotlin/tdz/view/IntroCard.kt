@@ -5,9 +5,13 @@ import kotlinx.html.button
 import kotlinx.html.div
 import kotlinx.html.span
 import kotlinx.html.unsafe
+import tdz.controller.events.Event
 import tdz.model.Canvas
+import tdz.model.ColumnId
+import tdz.model.Mode
 import tdz.model.Model
 import tdz.rootCanvas
+import zoned.framework.events.EventBus
 import kotlinx.css.*
 import kotlinx.css.properties.*
 import tdz.view.theme.ThemeManager
@@ -44,16 +48,23 @@ object IntroCard {
      * column); otherwise remove it. Child boards starting empty is normal navigation, not a first run, so
      * they never get the card.
      */
-    fun evaluate(model: Model, canvas: Canvas) {
+    fun evaluate(model: Model, canvas: Canvas, eventBus: EventBus<Event>, modeOf: (ColumnId) -> Mode) {
+        // The wizard owns the screen once it's open; never let the welcome card sit behind it (a
+        // re-render mid-tour must not pop it back).
+        if (Zones.EXAMPLES_WIZARD.resolve() != null) { remove(); return }
         val leaves = canvas.columns.filter { !canvas.layoutMap.containsKey(it) }
+        // The card is for an untouched root: one empty column the user hasn't started editing.
+        // Switching that column into the editor means they're working — get out of the way (saving
+        // back to an empty card column brings it back).
         val pristine = canvas.name == rootCanvas &&
-            leaves.size == 1 && model.cards(canvas.name, leaves[0]).isEmpty()
-        if (pristine) show() else remove()
+            leaves.size == 1 && model.cards(canvas.name, leaves[0]).isEmpty() &&
+            modeOf(leaves[0]) == Mode.CARD
+        if (pristine) show(model, eventBus) else remove()
     }
 
     private var hintHooked = false
 
-    private fun show() {
+    private fun show(model: Model, eventBus: EventBus<Event>) {
         ensureStyles()                 // refresh each time so a theme switch while empty recolors the card
         PointerHint.start()            // begin sniffing wheel events to refine the instruction
         hookPointerHint()
@@ -74,10 +85,11 @@ object IntroCard {
                         }
                         // The card itself is click-through (pointer-events: none); the button opts
                         // back in (see CSS) so it's the one clickable affordance. Opens the
-                        // (stubbed) examples wizard.
+                        // intro wizard.
                         button(classes = "tdz-intro-btn", type = ButtonType.button) {
-                            +"See examples"
-                            onClick { ExamplesWizard.show() }
+                            +"What is this?"
+                            // Hand off to the wizard and step aside so it isn't left sitting behind it.
+                            onClick { remove(); ExamplesWizard.show(model, eventBus) }
                         }
                     }
                 }

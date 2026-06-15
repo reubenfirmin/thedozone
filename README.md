@@ -1,40 +1,17 @@
-## Building
+# The Do Zone
 
-To run in watch mode for development:
+Welcome to The Do Zone, a private, in-browser, offline-first, modal, sync-enabled, open source task and information manager (/"3d kanban board").
 
-./watch.sh
+If you don't want to read details and prefer to just get into it, click to launch the app now: [The Do Zone](https://the.do.zone). There is a helpful getting started wizard which will walk you through the basics.
 
-To build for production deploy:
+## Why another of these?
 
-./gradlew clean build-production
+This app started as an experiment several years ago: I wanted to see how far you could get with a useful in-browser application without requiring a server. What if the data lived on the user's machine, and all work was done there? I was also curious to kick tires on kotlin.js, and see how usable it was.
 
-## CI / Deploy
+Once it existed, I came to rely on it, and have slowly polished features as I needed them.
 
-CI is GitHub Actions (`.github/workflows/ci.yml`):
+Recently, I decided a full rewrite was necessary; it's still using kotlin.js, but it's now using a framework that I wrote that provides a lot of niceties rather than the original framework it was based on (see: [Zoned](https://github.com/reubenfirmin/zoned) - core idea is that everything in a webapp, sql to css, routes included, can be typed.)
 
-- **build** (every push + PR): checks out `reubenfirmin/zoned`, publishes its
-  `1.0-SNAPSHOT` artifacts to Maven Local, then builds + tests this repo and
-  uploads the assembled site (`build/dist/js/productionExecutable`).
-- **deploy** (push to `main` only): runs `wrangler deploy`, shipping the static
-  site to a Cloudflare Worker bound to **beta.do.zone**.
+## Working in the codebase
 
-### One-time manual setup (repo owner)
-
-1. **`do.zone` must be an active zone** in the target Cloudflare account (so the
-   `beta.do.zone` custom-domain DNS record can be created).
-2. **Create a Cloudflare API token** with:
-   - Account → *Workers Scripts*: Edit
-   - Zone (`do.zone`) → *Workers Routes*: Edit
-   - Zone (`do.zone`) → *DNS*: Edit
-   - Account → *Account Settings*: Read
-3. **Add repository secrets** (Settings → Secrets and variables → Actions):
-   - `CLOUDFLARE_API_TOKEN`
-   - `CLOUDFLARE_ACCOUNT_ID`
-4. The **first deploy** should be triggered/verified by the owner (via a push to
-   `main` or the workflow's "Run workflow" button).
-
-### Local deploy (optional)
-
-    ./gradlew clean jsBrowserDistribution
-    CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... npx wrangler deploy
-
+I welcome pull requests, bug reports, or feature ideas. Main.kt is the entrypoint, and the code should be discoverable from there.
