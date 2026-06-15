@@ -25,9 +25,10 @@ import zoned.framework.routing.Zone.Companion.zone
  * interactive behind it: picking an example live-rebuilds the board via [ExampleLoader] while the
  * panel stays open, letting the user flip between examples. "Reset board" wipes whatever's loaded.
  *
- * Structured as a list of [WizardStep]s so later steps are a data change; "That's cool, what next?"
- * advances, and closes the tour once it runs out of steps. Only step one — "Columns and cards" —
- * exists today.
+ * Structured as a list of [WizardStep]s so steps are a data change; the first is a welcome card and
+ * the rest ([featureSteps]) walk through one feature each. "That's cool, what next?" advances, and
+ * the tour closes once it runs out of steps. The welcome card sits outside the "Step X of N" count,
+ * so the progress reflects only the feature steps.
  *
  * Self-contained body-level zone ([Zones.EXAMPLES_WIZARD]) built with the typed DSL, mirroring the
  * IntroCard / ContextMenu rendering model.
@@ -44,40 +45,59 @@ object ExamplesWizard {
     private data class WizardStep(
         val title: String,
         val explanation: String,
+        // The forward button's label; varies per step so the tour doesn't feel like one repeated
+        // click. The last step's [cta] doubles as the finish label, since the button ends the tour.
+        val cta: String,
         val examples: List<ExampleBoard> = emptyList(),
         val preset: List<ExampleBoard> = emptyList(),
     )
 
-    private val steps = listOf(
+    // The feature walk-through; the welcome card is prepended below and excluded from the count, so
+    // the "5 quick steps" copy and the "Step X of N" indicator both track this list's size.
+    private val featureSteps = listOf(
         WizardStep(
             title = "Columns and cards",
             explanation = "A column holds cards. Cards can be dragged between columns.",
+            cta = "That's cool, what next?",
             examples = ExampleBoards.COLUMNS_AND_CARDS,
         ),
         WizardStep(
             title = "It's all markdown",
-            explanation = "Right-click a column and choose Edit — or press Ctrl+' while it's " +
-                "focused — to switch to edit mode. Do the same to switch back.",
+            explanation = "Right-click a column and choose Edit, or press Ctrl+' while it's " +
+                "focused, to switch to edit mode. Do the same to switch back.",
+            cta = "Nice. Show me more",
             preset = listOf(ExampleBoards.PROJECT),
         ),
         WizardStep(
             title = "Privacy, offline first",
             explanation = "This app runs entirely in your browser. Your data is stored here, on " +
-                "your device. There is no server — your data is yours, and yours alone.",
+                "your device. There is no server. Your data is yours, and yours alone.",
+            cta = "Love it. Keep going",
         ),
         WizardStep(
             title = "The context menu",
-            explanation = "Right-click anywhere — the context menu is your gateway to the app. " +
+            explanation = "Right-click anywhere: the context menu is your gateway to the app. " +
                 "Configure sync, restore a backup, switch themes, learn keyboard shortcuts, and more.",
+            cta = "Handy. One more?",
         ),
         WizardStep(
             title = "Multiple boards",
             explanation = "Of course your life doesn't fit neatly into one screen. Create a link to " +
                 "a new board by surrounding a word or phrase in square brackets. Board addresses are " +
                 "bookmarkable, too.",
+            cta = "Got it!",
             preset = ExampleBoards.MULTI_BOARD,
         ),
     )
+
+    private val steps = listOf(
+        WizardStep(
+            title = "Welcome to The Do Zone",
+            explanation = "We're going to walk through the main features in ${featureSteps.size} " +
+                "quick steps.",
+            cta = "Let's go!",
+        ),
+    ) + featureSteps
 
     private var stepIndex = 0
 
@@ -101,21 +121,23 @@ object ExamplesWizard {
                             onClick { exit(model, eventBus) }
                         }
                     }
-                    // The step indicator only earns its place once there's more than one step.
-                    if (steps.size > 1) div("tdz-wiz-progress") { +"Step ${stepIndex + 1} of ${steps.size}" }
+                    // The step indicator counts feature steps only; the welcome card (index 0) sits
+                    // outside the count, so it shows no progress line.
+                    if (stepIndex > 0) div("tdz-wiz-progress") { +"Step $stepIndex of ${featureSteps.size}" }
                     renderStep(step, model, eventBus)
                     div("tdz-wiz-footer") {
-                        // Reset only earns its place on step one, where the user is loading and
-                        // swapping example boards; later steps are preset or informational.
-                        if (stepIndex == 0) {
+                        // Reset only earns its place on the step that loads and swaps example
+                        // boards; the welcome card and later steps are preset or informational.
+                        if (step.examples.isNotEmpty()) {
                             button(classes = "tdz-wiz-reset", type = ButtonType.button) {
                                 +"Reset board"
                                 onClick { ExampleLoader.reset(model, eventBus) }
                             }
                         }
                         button(classes = "tdz-wiz-next", type = ButtonType.button) {
-                            // The forward button finishes the tour on the final step.
-                            +(if (stepIndex == steps.lastIndex) "Got it!" else "That's cool, what next?")
+                            // Each step carries its own forward label; the last step's doubles as the
+                            // finish label, since the button ends the tour there.
+                            +step.cta
                             onClick { next(model, eventBus) }
                         }
                     }

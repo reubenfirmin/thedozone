@@ -24,7 +24,7 @@ object ExampleBoards {
                 # Monday
 
                 ## Standup
-                9am — share blockers
+                9am - share blockers
 
                 ## To do
                 * /Review the PRs
@@ -128,7 +128,7 @@ object ExampleBoards {
                 Sam, Priya, Alex
 
                 - Keep updates under two minutes
-                -- Decisions only — park the deep dives
+                -- Decisions only, park the deep dives
 
                 ## Notes
                 * Roadmap looks good for Q3
@@ -240,7 +240,7 @@ object ExampleBoards {
                 """
                     # Your boards
 
-                    Each link below opens a board of its own — and the address is bookmarkable.
+                    Each link below opens a board of its own, and the address is bookmarkable.
 
                     [Work]
 

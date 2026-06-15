@@ -450,6 +450,17 @@ class CanvasColumns(val canvas: Canvas,
         reRenderColumn(columnId)
     }
 
+    /**
+     * Discard a column's unsaved editor buffer and return it to card mode. [EditorColumn.revert]
+     * makes the detach (during the re-render) skip its save, so the model keeps its pre-edit content
+     * and the column repaints from it. No-op if the column isn't in editor mode.
+     */
+    fun revertMode(columnId: ColumnId) {
+        if (modeOf(columnId) != Mode.EDITOR) return
+        editorCache[columnId]?.revert()
+        toggleMode(columnId)
+    }
+
     /** The current mode of [columnId] (defaults to CARD if not explicitly set). */
     fun modeOf(columnId: ColumnId): Mode = columnModes[columnId] ?: Mode.CARD
 

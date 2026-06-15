@@ -45,6 +45,8 @@ class EditorColumn(
     private var aceEditor: AceEditor? = null
     /** The editor's root element, parked here across detach/re-adopt (Ace's DOM lives inside). */
     private var rootEl: web.html.HTMLElement? = null
+    /** Set by "Undo edits": the next [detach] discards the buffer instead of saving it. */
+    private var discardOnDetach = false
     /** Number of full Ace initializations — the reuse contract is that toggles keep this at 1. */
     internal var initCount = 0
         private set
@@ -119,11 +121,18 @@ class EditorColumn(
     internal fun text(): String = aceEditor?.getValue() ?: ""
 
     /**
+     * Discard the unsaved buffer ("Undo edits"): the upcoming [detach] skips its save, so the model
+     * keeps the pre-edit content and the column re-renders from it. One-shot — cleared on detach.
+     */
+    fun revert() { discardOnDetach = true }
+
+    /**
      * Save and PARK (not destroy): the root element is pulled out of the DOM before the column
-     * rebuild discards its parent, keeping Ace's DOM alive for the next [render] to re-adopt.
+     * rebuild discards its parent, keeping Ace's DOM alive for the next [render] to re-adopt. After
+     * a [revert] the buffer is dropped instead of saved.
      */
     fun detach() {
-        save()
+        if (discardOnDetach) discardOnDetach = false else save()
         rootEl?.remove()
     }
 

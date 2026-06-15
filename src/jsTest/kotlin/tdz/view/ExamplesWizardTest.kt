@@ -20,8 +20,9 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The intro wizard ("What is this?") renders its first step — "Columns and cards" — with a button
- * per curated example, closes on demand, and rebuilds the board in place when an example is picked.
+ * The intro wizard ("What is this?") opens on a welcome card, then walks the feature steps. Step one
+ * ("Columns and cards") renders a button per curated example, the tour closes on demand, and picking
+ * an example rebuilds the board in place.
  */
 class ExamplesWizardTest {
 
@@ -30,11 +31,33 @@ class ExamplesWizardTest {
     private fun rootModel() =
         Model(rootCanvas).also { it.addCanvas(canvasFromTemplate(rootCanvas, null, SINGLE_PANE)) }
 
+    private fun clickNext() =
+        (document.querySelector(".tdz-wiz-next") as HTMLElement)
+            .dispatchEvent(MouseEvent(EventType("click"), MouseEventInit(bubbles = true, cancelable = true)))
+
+    /** Show the wizard and advance past the welcome card to the first feature step. */
+    private fun showAtFeatureOne(model: Model) {
+        ExamplesWizard.show(model, EventBus())
+        clickNext()
+    }
+
     @Test
-    fun showRendersStepOneWithEveryExample() {
+    fun showRendersTheWelcomeStepFirst() {
         ExamplesWizard.show(rootModel(), EventBus())
         val body = document.body.textContent ?: ""
+        assertTrue(body.contains("Welcome to The Do Zone"), "welcome title; got '$body'")
+        assertTrue(body.contains("5 quick steps"), "welcome blurb names the step count; got '$body'")
+        assertTrue(body.contains("Let's go!"), "welcome CTA; got '$body'")
+        assertNull(document.querySelector(".tdz-wiz-example"), "welcome carries no example buttons")
+        assertNull(document.querySelector(".tdz-wiz-reset"), "welcome carries no reset link")
+    }
+
+    @Test
+    fun showRendersStepOneWithEveryExample() {
+        showAtFeatureOne(rootModel())
+        val body = document.body.textContent ?: ""
         assertTrue(body.contains("Columns and cards"), "step title; got '$body'")
+        assertTrue(body.contains("Step 1 of 5"), "progress counts feature steps only; got '$body'")
         assertTrue(body.contains("dragged between columns"), "explanation; got '$body'")
         assertTrue(body.contains("Examples"), "examples heading; got '$body'")
         assertTrue(body.contains("Click the buttons to see previews"), "examples intro; got '$body'")
@@ -46,7 +69,7 @@ class ExamplesWizardTest {
     @Test
     fun nextAdvancesToTheEditingStepAndPresetsItsExample() {
         val model = rootModel()
-        ExamplesWizard.show(model, EventBus())
+        showAtFeatureOne(model)
         val next = document.querySelector(".tdz-wiz-next") as? HTMLElement
         assertNotNull(next, "the next button is present")
         next.dispatchEvent(MouseEvent(EventType("click"), MouseEventInit(bubbles = true, cancelable = true)))
@@ -77,7 +100,7 @@ class ExamplesWizardTest {
 
     @Test
     fun footerOffersResetAndNext() {
-        ExamplesWizard.show(rootModel(), EventBus())
+        showAtFeatureOne(rootModel())
         val body = document.body.textContent ?: ""
         assertTrue(body.contains("Reset board"), "reset link; got '$body'")
         assertTrue(body.contains("That's cool, what next?"), "next button; got '$body'")
@@ -86,7 +109,7 @@ class ExamplesWizardTest {
     @Test
     fun resetLinkWipesTheExampleFromTheBoard() {
         val model = rootModel()
-        ExamplesWizard.show(model, EventBus())
+        showAtFeatureOne(model)
         ExampleLoader.load(model, EventBus(), ExampleBoards.ALL.first { it.title.contains("Week") })
 
         val reset = document.querySelector(".tdz-wiz-reset") as? HTMLElement
@@ -102,10 +125,9 @@ class ExamplesWizardTest {
     fun theTourAdvancesThroughEveryStepThenCloses() {
         val model = rootModel()
         ExamplesWizard.show(model, EventBus())
-        fun clickNext() =
-            (document.querySelector(".tdz-wiz-next") as HTMLElement)
-                .dispatchEvent(MouseEvent(EventType("click"), MouseEventInit(bubbles = true, cancelable = true)))
 
+        assertTrue((document.body.textContent ?: "").contains("Welcome to The Do Zone"), "welcome")
+        clickNext()
         assertTrue((document.body.textContent ?: "").contains("Columns and cards"), "step 1")
         clickNext()
         assertTrue((document.body.textContent ?: "").contains("It's all markdown"), "step 2")
@@ -125,8 +147,9 @@ class ExamplesWizardTest {
     fun exitingTheTourWipesEveryExampleBoard() {
         val model = rootModel()
         ExamplesWizard.show(model, EventBus())
-        // Advance to the final "Multiple boards" step, which presets the root plus child boards.
-        repeat(4) {
+        // Advance from the welcome card to the final "Multiple boards" step, which presets the root
+        // plus child boards (welcome + 4 nexts = the 5th and last feature step).
+        repeat(5) {
             (document.querySelector(".tdz-wiz-next") as HTMLElement)
                 .dispatchEvent(MouseEvent(EventType("click"), MouseEventInit(bubbles = true, cancelable = true)))
         }
@@ -142,7 +165,7 @@ class ExamplesWizardTest {
     @Test
     fun clickingAnExampleRebuildsTheBoardInPlace() {
         val model = rootModel()
-        ExamplesWizard.show(model, EventBus())
+        showAtFeatureOne(model)
 
         val list = document.querySelectorAll(".tdz-wiz-example")
         var button: HTMLElement? = null
