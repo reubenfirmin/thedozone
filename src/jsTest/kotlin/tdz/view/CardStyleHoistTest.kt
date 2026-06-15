@@ -29,7 +29,7 @@ class CardStyleHoistTest {
 
     @AfterTest
     fun cleanup() {
-        document.body?.asDynamic()?.innerHTML = ""
+        document.body.asDynamic()?.innerHTML = ""
     }
 
     private fun renderColumn(markdown: String) {

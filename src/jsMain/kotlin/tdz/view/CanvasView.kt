@@ -26,6 +26,7 @@ class CanvasView(bus: EventBus<Event>, private val model: Model) : ZoneView<Canv
     var columns: CanvasColumns? = null
         private set
 
+    @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
     override fun TagConsumer<HTMLElement>.render(canvas: Canvas) {
         val cols = CanvasColumns(canvas, bus, model) { id -> model.cards(canvas.name, id) }
         columns = cols

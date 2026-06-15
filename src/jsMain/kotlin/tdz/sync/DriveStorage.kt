@@ -138,7 +138,7 @@ class DriveStorage : RemoteStorage {
         fileIdCache[path]?.let { id ->
             if (cachedMeta?.md5Checksum != null) {
                 try {
-                    return fetchContent(path, id, cachedMeta.md5Checksum!!, token) to toFile(path, cachedMeta)
+                    return fetchContent(path, id, cachedMeta.md5Checksum, token) to toFile(path, cachedMeta)
                 } catch (t: Throwable) {
                     if (!isNotFound(t)) throw t
                     invalidateFile(path)   // stale id (deleted/recreated elsewhere): re-resolve below

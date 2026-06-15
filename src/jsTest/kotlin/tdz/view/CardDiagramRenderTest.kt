@@ -28,7 +28,7 @@ class CardDiagramRenderTest {
 
     @AfterTest
     fun cleanup() {
-        document.body?.asDynamic()?.innerHTML = ""
+        document.body.asDynamic()?.innerHTML = ""
     }
 
     /** nomnoml paints shapes/text; until then every pixel is transparent. Scan the alpha channel. */

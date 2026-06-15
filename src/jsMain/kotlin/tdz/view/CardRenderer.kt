@@ -613,7 +613,6 @@ object CardRenderer {
                 }
                 onClick {
                     web.navigator.navigator.clipboard.writeTextAsync(blockquote.text)
-                    Unit
                 }
             }
             +blockquote.text

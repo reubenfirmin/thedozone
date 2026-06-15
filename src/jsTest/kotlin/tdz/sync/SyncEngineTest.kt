@@ -68,7 +68,7 @@ class SyncEngineTest {
             storage = storage,
             readLocal = { local[it] },
             writeLocal = { p, c -> local[p] = c },
-            deleteLocal = { local.remove(it); Unit },
+            deleteLocal = { local.remove(it) },
         )
 
     // --- push (the core conflict path) ---

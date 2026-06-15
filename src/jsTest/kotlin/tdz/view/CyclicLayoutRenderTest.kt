@@ -25,7 +25,7 @@ import kotlin.test.assertTrue
  */
 class CyclicLayoutRenderTest {
 
-    @AfterTest fun cleanup() { document.body?.asDynamic()?.innerHTML = "" }
+    @AfterTest fun cleanup() { document.body.asDynamic()?.innerHTML = "" }
 
     @Test
     fun cyclicLayoutRendersWithoutOverflowing() {

@@ -39,7 +39,7 @@ class DragReorderRenderSkipTest {
 
     @AfterTest
     fun cleanup() {
-        document.body?.asDynamic()?.innerHTML = ""
+        document.body.asDynamic()?.innerHTML = ""
     }
 
     private fun buildModel(markdown: String): Model {
@@ -64,10 +64,10 @@ class DragReorderRenderSkipTest {
     }
 
     private fun el(id: String): HTMLElement =
-        document.getElementById(ElementId(id)) as? HTMLElement ?: error("missing $id")
+        document.getElementById(ElementId(id)) ?: error("missing $id")
 
     private fun domCardIds(container: Element): List<String> =
-        (0 until container.children.length).mapNotNull { container.children[it]?.id?.toString() }
+        (0 until container.children.length).mapNotNull { container.children[it].id.toString() }
             .filter { DomIds.isCard(it) }
 
     private fun dropEvent(item: Element, container: Element) = SortableDropEvent(

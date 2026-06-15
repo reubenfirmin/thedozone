@@ -15,6 +15,7 @@ import web.html.file
  */
 object FilePicker {
 
+    @OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
     fun pick(accept: String, onText: (name: String, content: String) -> Unit) {
         val input = (document.createElement("input") as HTMLInputElement).apply {
             type = InputType.file

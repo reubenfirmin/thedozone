@@ -137,7 +137,7 @@ object AllBoards {
                                     onClick {
                                         when {
                                             empty -> deleteBoard(name)
-                                            !armed -> { armed = true; delRef.element?.let { it.textContent = "Delete?"; it.style.color = "#ff5555"; it.style.opacity = "1" } }
+                                            !armed -> { armed = true; delRef.element.let { it.textContent = "Delete?"; it.style.color = "#ff5555"; it.style.opacity = "1" } }
                                             else -> deleteBoard(name)
                                         }
                                     }

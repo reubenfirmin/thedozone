@@ -447,7 +447,7 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
         val children = container.children
         var index = 0
         for (i in 0 until children.length) {
-            val el = children[i] ?: continue
+            val el = children[i]
             if (DomIds.cardId(el.id.asString()) == null) continue
             el.id = ElementId(DomIds.card(CardRef(columnId, index++)))
         }
@@ -458,7 +458,7 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
         val children = container.children
         val cards = mutableListOf<Card>()
         for (i in 0 until children.length) {
-            val id = children[i]?.id?.asString() ?: continue
+            val id = children[i].id.asString()
             val ref = DomIds.cardId(id) ?: continue
             cards += model.getCardByIndex(canvasName, ref)
         }

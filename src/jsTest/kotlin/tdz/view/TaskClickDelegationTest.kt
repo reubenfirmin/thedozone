@@ -38,7 +38,7 @@ class TaskClickDelegationTest {
 
     @AfterTest
     fun cleanup() {
-        document.body?.asDynamic()?.innerHTML = ""
+        document.body.asDynamic()?.innerHTML = ""
     }
 
     private fun click(el: HTMLElement) {

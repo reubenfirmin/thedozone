@@ -41,7 +41,7 @@ class ParallelPullTest {
             storage = storage,
             readLocal = { local[it] },
             writeLocal = { p, c -> local[p] = c },
-            deleteLocal = { local.remove(it); Unit },
+            deleteLocal = { local.remove(it) },
         )
 
         val result = engine.pull(root = "/n", state = SyncStateDoc.EMPTY)

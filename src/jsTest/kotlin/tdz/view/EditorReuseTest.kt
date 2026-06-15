@@ -35,7 +35,7 @@ class EditorReuseTest {
 
     @AfterTest
     fun cleanup() {
-        document.body?.asDynamic()?.innerHTML = ""
+        document.body.asDynamic()?.innerHTML = ""
     }
 
     @Test

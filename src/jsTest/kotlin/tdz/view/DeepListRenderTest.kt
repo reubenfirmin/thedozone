@@ -27,7 +27,7 @@ import kotlin.test.assertTrue
  */
 class DeepListRenderTest {
 
-    @AfterTest fun cleanup() { document.body?.asDynamic()?.innerHTML = "" }
+    @AfterTest fun cleanup() { document.body.asDynamic()?.innerHTML = "" }
 
     private fun item(text: String, level: Int) =
         CardListItem(listOf(Text(text)), level, ListMemberType.BULLET, weight = 1, done = false)

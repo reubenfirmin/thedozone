@@ -54,7 +54,7 @@ class WormholeDropRoutingTest {
 
     @AfterTest
     fun cleanup() {
-        document.body?.asDynamic()?.innerHTML = ""
+        document.body.asDynamic()?.innerHTML = ""
     }
 
     private fun buildModel(): Model {
@@ -89,7 +89,7 @@ class WormholeDropRoutingTest {
     }
 
     private fun el(id: String): HTMLElement =
-        document.getElementById(ElementId(id)) as? HTMLElement
+        document.getElementById(ElementId(id))
             ?: error("test setup: element $id not in DOM")
 
     private fun pointerMoveOver(target: Element) {
@@ -131,7 +131,7 @@ class WormholeDropRoutingTest {
         // Drag card B; the pointer moves over the link chip → the wormhole opens.
         dragDrop.beginPortalTracking(cardB)
         pointerMoveOver(chip)
-        val portal = document.getElementById(ElementId(Zones.WORMHOLE.elementId)) as? HTMLElement
+        val portal = document.getElementById(ElementId(Zones.WORMHOLE.elementId))
         assertNotNull(portal, "the wormhole portal should exist once the pointer is over a link")
         assertTrue(portal.classList.contains(ClassName("tdz-wh-on")), "the wormhole should be open over the chip")
 
@@ -194,7 +194,7 @@ class WormholeDropRoutingTest {
 
         dragDrop.beginPortalTracking(cardB)
         pointerMoveOver(chip)
-        val portal = document.getElementById(ElementId(Zones.WORMHOLE.elementId)) as? HTMLElement
+        val portal = document.getElementById(ElementId(Zones.WORMHOLE.elementId))
         assertNotNull(portal)
         assertTrue(portal.classList.contains(ClassName("tdz-wh-on")), "setup: wormhole open over the chip")
 
@@ -241,7 +241,7 @@ class WormholeDropRoutingTest {
             PointerEventInit(clientX = (r.left + r.width / 2).toInt(), clientY = (r.top + r.height / 2).toInt()),
         ))
 
-        val portal = document.getElementById(ElementId(Zones.WORMHOLE.elementId)) as? HTMLElement
+        val portal = document.getElementById(ElementId(Zones.WORMHOLE.elementId))
         assertTrue(portal == null || !portal.classList.contains(ClassName("tdz-wh-on")),
             "a removed chip must not light the wormhole")
         dragDrop.stopPortalTracking()

@@ -38,7 +38,7 @@ class ContextMenuAttachTest {
         // Simulate a right-click on the host element.
         hostRef.element.dispatchEvent(Event(EventType("contextmenu")))
 
-        val bodyText = document.body?.textContent ?: ""
+        val bodyText = document.body.textContent ?: ""
         assertTrue(bodyText.contains("Download"), "right-click should open the menu; body='$bodyText'")
     }
 }

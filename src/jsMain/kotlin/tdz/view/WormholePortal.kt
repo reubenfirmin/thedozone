@@ -132,7 +132,7 @@ object WormholePortal {
             zIndex = ZLayer.WORMHOLE_CARD   // just above the portal, so the swallow animation reads on top of it
             transformOrigin("center center")
         }
-        document.body?.appendChild(el)
+        document.body.appendChild(el)
 
         val dx = pcx - startCx
         val dy = pcy - startCy
