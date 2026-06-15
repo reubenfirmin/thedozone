@@ -24,9 +24,14 @@ import zoned.framework.interop.important
 import tdz.view.theme.themedStyleSheet
 import zoned.framework.libs.AceEditor
 import zoned.framework.libs.aceCommand
+import zoned.framework.libs.aceCompleter
+import zoned.framework.libs.aceCompletion
+import zoned.framework.libs.aceEditorOptions
 import zoned.framework.libs.aceRange
 import zoned.framework.libs.loadAce
+import zoned.framework.libs.loadAceLanguageTools
 import tdz.view.theme.ThemeManager
+import kotlin.js.RegExp
 
 /**
  * Editor mode for a column using Ace editor.
@@ -39,7 +44,10 @@ import tdz.view.theme.ThemeManager
 class EditorColumn(
     val canvas: Canvas,
     val columnId: ColumnId,
-    val eventBus: EventBus<Event>
+    val eventBus: EventBus<Event>,
+    /** Live source of existing board names for the `[link]` autocompleter (read at completion time
+     *  so boards created/renamed mid-session are offered). Defaults to none (e.g. in tests). */
+    val boardNames: () -> List<String> = { emptyList() },
 ) {
 
     private var aceEditor: AceEditor? = null
@@ -106,6 +114,7 @@ class EditorColumn(
                     installListContinuation(editor)
                     installListIndent(editor)
                     installEditorShortcuts(editor)
+                    installBoardLinkCompletion(editor)
                     ensureEditorMarkdownStyles()
 
                     editor.setValue(text)
@@ -119,6 +128,29 @@ class EditorColumn(
 
     /** The current buffer text (test seam). */
     internal fun text(): String = aceEditor?.getValue() ?: ""
+
+    /** True once the board-link completer is wired (language_tools loaded + options applied). Test seam. */
+    internal fun completerInstalled(): Boolean = aceEditor?.completers?.isNotEmpty() == true
+
+    /** Number of suggestions our completer last produced (-1 if never asked). Test seam. */
+    internal var lastCompletionCount = -1
+        private set
+
+    /** Force the autocomplete popup with [textBefore] in the buffer and the caret at its end, so a
+     *  test can confirm Ace actually invokes our completer end-to-end. Test seam. */
+    internal fun triggerCompletionForTest(textBefore: String) {
+        val ed = aceEditor ?: return
+        ed.setValue(textBefore)
+        ed.clearSelection()   // setValue selects all; drop the selection, leaving the caret at the end
+        ed.execCommand("startAutocomplete")
+    }
+
+    /** Type [ch] through the command pipeline (as a keystroke would), exercising LIVE autocompletion
+     *  — the path a real user hits, unlike the manual [triggerCompletionForTest]. Test seam. */
+    internal fun typeForTest(ch: String) {
+        val ed = aceEditor ?: return
+        ed.commands.exec("insertstring", ed, ch)
+    }
 
     /**
      * Discard the unsaved buffer ("Undo edits"): the upcoming [detach] skips its save, so the model
@@ -213,6 +245,35 @@ class EditorColumn(
         })
     }
 
+    /**
+     * Suggest existing board names while the cursor sits inside an unclosed `[ ]` link. Ace's
+     * autocompletion lives in the `language_tools` extension, so load it on demand (mirroring how
+     * [loadAce] code-splits Ace itself), then register a single completer that replaces Ace's
+     * default word/snippet completers — we only want board names here, not generic word completion.
+     */
+    private fun installBoardLinkCompletion(editor: AceEditor) {
+        loadAceLanguageTools().then<Unit> {
+            val completer = aceCompleter(
+                // `[` opens the menu immediately, even before any name is typed (live autocompletion
+                // otherwise needs a non-empty prefix, so a bare `[` would pop nothing).
+                triggerCharacters = arrayOf("["),
+                // Treat every non-bracket, non-newline char as part of the token, so a multi-word
+                // board name ("My Other Canvas") is one prefix back to the opening `[` — without
+                // this, Ace's default word tokenizer would cut the prefix at the first space.
+                identifierRegexps = arrayOf(RegExp("[^\\[\\]\\r\\n]")),
+                getCompletions = { _, session, pos, _, callback ->
+                    val before = session.getLine(pos.row).substring(0, pos.column)
+                    val names = boardLinkCompletions(before, boardNames(), canvas.name.display())
+                    lastCompletionCount = names.size
+                    callback(null, names.map { aceCompletion(caption = it, value = it, meta = "board") }.toTypedArray())
+                },
+            )
+            // Order matters: setOptions seeds Ace's default completers, so overwrite AFTER it.
+            editor.setOptions(aceEditorOptions(enableBasicAutocompletion = true, enableLiveAutocompletion = true))
+            editor.completers = arrayOf(completer)
+        }
+    }
+
     /** Move the cursor to the previous/next heading line; false (Ace default) if there is none. */
     private fun jumpToHeading(ed: AceEditor, forward: Boolean): Boolean {
         val target = headingRow(ed.getValue().split("\n"), ed.getCursorPosition().row, forward) ?: return false
@@ -277,6 +338,19 @@ class EditorColumn(
         aceEditor = null
         rootEl = null
     }
+}
+
+/**
+ * Board-link suggestions for the text [beforeCursor] (the line up to the caret): the existing board
+ * [boardNames] to offer when the caret sits inside an unclosed `[ ]`, minus [self] (no self-links)
+ * and blanks, de-duplicated and sorted. Empty when the caret isn't inside a bracket link. Ace
+ * narrows this list by the typed prefix; this only decides whether to offer anything and what pool.
+ */
+internal fun boardLinkCompletions(beforeCursor: String, boardNames: List<String>, self: String): List<String> {
+    val open = beforeCursor.lastIndexOf('[')
+    val close = beforeCursor.lastIndexOf(']')
+    if (open < 0 || close > open) return emptyList()
+    return boardNames.filter { it.isNotBlank() && it != self }.distinct().sorted()
 }
 
 /** Row of the previous (forward=false) or next (forward=true) markdown heading relative to

@@ -34,6 +34,13 @@ object HelpContent {
         - Beginning / end of document — Ctrl+Home / End / ⌘+↑ / ↓
         - Jump to the previous / next heading — Ctrl+↑ / ↓ / ⌃+↑ / ↓
         - Focus the previous / next column from the editor — Alt+← / → / ⌥+← / →
+        - Undo / redo — Ctrl+Z / Ctrl+Shift+Z / ⌘+Z / ⇧+⌘+Z
+        - Select all — Ctrl+A / ⌘+A
+        - Find — Ctrl+F / ⌘+F
+        - Find next / previous — Ctrl+K / Ctrl+Shift+K / ⌘+G / ⇧+⌘+G
+        - Replace — Ctrl+H / ⌥+⌘+F
+        - Move the line up / down — Alt+↑ / ↓ / ⌥+↑ / ↓
+        - Delete the line — Ctrl+D / ⌘+D
 
         ## Mouse
         - Show the context menu — Right-click
