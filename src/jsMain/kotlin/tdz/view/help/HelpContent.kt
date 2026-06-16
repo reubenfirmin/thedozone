@@ -15,8 +15,9 @@ object HelpContent {
         - Split column, stacked — Ctrl+Alt+↑ / ↓ / ⌘+⌥+↑ / ↓
 
         ## Boards & Navigation
+        - Open the board palette — Ctrl+K or Ctrl+L (or Page Down) / ⌘+K or ⌘+L (or fn+↓)
         - Go to the parent board — Page Up / fn+↑
-        - Open the child-board switcher — Page Down / fn+↓
+        In the palette: type a path (like /work/today) and Enter to go there, creating it if new; type to filter the current board's children; ↑ / ↓ to move and Enter to open; Page Up jumps to the parent; Esc closes.
 
         ## App
         - Open Sync — Ctrl+Shift+D / ⌘+⇧+D

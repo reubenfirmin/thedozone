@@ -24,6 +24,7 @@ import tdz.helpPages
 import tdz.sync.SyncBootstrap
 import tdz.view.CanvasColumns
 import tdz.view.CanvasView
+import tdz.view.Omnibox
 import tdz.view.Mode
 import tdz.view.ZLayer
 import tdz.view.Zones
@@ -32,7 +33,6 @@ import tdz.view.CardRenderer
 import tdz.view.Overlay
 import tdz.view.help.HelpTopic
 import tdz.view.overlayPanel
-import tdz.view.showCanvasSwitcher
 import tdz.view.menu.attachContextMenu
 import web.dom.document
 import web.events.EventType
@@ -221,14 +221,23 @@ class Index(val model: Model, val eventBus: EventBus<Event>) {
                 eventBus.fire(ClearDone(model.currentCanvas().name))
                 handled = true
             }
-            // Page Up goes to the parent board (if any); Page Down opens the child-board switcher.
+            // Page Up jumps straight to the parent board (if any).
             else if (keyEvent.key == "PageUp") {
                 val current = model.currentCanvas().name
                 if (!current.isRoot()) eventBus.fire(SwitchToCanvas(current.parentName()))
                 handled = true
             }
+            // Page Down, Ctrl/Cmd+L, and Ctrl/Cmd+K all open the board palette — the single navigation
+            // hub (type a path to go/create, or filter/arrow to the current board's children and all
+            // boards). L restores URL-style addressing in the installed PWA window (no browser address
+            // bar); K is the conventional command-palette key. Both are guarded by editable focus so
+            // they never hijack Ace's in-editor Ctrl+L (go-to-line) / Ctrl+K (find-next).
             else if (keyEvent.key == "PageDown") {
-                showCanvasSwitcher(model, eventBus)
+                Omnibox.show(model, eventBus)
+                handled = true
+            }
+            else if ((keyEvent.ctrlKey || keyEvent.metaKey) && keyEvent.key.lowercase() in listOf("l", "k") && !isEditableFocused()) {
+                Omnibox.show(model, eventBus)
                 handled = true
             }
             // F1 / F2 open the corresponding help docs as in-app overlay routes.
@@ -264,6 +273,35 @@ class Index(val model: Model, val eventBus: EventBus<Event>) {
         return (ae as? HTMLElement)?.isContentEditable == true
     }
 
+    /** Themed CSS for the WCO titlebar strip. Re-ensured each render so it recolors on theme switch
+     *  (themedStyleSheet no-ops unless the theme changed). Sized via the titlebar-area-* env vars
+     *  (0 ⇒ invisible when WCO is inactive); transparent so the body's themed gradient shows through. */
+    private fun ensureTitleBarStyles() {
+        val t = ThemeManager.current
+        themedStyleSheet("tdz-titlebar-styles") {
+            rule(".tdz-titlebar") {
+                position = Position.fixed
+                put("left", "env(titlebar-area-x, 0px)")
+                put("top", "env(titlebar-area-y, 0px)")
+                put("width", "env(titlebar-area-width, 0px)")   // 0 ⇒ collapsed/invisible without WCO
+                put("height", "env(titlebar-area-height, 0px)")
+                zIndex = ZLayer.TITLEBAR
+                display = Display.flex
+                alignItems = Align.center
+                paddingLeft = 12.px
+                overflow = Overflow.hidden
+                whiteSpace = WhiteSpace.nowrap
+                color = t.menuFg
+                fontFamily = t.fontFamily
+                fontSize = 12.px
+                fontWeight = FontWeight.w600
+                letterSpacing = 0.04.em
+                put("-webkit-app-region", "drag")   // the strip drags the OS window
+                put("user-select", "none")
+            }
+        }
+    }
+
     /**
      * Build the stable shell — the swap targets — once. Routes and refreshes swap zone CONTENTS
      * ([Zones.CANVAS], [Zones.OVERLAY]); the shell elements themselves (and every body-level
@@ -272,6 +310,12 @@ class Index(val model: Model, val eventBus: EventBus<Event>) {
     private fun ensureShell() {
         if (Zones.CANVAS.resolve() != null) return
         addToBody {
+            // Window Controls Overlay titlebar (installed PWA on desktop Chromium). Sized by the
+            // titlebar-area-* env vars, which are 0 where WCO is inactive (browser tab / mobile /
+            // unsupported), so it self-collapses to nothing there. Transparent — the body's themed
+            // background/gradient shows straight through, so the strip always matches the theme;
+            // draggable so it moves the OS window. Styles (themed text) in ensureTitleBarStyles().
+            div("tdz-titlebar") { +"The Do Zone" }
             div {
                 zone(Zones.CANVAS)
                 // Resolve menu sections against the LIVE columns at right-click time, so the menu
@@ -339,6 +383,7 @@ class Index(val model: Model, val eventBus: EventBus<Event>) {
         // sync-triggered refreshes pass dismissOverlays = false (see setupRefreshHandler).
         if (dismissOverlays) closeOverlays()
         ensureShell()
+        ensureTitleBarStyles()
 
         // Idempotent: if this exact canvas is already mounted, don't tear down and rebuild the
         // board (that would lose scroll/focus). Opening/closing an overlay reuses the live board.
@@ -350,7 +395,10 @@ class Index(val model: Model, val eventBus: EventBus<Event>) {
         // The shell is permanent, so its theme-dependent chrome is re-applied on every render.
         Zones.CANVAS.resolve()?.css {
             width = 100.vw
-            height = 100.vh
+            // Reserve the WCO titlebar strip so board content starts below it. env() is 0px when
+            // not an installed PWA with an overlay, so this is a no-op in a browser tab / mobile.
+            put("margin-top", "env(titlebar-area-height, 0px)")
+            put("height", "calc(100vh - env(titlebar-area-height, 0px))")
             overflow = Overflow.hidden
             boxSizing = BoxSizing.borderBox
             // columnGap also pads the screen edge, so panels gap away from the window border too

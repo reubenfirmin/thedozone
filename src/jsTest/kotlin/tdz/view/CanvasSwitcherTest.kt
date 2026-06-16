@@ -67,40 +67,4 @@ class CanvasSwitcherTest {
         val children = childBoardNames(model, CanvasName("root"))
         assertEquals(listOf("apple", "mango", "zebra"), children.map { it.leaf() })
     }
-
-    // ---- childBoardSections (menu builder) --------------------------------------
-
-    @Test
-    fun buildsSectionsFromChildNames() {
-        val model = Model(CanvasName("base"))
-        model.addCanvas(canvasFromTemplate(CanvasName("base"), null, SINGLE_PANE))
-        model.addCanvas(canvasFromTemplate(CanvasName("base/alpha"), CanvasName("base"), SINGLE_PANE))
-        model.addCanvas(canvasFromTemplate(CanvasName("base/beta"), CanvasName("base"), SINGLE_PANE))
-
-        val picked = mutableListOf<CanvasName>()
-        val children = childBoardNames(model, CanvasName("base"))
-        val sections = childBoardSections(children) { picked += it }
-        val items = sections.flatMap { it.items }
-
-        assertEquals(listOf("1. alpha", "2. beta"), items.map { it.label }, "items are numbered with leaf labels")
-        assertTrue(items.all { it.enabled }, "board entries are selectable")
-        items[1].onSelect()
-        assertEquals(listOf(CanvasName("base/beta")), picked, "selecting fires with the full absolute path")
-    }
-
-    @Test
-    fun emptyChildrenProducesNoSections() {
-        assertTrue(childBoardSections(emptyList()) { }.isEmpty(), "no child boards => no menu sections")
-    }
-
-    // ---- switcherIndexForKey (unchanged) ----------------------------------------
-
-    @Test
-    fun numberKeysMapToBoardIndexesWithinRange() {
-        assertEquals(0, switcherIndexForKey("1", 3))
-        assertEquals(2, switcherIndexForKey("3", 3))
-        assertEquals(null, switcherIndexForKey("4", 3), "out of range => no selection")
-        assertEquals(null, switcherIndexForKey("0", 3), "0 has no board")
-        assertEquals(null, switcherIndexForKey("a", 3), "non-digit => no selection")
-    }
 }

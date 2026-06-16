@@ -1,5 +1,6 @@
 package tdz.view.theme
 
+import web.dom.document
 import kotlinx.css.Color
 import kotlinx.css.properties.BoxShadow
 import kotlinx.css.LinearDimension
@@ -685,5 +686,9 @@ object ThemeManager {
 
     fun use(theme: Theme) {
         current = theme
+        // Keep the installed-PWA titlebar (and mobile address bar) in sync with the active theme —
+        // the <meta name="theme-color"> in index.html is what the OS window chrome reads. setAttribute
+        // (not a cast to HTMLMetaElement) keeps this typed; a no-op if the meta is somehow absent.
+        document.querySelector("meta[name=theme-color]")?.setAttribute("content", theme.appBg.toString())
     }
 }
