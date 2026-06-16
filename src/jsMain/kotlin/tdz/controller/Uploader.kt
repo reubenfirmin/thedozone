@@ -19,6 +19,9 @@ class Uploader(val model: Model, val eventBus: EventBus<Event>) {
     fun upload(mode: ImportMode) {
         FilePicker.pick(".tdz") { name, content ->
             val result = CanvasImporter(model).import(name, TdzDocument.decode(content), mode, model.currentCanvas())
+            // HERE-into-a-blank-board can rewrite the board's layout; reload the cached currentCanvas
+            // so the re-render reflects the adopted columns (RefreshCanvas renders from the cache).
+            model.changeCanvas(result.canvas)
             eventBus.fire(RefreshCanvas(result.canvas))
         }
     }

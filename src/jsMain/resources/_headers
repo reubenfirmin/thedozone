@@ -1,10 +1,10 @@
 # Security headers for the Cloudflare Worker static-assets deploy (served from
 # build/dist/js/productionExecutable; this file is copied there by jsBrowserDistribution).
 #
-# The CSP is REPORT-ONLY for now: it never blocks, only logs violations to the browser console, so
-# we can exercise sync (Dropbox + Google Drive), maps, image cards, and PWA install, confirm the
-# allow-lists are complete (esp. connect-src hosts), and only THEN switch the header name to
-# `Content-Security-Policy` to enforce.
+# The CSP is ENFORCING. If a legitimate feature ever breaks with a CSP violation in the console,
+# the fix is to add the specific source to the right directive here (NOT to weaken script-src with
+# 'unsafe-inline'/'unsafe-eval'). To debug a new integration, temporarily rename the header to
+# `Content-Security-Policy-Report-Only` so it logs without blocking, then switch back.
 #
 # Notes on the policy:
 #  - script-src 'self' + accounts.google.com (GSI). NO 'unsafe-inline'/'unsafe-eval' — the PWA
@@ -17,4 +17,4 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
-  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com https://api.dropboxapi.com https://content.dropboxapi.com https://www.dropbox.com https://api.pexels.com; worker-src 'self' blob:; frame-src https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com https://api.dropboxapi.com https://content.dropboxapi.com https://www.dropbox.com https://api.pexels.com; worker-src 'self' blob:; frame-src https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests

@@ -4,7 +4,6 @@ import kotlinx.html.ButtonType
 import kotlinx.html.button
 import kotlinx.html.div
 import kotlinx.html.span
-import kotlinx.html.unsafe
 import tdz.controller.events.Event
 import tdz.model.Canvas
 import tdz.model.ColumnId
@@ -12,6 +11,7 @@ import tdz.model.Mode
 import tdz.model.Model
 import tdz.rootCanvas
 import zoned.framework.events.EventBus
+import zoned.framework.tags.svg
 import kotlinx.css.*
 import kotlinx.css.properties.*
 import tdz.view.theme.ThemeManager
@@ -73,10 +73,24 @@ object IntroCard {
             div {
                 zone(Zones.INTRO)
                 div("tdz-intro-card") {
-                    // The mouse SVG stays a raw fragment: kotlinx.html builds elements in the HTML
-                    // namespace, so <path>/<rect> built via the DSL would not render; the innerHTML
-                    // parser handles the SVG namespace switch.
-                    unsafe { raw(mouseSvg()) }
+                    // A right-click cue: a mouse with the right button accented + CSS-pulsed (the
+                    // .tdz-intro-rbtn class). Built with the typed SVG DSL (namespaced via
+                    // createElementNS), so there's no raw-HTML fragment anywhere in the app.
+                    val cur = ThemeManager.current.menuFg.toString()      // mouse outline / wheel
+                    val accent = ThemeManager.current.link.toString()     // highlighted right button
+                    svg("tdz-intro-mouse") {
+                        width = "54"; height = "80"; viewBox = "0 0 60 90"; fill = "none"
+                        g {
+                            path {
+                                attributes["class"] = "tdz-intro-rbtn"
+                                d = "M30 6 A24 24 0 0 1 54 30 L54 41 L30 41 Z"; fill = accent
+                            }
+                            rect { x = "6"; y = "6"; width = "48"; height = "78"; rx = "24"; fill = "none"; stroke = cur; strokeWidth = "3" }
+                            line { x1 = "30"; y1 = "6"; x2 = "30"; y2 = "41"; stroke = cur; strokeWidth = "2.5" }
+                            line { x1 = "6"; y1 = "41"; x2 = "54"; y2 = "41"; stroke = cur; strokeWidth = "2.5" }
+                            rect { x = "27"; y = "15"; width = "6"; height = "12"; rx = "3"; fill = cur }
+                        }
+                    }
                     div("tdz-intro-text") {
                         div("tdz-intro-h") { +"Welcome to The Do Zone" }
                         div("tdz-intro-p") {
@@ -115,24 +129,6 @@ object IntroCard {
         PointerHint.kind == PointerHint.Kind.TRACKPAD && PointerHint.isMac -> "Two-finger tap (or Control-click)"
         PointerHint.kind == PointerHint.Kind.TRACKPAD -> "Two-finger tap"
         else -> "Right-click"
-    }
-
-    /**
-     * A mouse whose top is a semicircle (rx = half width); the right button is the top-right
-     * quadrant, filled in the accent color and pulsed via CSS to cue the right-click.
-     */
-    private fun mouseSvg(): String {
-        val cur = ThemeManager.current.menuFg.toString()      // mouse outline / wheel
-        val accent = ThemeManager.current.link.toString()      // highlighted right button
-        return """
-            <svg class="tdz-intro-mouse" width="54" height="80" viewBox="0 0 60 90" fill="none">
-              <path class="tdz-intro-rbtn" d="M30 6 A24 24 0 0 1 54 30 L54 41 L30 41 Z" fill="$accent"/>
-              <rect x="6" y="6" width="48" height="78" rx="24" fill="none" stroke="$cur" stroke-width="3"/>
-              <line x1="30" y1="6" x2="30" y2="41" stroke="$cur" stroke-width="2.5"/>
-              <line x1="6" y1="41" x2="54" y2="41" stroke="$cur" stroke-width="2.5"/>
-              <rect x="27" y="15" width="6" height="12" rx="3" fill="$cur"/>
-            </svg>
-        """.trimIndent()
     }
 
     private fun ensureStyles() {

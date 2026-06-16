@@ -104,6 +104,25 @@ class CanvasImporterTest {
     }
 
     @Test
+    fun hereIntoEmptySingleColumnBoardAdoptsUploadedLayout() {
+        // "home" is a single, empty content column → HERE should restore the uploaded file's columns.
+        val store = storeWithCurrent()
+        val proto = Canvas(
+            CanvasName("up"), null, listOf(ColumnId(0), ColumnId(1), ColumnId(2)),
+            listOf(ColumnLayoutSpec(ColumnId(0), Split.VERTICAL, listOf(ColumnId(1), ColumnId(2)))),
+        )
+        val doc = TdzDocument(proto, cardsIn(ColumnId(1), "# Left\n") + cardsIn(ColumnId(2), "# Right\n"))
+
+        CanvasImporter(store).import("up", doc, ImportMode.HERE, current)
+
+        val rebuilt = assertNotNull(store.getCanvas(CanvasName("home")))
+        assertEquals(listOf(0, 1, 2).map(::ColumnId), rebuilt.columns, "home adopted the uploaded 2-column layout")
+        assertNotNull(rebuilt.layoutMap[ColumnId(0)], "root layout adopted")
+        assertTrue(store.cards(CanvasName("home"), ColumnId(1)).isNotEmpty(), "left column populated")
+        assertTrue(store.cards(CanvasName("home"), ColumnId(2)).isNotEmpty(), "right column populated")
+    }
+
+    @Test
     fun hereMergesCardsIntoCurrentCanvas() {
         val store = storeWithCurrent()
         store.saveCards(CanvasName("home"), ColumnId(1), cardsIn(ColumnId(1), "# existing\n"))
