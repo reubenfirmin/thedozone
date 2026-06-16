@@ -276,7 +276,7 @@ class CanvasColumns(val canvas: Canvas,
         val boundary = boundaries[columnId] ?: rootBoundary()
         val columnContainer = ColumnContainer(canvas, mode, colCards, boundary, columnId, eventBus) { id ->
             editorCache.getOrPut(id) {
-                EditorColumn(canvas, id, eventBus) { model.allCanvasNames().map { it.display() } }
+                EditorColumn(canvas, id, eventBus) { model.allCanvasNames() }
             }
         }
         columnContainers[columnId] = columnContainer

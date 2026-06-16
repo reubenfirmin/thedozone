@@ -17,7 +17,7 @@ import zoned.framework.routing.RenderMode
 import zoned.framework.routing.Router
 import zoned.framework.routing.Routes
 
-val rootCanvas = CanvasName("_")
+val rootCanvas = CanvasName("")
 val tdzModel = Model(rootCanvas)
 val eventBus = EventBus<Event>()
 val tdzController = Controller(eventBus, tdzModel)
@@ -32,17 +32,13 @@ object canvasPages : Routes<Index>(tdzIndex, "/") {
     } }.title { "The Do Zone" }
 
     val board = route(mode = RenderMode.PARTIAL) { "/{canvas...}" to { params ->
-        val segments = params.segments("canvas")
-        val canvasName = segments.lastOrNull() ?: ""
-
-        val canvas = tdzModel.getCanvas(CanvasName(canvasName))
-        if (canvas == null) {
-            Router.navigate("/")
-        } else {
-            index(canvas)
-        }
+        val name = CanvasName(params.segments("canvas").joinToString("/"))
+        // Any path is valid: the controller builds the missing chain (idempotent) and makes it
+        // current; the view renders. The route only maps URL -> action -> render.
+        index(tdzController.openCanvasPath(name))
     } }.title { params ->
-        params.segments("canvas").lastOrNull()?.let { "$it — The Do Zone" } ?: "The Do Zone"
+        CanvasName(params.segments("canvas").joinToString("/")).leaf()
+            .ifEmpty { null }?.let { "$it — The Do Zone" } ?: "The Do Zone"
     }
 }
 

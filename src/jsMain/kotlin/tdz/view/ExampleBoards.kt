@@ -233,7 +233,7 @@ object ExampleBoards {
      * wipes them when the wizard closes.
      */
     val MULTI_BOARD: List<ExampleBoard> = run {
-        val home = "[_ (← Home Board)]"
+        val home = "[~ (← Home Board)]"
         listOf(
             singleColumn(
                 "Multiple boards", "One board links to the next.", rootCanvas, null,

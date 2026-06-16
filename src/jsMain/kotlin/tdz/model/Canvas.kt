@@ -1,15 +1,30 @@
 package tdz.model
 
 data class CanvasName(private val orig: String) {
-    fun normalized() =
-        orig.replace(" ", "-")
-            .replace("(", "")
-            .replace(")", "")
-            .replace("|", "-") // used in serialization
-            .replace(".tdz", "")
-            .replace("/", "")
+    /** Per-segment cleanup, segments rejoined by "/". Empty/edge/duplicate slashes collapse. The
+     *  whole value IS the board's path; root is the empty path. Casing is preserved (the existing
+     *  sync-folder and URL formats are case-sensitive). */
+    fun normalized(): String =
+        orig.split("/")
+            .map { seg ->
+                seg.replace(" ", "-")
+                    .replace("(", "")
+                    .replace(")", "")
+                    .replace("|", "-")      // used in serialization
+                    .replace(".tdz", "")
+            }
+            .filter { it.isNotEmpty() }
+            .joinToString("/")
 
-    fun display() = normalized().replace("-", " ")
+    fun segments(): List<String> = normalized().split("/").filter { it.isNotEmpty() }
+    fun isRoot(): Boolean = segments().isEmpty()
+    /** Last segment, in display form (dashes -> spaces). Empty for root. */
+    fun leaf(): String = segments().lastOrNull()?.replace("-", " ") ?: ""
+    /** This path with its last segment removed (root when there is one segment or fewer). */
+    fun parentName(): CanvasName = CanvasName(segments().dropLast(1).joinToString("/"))
+    fun child(segment: String): CanvasName = CanvasName((segments() + segment).joinToString("/"))
+    /** Whole path in display form -- used by current UI until later tasks make listings path-aware. */
+    fun display(): String = normalized().replace("-", " ")
 }
 
 /**

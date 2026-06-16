@@ -49,7 +49,12 @@ object SyncPaths {
         return "$canvasFolder/$MANIFEST"
     }
 
-    /** Inverse of [columnPath]: returns (canvasName, columnId) or null if not a column file. */
+    /**
+     * Inverse of [columnPath] without root context: returns (canvasName, columnId) or null.
+     * The canvas name is the LAST path segment only — suitable for callers that do not have the
+     * root and do not need the full nested path (e.g. [manifestPathFor]).
+     * For a correct round-trip with nested boards use [parseColumn] with the root parameter.
+     */
     fun parseColumn(path: String): Pair<CanvasName, ColumnId>? {
         val m = COLUMN_RE.find(path) ?: return null
         val col = ColumnId(m.groupValues[1].toInt())
@@ -57,5 +62,53 @@ object SyncPaths {
         val canvas = beforeFile.substringAfterLast('/')
         if (canvas.isEmpty()) return null
         return CanvasName(canvas) to col
+    }
+
+    /**
+     * Root-aware inverse of [columnPath]: strips [rootPrefix] from the front and the trailing
+     * `/col-<id>.md` from the end; everything in between is the FULL canvas path (may contain
+     * `/` for nested boards). Returns `(CanvasName(fullPath), ColumnId)` or null if not a column
+     * file or the path does not start with the expected root prefix.
+     *
+     * Round-trip invariant: `parseColumn(columnPath(root, canvas, col), root) == (canvas, col)`
+     * (comparing via `CanvasName.normalized()`).
+     */
+    fun parseColumn(path: String, root: String): Pair<CanvasName, ColumnId>? {
+        val m = COLUMN_RE.find(path) ?: return null
+        val col = ColumnId(m.groupValues[1].toInt())
+        val prefix = rootPrefix(root)
+        val beforeFile = path.substring(0, m.range.first)   // "<prefix>/a/b/c"
+        // Strip leading root prefix (e.g. "/notes" or "")
+        val canvasPath = if (prefix.isEmpty()) {
+            // Empty root: beforeFile is "/<canvas-path>"; strip the leading "/"
+            beforeFile.trimStart('/')
+        } else {
+            // Non-empty root: beforeFile starts with "<prefix>/"; strip prefix + separator
+            if (!beforeFile.startsWith("$prefix/")) return null
+            beforeFile.removePrefix("$prefix/")
+        }
+        if (canvasPath.isEmpty()) return null
+        return CanvasName(canvasPath) to col
+    }
+
+    /**
+     * Root-aware inverse of [manifestPath]: strips [rootPrefix] from the front and the trailing
+     * `/_canvas.json` from the end; everything in between is the FULL canvas path. Returns
+     * `CanvasName(fullPath)` or null if not a manifest path or prefix mismatch.
+     *
+     * Round-trip invariant: `parseManifest(manifestPath(root, canvas), root)?.normalized() == canvas.normalized()`
+     */
+    fun parseManifest(path: String, root: String): CanvasName? {
+        if (!path.endsWith("/$MANIFEST")) return null
+        val prefix = rootPrefix(root)
+        val withoutManifest = path.removeSuffix("/$MANIFEST")   // "<prefix>/a/b/c"
+        val canvasPath = if (prefix.isEmpty()) {
+            withoutManifest.trimStart('/')
+        } else {
+            if (!withoutManifest.startsWith("$prefix/")) return null
+            withoutManifest.removePrefix("$prefix/")
+        }
+        if (canvasPath.isEmpty()) return null
+        return CanvasName(canvasPath)
     }
 }

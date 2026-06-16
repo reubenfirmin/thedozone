@@ -46,8 +46,6 @@ data class Card(val segments: List<CardSegment>, val metadata: CardMetadata, val
 
     fun tagId() = "card_${metadata.columnId}_$index"
 
-    fun linkedCanvas() = link()?.let { if (it is CanvasLink) it.canvasName else null }
-
     /**
      * Only applies if the only thing is a link
      */

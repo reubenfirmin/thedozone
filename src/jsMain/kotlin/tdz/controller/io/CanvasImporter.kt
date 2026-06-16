@@ -51,12 +51,12 @@ class CanvasImporter(private val store: CanvasStore) {
     private fun importAsNewCanvas(fileName: String, doc: TdzDocument, currentCanvas: Canvas): ImportResult {
         val name = uniqueName(fileName)
         if (doc.prototype != null) {
-            store.addCanvas(Canvas(name, currentCanvas.name, doc.prototype.columns, doc.prototype.layouts))
+            store.addCanvas(Canvas(name, name.parentName(), doc.prototype.columns, doc.prototype.layouts))
         } else {
             val columnCount = doc.cards.map { it.metadata.columnId }.distinct().size
             store.addCanvas(
                 Canvas(
-                    name, currentCanvas.name, (0..columnCount).map(::ColumnId),
+                    name, name.parentName(), (0..columnCount).map(::ColumnId),
                     listOf(ColumnLayoutSpec(ColumnId(0), Split.VERTICAL, (1..columnCount).map(::ColumnId))),
                 )
             )
@@ -89,7 +89,9 @@ class CanvasImporter(private val store: CanvasStore) {
         val column = currentCanvas.firstNonLayout()
         val existing = store.cards(currentCanvas.name, column)
         val link = Card(
-            listOf(CardText(listOf<RichText>(CanvasLink(target, target.display())))),
+            // Imported boards are created top-level, so the link must be ABSOLUTE — a relative
+            // target would resolve under whatever board the link is viewed from (wrong board).
+            listOf(CardText(listOf<RichText>(CanvasLink("/" + target.normalized(), target.display())))),
             CardMetadata(column),
             existing.size,
         )

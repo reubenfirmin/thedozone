@@ -15,10 +15,23 @@ import tdz.controller.events.RefreshColumns
 import tdz.model.ref
 import tdz.controller.events.SplitColumn
 import tdz.controller.events.TaskToggleDone
+import tdz.model.Canvas
+import tdz.model.CanvasName
 import tdz.model.Model
 import tdz.model.markdown.MarkdownService
 
-class Controller(eventBus: EventBus<Event>, model: Model) {
+class Controller(private val eventBus: EventBus<Event>, private val model: Model) {
+
+    /**
+     * Open a board by path: dispatch to [CanvasHierarchy] to build any missing chain (the hierarchy
+     * business logic lives there), make the leaf current, and return it for the view to render. This
+     * is dispatch only — the route calls it; the Controller does not contain the logic.
+     */
+    fun openCanvasPath(name: CanvasName): Canvas {
+        if (!name.isRoot()) CanvasHierarchy.ensurePath(model, name)
+        model.changeCanvas(name)
+        return model.currentCanvas()
+    }
 
     init {
         eventBus.on<TaskToggleDone> { event ->

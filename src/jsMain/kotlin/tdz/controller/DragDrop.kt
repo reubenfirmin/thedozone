@@ -233,6 +233,12 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
         if (r.height > 0) dragCardH = r.height
         dropZones = document.querySelectorAll(".${CssClasses.DROP_ZONE}").let { zones ->
             (0 until zones.length).mapNotNull { zones[it] }
+        }.filterNot { zone ->
+            // A card can't fall into its OWN wormhole: exclude the chip(s) inside the dragged card
+            // (or any card in a multi-drag group), so the portal never lights over what you're
+            // dragging and a drop-on-self can't swallow the card into its own linked board.
+            val card = zone.closest(DomIds.CARD_SELECTOR)
+            card != null && (card === dragged || selected.any { it === card })
         }
         installPortalHook()
     }
@@ -371,7 +377,13 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
         // this before stopPortalTracking) — NOT by Sortable's drop target, which reflects wherever
         // the placeholder happened to sit after shuffling cards around. Wormhole open = card goes in.
         val linkEl = activeLink as? HTMLElement
-        val targetCanvas = linkEl?.let { DomIds.canvasLinkName(it.id.asString()) }
+        // Read the absolute target board from the data-canvas-name attribute (set by CardRenderer to
+        // absoluteTarget.normalized() — the full path, not the bare leaf).  The element id still
+        // uses the bare leaf to keep "/" out of CSS selectors; reading the attribute avoids that
+        // ambiguity and is the authoritative drop-routing value.
+        val targetCanvas = linkEl?.getAttribute("data-canvas-name")
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { CanvasName(it) }
         if (linkEl != null && targetCanvas != null) {
             handleWormholeDrop(event, canvasName, targetCanvas, linkEl)
             return

@@ -47,7 +47,7 @@ class EditorColumn(
     val eventBus: EventBus<Event>,
     /** Live source of existing board names for the `[link]` autocompleter (read at completion time
      *  so boards created/renamed mid-session are offered). Defaults to none (e.g. in tests). */
-    val boardNames: () -> List<String> = { emptyList() },
+    val boardNames: () -> List<CanvasName> = { emptyList() },
 ) {
 
     private var aceEditor: AceEditor? = null
@@ -263,9 +263,15 @@ class EditorColumn(
                 identifierRegexps = arrayOf(RegExp("[^\\[\\]\\r\\n]")),
                 getCompletions = { _, session, pos, _, callback ->
                     val before = session.getLine(pos.row).substring(0, pos.column)
-                    val names = boardLinkCompletions(before, boardNames(), canvas.name.display())
-                    lastCompletionCount = names.size
-                    callback(null, names.map { aceCompletion(caption = it, value = it, meta = "board") }.toTypedArray())
+                    val suggestions = boardLinkCompletions(before, boardNames(), canvas.name)
+                    lastCompletionCount = suggestions.size
+                    callback(null, suggestions.map { s ->
+                        // caption = leaf so Ace's prefix-matching works on the board name; meta =
+                        // breadcrumb shows the parent path as a grey hint. value inserts the
+                        // absolute link text including the closing ] so the buffer becomes [/a/x (x)].
+                        val insertValue = "${s.absolutePath} (${s.leaf})]"
+                        aceCompletion(caption = s.leaf, value = insertValue, meta = s.breadcrumb.ifEmpty { "board" })
+                    }.toTypedArray())
                 },
             )
             // Order matters: setOptions seeds Ace's default completers, so overwrite AFTER it.
@@ -341,16 +347,40 @@ class EditorColumn(
 }
 
 /**
- * Board-link suggestions for the text [beforeCursor] (the line up to the caret): the existing board
- * [boardNames] to offer when the caret sits inside an unclosed `[ ]`, minus [self] (no self-links)
- * and blanks, de-duplicated and sorted. Empty when the caret isn't inside a bracket link. Ace
- * narrows this list by the typed prefix; this only decides whether to offer anything and what pool.
+ * A single board suggested by the board-link completer.
+ *
+ * @param absolutePath  The board's absolute path, always starting with `/` (e.g. `/a/x`). Inserted
+ *                      into the link text so the link resolves unambiguously regardless of the
+ *                      editing board's location.
+ * @param leaf          The last path segment in display form (e.g. `x`). Used as the completion
+ *                      caption so Ace's prefix-matching filters on the human-visible name.
+ * @param breadcrumb    The parent path in display form (e.g. `a`). Shown as a grey hint in the
+ *                      popup so boards with the same leaf are distinguishable. Empty for top-level boards.
  */
-internal fun boardLinkCompletions(beforeCursor: String, boardNames: List<String>, self: String): List<String> {
+internal data class BoardSuggestion(val absolutePath: String, val leaf: String, val breadcrumb: String)
+
+/**
+ * Board-link suggestions for the text [beforeCursor] (the line up to the caret): the existing
+ * [boards] to offer when the caret sits inside an unclosed `[ ]`, minus [self] (no self-links),
+ * de-duplicated by absolute path and sorted. Empty when the caret isn't inside a bracket link. Ace
+ * narrows this list by the typed prefix (matching against caption = leaf); this only decides whether
+ * to offer anything and what pool.
+ */
+internal fun boardLinkCompletions(beforeCursor: String, boards: List<CanvasName>, self: CanvasName): List<BoardSuggestion> {
     val open = beforeCursor.lastIndexOf('[')
     val close = beforeCursor.lastIndexOf(']')
     if (open < 0 || close > open) return emptyList()
-    return boardNames.filter { it.isNotBlank() && it != self }.distinct().sorted()
+    val selfPath = "/" + self.normalized()
+    return boards
+        .filter { it.normalized().isNotEmpty() }
+        .map { BoardSuggestion(
+            absolutePath = "/" + it.normalized(),
+            leaf = it.leaf(),
+            breadcrumb = it.parentName().display(),
+        ) }
+        .filter { it.absolutePath != selfPath }
+        .distinctBy { it.absolutePath }
+        .sortedBy { it.absolutePath }
 }
 
 /** Row of the previous (forward=false) or next (forward=true) markdown heading relative to

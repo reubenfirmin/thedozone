@@ -131,7 +131,7 @@ class SyncController(
     // ---- path <-> Model translation ----
 
     private fun readLocal(path: String): String? {
-        SyncPaths.parseColumn(path)?.let { (canvas, col) ->
+        SyncPaths.parseColumn(path, root())?.let { (canvas, col) ->
             return model.getCanvasColumnRaw(canvas, col)
         }
         if (SyncPaths.isManifest(path)) {
@@ -143,7 +143,7 @@ class SyncController(
     }
 
     private fun writeLocal(path: String, content: String) {
-        SyncPaths.parseColumn(path)?.let { (canvas, col) ->
+        SyncPaths.parseColumn(path, root())?.let { (canvas, col) ->
             model.updateColumn(canvas, col, content)
             // remote=true: this change came FROM the remote; subscribers must not push it back.
             eventBus.fire(ColumnsChanged(canvas, setOf(col), remote = true))
@@ -159,17 +159,14 @@ class SyncController(
     }
 
     private fun deleteLocal(path: String) {
-        SyncPaths.parseColumn(path)?.let { (canvas, col) ->
+        SyncPaths.parseColumn(path, root())?.let { (canvas, col) ->
             model.deleteColumn(canvas, col)
             eventBus.fire(RefreshColumns(canvas, setOf(col)))
         }
     }
 
-    private fun manifestCanvas(path: String): CanvasName? {
-        val folder = path.removeSuffix("/${SyncPaths.MANIFEST}")
-        val name = folder.substringAfterLast('/')
-        return if (name.isEmpty()) null else CanvasName(name)
-    }
+    private fun manifestCanvas(path: String): CanvasName? =
+        SyncPaths.parseManifest(path, root())
 
     /**
      * Serialized manifest WITH its version-vector section attached from [s]. The single source of truth
@@ -260,11 +257,14 @@ class SyncController(
             var s = state()
             val manifest = manifestContent(canvasName, s) ?: return@debouncePush
             s = eng.push(manifestPath, manifest, Date.now(), s).first
-            // reconcile column files: delete orphans not in canvas.columns
+            // reconcile column files: delete THIS canvas's orphan columns (not in canvas.columns).
+            // Scope by parsing each key back to its board and matching canvasName — a prefix match
+            // (startsWith folder/) would ALSO sweep DESCENDANT boards' columns, since a nested board
+            // a/b stores at <folder-of-a>/b/col-*.md, deleting children's remote content.
             val live = canvas.columns.map { SyncPaths.columnPath(root(), canvasName, it) }.toSet()
-            val folder = SyncPaths.canvasFolder(root(), canvasName)
-            val orphans = s.entries.keys.filter {
-                it.startsWith("$folder/") && SyncPaths.parseColumn(it) != null && it !in live
+            val orphans = s.entries.keys.filter { key ->
+                val parsed = SyncPaths.parseColumn(key, root())
+                parsed != null && parsed.first.normalized() == canvasName.normalized() && key !in live
             }
             if (orphans.isNotEmpty()) s = eng.deleteRemoteBatch(orphans, s)
             saveState(s)
@@ -327,7 +327,7 @@ class SyncController(
                 // deletion to propagate, not a remote-only board we never pulled. Sweep before the
                 // pull; a failure aborts the reconcile (better no sync than a resurrection).
                 val orphans = state().entries.keys.filter { p ->
-                    val col = SyncPaths.parseColumn(p)
+                    val col = SyncPaths.parseColumn(p, root())
                     when {
                         col != null -> model.getCanvas(col.first)?.let { col.second !in it.columns } ?: true
                         SyncPaths.isManifest(p) -> manifestCanvas(p)?.let { model.getCanvas(it) == null } ?: false

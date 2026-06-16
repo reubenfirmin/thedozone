@@ -44,7 +44,7 @@ object AllBoards {
         hide()
         val scrim = Ref<HTMLElement>()
         val list = Ref<HTMLElement>()
-        val search = Ref<HTMLElement>()
+        val search = Ref<HTMLInputElement>()
         fun close() = hide()
         fun open(name: CanvasName) { hide(); eventBus.fire(SwitchToCanvas(name)) }
 
@@ -69,6 +69,9 @@ object AllBoards {
 
         val names = model.allCanvasNames().sortedBy { it.display().lowercase() }
         val currentName = model.currentCanvas().name.normalized()
+        // Typed row refs + their lowercased search key, captured at build time so the filter never
+        // re-queries the DOM (no NodeList cast).
+        val rows = mutableListOf<Pair<Ref<HTMLElement>, String>>()
 
         addToBody {
             div {
@@ -118,15 +121,24 @@ object AllBoards {
                         names.forEach { name ->
                             val empty = model.isCanvasEmpty(name)
                             val delRef = Ref<HTMLElement>()
+                            val rowRef = Ref<HTMLElement>()
+                            rows += rowRef to name.display().lowercase()
                             var armed = false
                             div("tdz-board-row") {
-                                attributes["data-board"] = name.display().lowercase()
+                                ref(rowRef)
                                 css { display = Display.flex; alignItems = Align.center; justifyContent = JustifyContent.spaceBetween
                                     padding = Padding(6.px, 8.px); borderRadius = 4.px
                                     if (name.normalized() == currentName) fontWeight = FontWeight.w700 }
-                                div { css { cursor = Cursor.pointer; flexGrow = 1.0 }
-                                    +name.display()
-                                    if (empty) span { css { opacity = 0.6; marginLeft = 8.px; fontSize = 11.px }; +"(empty)" }
+                                div { css { cursor = Cursor.pointer; flexGrow = 1.0; display = Display.flex; flexDirection = FlexDirection.column }
+                                    div {
+                                        css { display = Display.flex; alignItems = Align.center }
+                                        +name.leaf().ifEmpty { name.display() }
+                                        if (empty) span { css { opacity = 0.6; marginLeft = 8.px; fontSize = 11.px }; +"(empty)" }
+                                    }
+                                    if (!name.parentName().isRoot()) {
+                                        span { css { opacity = 0.5; fontSize = 11.px; marginTop = 1.px }
+                                            +"in: ${name.parentName().display()}" }
+                                    }
                                     onClick { open(name) } }
                                 // Empty boards delete on the first ✕ (nothing to lose); non-empty boards
                                 // require a second click (✕ → "Delete?") — an inline confirm, no native dialog.
@@ -147,18 +159,15 @@ object AllBoards {
                     }
                     onMount {
                         rootEl = scrim.element
-                        val input = search.element as? HTMLInputElement
-                        val listEl = list.element
-                        input?.addEventListener(EventType("input"), {
+                        val input = search.element
+                        input.addEventListener(EventType("input"), {
                             val q = input.value.trim().lowercase()
-                            val rows = listEl.querySelectorAll(".tdz-board-row")
-                            for (i in 0 until rows.length) {
-                                val rowEl = rows[i] as HTMLElement
-                                val match = q.isEmpty() || (rowEl.getAttribute("data-board") ?: "").contains(q)
-                                rowEl.style.display = if (match) "flex" else "none"
+                            for ((rowRef, key) in rows) {
+                                val match = q.isEmpty() || key.contains(q)
+                                rowRef.element.style.display = if (match) "flex" else "none"
                             }
                         })
-                        input?.focus()
+                        input.focus()
                     }
                 }
             }

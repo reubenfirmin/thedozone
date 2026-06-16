@@ -37,6 +37,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -147,6 +148,36 @@ class WormholeDropRoutingTest {
         assertFalse(cardB.isConnected, "the dragged element is removed from wherever Sortable parked it")
     }
 
+    @Test
+    fun draggingALinkCardCannotDropIntoItsOwnWormhole() {
+        // Regression: dragging the card that OWNS the chip used to light its own wormhole, and
+        // dropping swallowed the card into its own linked board (it vanished). Its chip must be
+        // excluded from the portal scan, so the portal never opens and no send fires.
+        val model = buildModel()
+        val cards = model.cards(source, column)
+        buildDom(cards)
+        val eventBus = EventBus<Event>()
+        val dragDrop = DragDrop(model, eventBus)
+
+        var sent: CardsSentToCanvas? = null
+        eventBus.on<CardsSentToCanvas> { sent = it }
+
+        val cardA = el(DomIds.card(cards[0].ref))   // the card that CONTAINS the chip
+        val columnEl = el(DomIds.column(column))
+        val chip = el(DomIds.canvasLink(target))
+
+        dragDrop.beginPortalTracking(cardA)
+        pointerMoveOver(chip)
+
+        val portal = document.getElementById(ElementId(Zones.WORMHOLE.elementId))
+        val open = portal != null && portal.classList.contains(ClassName("tdz-wh-on"))
+        assertFalse(open, "a card's own wormhole must not open while dragging that card")
+
+        dragDrop.handleDrop(dropEvent(cardA, columnEl), source)
+        dragDrop.stopPortalTracking()
+        assertNull(sent, "dropping a link card on its own chip must NOT send it into its own board")
+    }
+
     /**
      * The dodge fix: while the wormhole is open, Sortable must not relocate its placeholder —
      * every relocation reflows the column and shifts the link card out from under the pointer,
@@ -245,6 +276,79 @@ class WormholeDropRoutingTest {
         assertTrue(portal == null || !portal.classList.contains(ClassName("tdz-wh-on")),
             "a removed chip must not light the wormhole")
         dragDrop.stopPortalTracking()
+    }
+
+    /**
+     * Regression: when a canvas-link chip points to a NESTED board (e.g. "parent/child"), the chip's
+     * absolute target must survive the drop-routing decode intact. Before the fix, DragDrop decoded
+     * the target canvas from the element id, which CardRenderer set to the bare leaf ("child"); the
+     * drop sent the card to a new top-level board "child" instead of the nested "parent/child".
+     *
+     * After the fix, DragDrop reads the `data-canvas-name` attribute (which CardRenderer sets to
+     * absoluteTarget.normalized(), the full path). This test builds the chip exactly as the fixed
+     * CardRenderer would, then asserts the drop delivers the card to the absolute path.
+     */
+    @Test
+    fun dropOnNestedCanvasLinkChipSendsCardToAbsolutePath() {
+        // The current board; its child "child" is the absolute target for the chip.
+        val parentBoard = CanvasName("_whd-parent")
+        val absoluteChildBoard = CanvasName("_whd-parent/child")
+
+        val model = Model(parentBoard)
+        model.addCanvas(canvasFromTemplate(parentBoard, null, SINGLE_PANE))
+        model.addCanvas(canvasFromTemplate(absoluteChildBoard, CanvasName("_whd-parent"), SINGLE_PANE))
+
+        val col = ColumnId(1)
+        model.updateColumn(parentBoard, col, "# Card A\n[child (link)]\n\n# Card B\n")
+
+        val cards = model.cards(parentBoard, col)
+        // Build the DOM the way the FIXED CardRenderer does:
+        //   id         = DomIds.canvasLink(link.canvasName)   — bare leaf, safe in selectors
+        //   data-canvas-name = absoluteTarget.normalized()     — full path, used for drop routing
+        val leafName = CanvasName("child")          // what link.canvasName is (the bare link)
+        addToBody {
+            div {
+                id = DomIds.column(col)
+                cards.forEachIndexed { i, card ->
+                    div {
+                        id = DomIds.card(card.ref)
+                        css { width = 200.px; height = 40.px }
+                        if (i == 0) {
+                            span("canvas-drop-zone") {
+                                // id uses leaf (same as current CardRenderer — unchanged by fix)
+                                id = DomIds.canvasLink(leafName)
+                                // data-canvas-name carries the absolute path (the fix)
+                                attributes["data-canvas-name"] = absoluteChildBoard.normalized()
+                                css { display = Display.inlineBlock; width = 80.px; height = 20.px }
+                                +"❯❯ child"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        val eventBus = EventBus<Event>()
+        val dragDrop = DragDrop(model, eventBus)
+        var sent: CardsSentToCanvas? = null
+        eventBus.on<CardsSentToCanvas> { sent = it }
+
+        val cardB = el(DomIds.card(cards[1].ref))
+        val columnEl = el(DomIds.column(col))
+        val chip = el(DomIds.canvasLink(leafName))
+
+        dragDrop.beginPortalTracking(cardB)
+        pointerMoveOver(chip)
+        assertNotNull(document.getElementById(ElementId(Zones.WORMHOLE.elementId)), "wormhole portal should exist")
+
+        dragDrop.handleDrop(dropEvent(cardB, columnEl), parentBoard)
+        dragDrop.stopPortalTracking()
+
+        val sentEvent = assertNotNull(sent, "wormhole open → card must be sent through the wormhole")
+        assertEquals(
+            absoluteChildBoard, sentEvent.targetCanvas,
+            "drop must target the absolute board 'parent/child', not the bare leaf 'child'"
+        )
     }
 
     @Test

@@ -1,5 +1,6 @@
 package tdz.controller.io
 
+import tdz.rootCanvas
 import tdz.model.Canvas
 import tdz.model.CanvasName
 import tdz.model.Card
@@ -40,7 +41,7 @@ class CanvasImporterTest {
     private fun cardsIn(column: ColumnId, md: String) = MarkdownService.fromMd(md, column)
 
     @Test
-    fun newCanvasFromPrototypeUsesPrototypeStructureAndCurrentAsParent() {
+    fun newCanvasFromPrototypeUsesPrototypeStructureAndTopLevelParent() {
         val store = storeWithCurrent()
         val prototype = Canvas(
             CanvasName("imported"), null, listOf(ColumnId(0), ColumnId(1), ColumnId(2)),
@@ -52,7 +53,9 @@ class CanvasImporterTest {
 
         val created = assertNotNull(store.getCanvas(CanvasName("imported")))
         assertEquals(listOf(0, 1, 2).map(::ColumnId), created.columns)
-        assertEquals(CanvasName("home"), created.parent, "new canvas is parented under the current canvas")
+        // The imported board is top-level (bare-leaf path, absolute "/imported" link), so its parent
+        // is root — consistent with how navigation derives parentage from the path.
+        assertEquals(rootCanvas, created.parent, "imported board is top-level (parent = root)")
     }
 
     @Test
@@ -69,7 +72,11 @@ class CanvasImporterTest {
         assertTrue(store.cards(CanvasName("imported"), ColumnId(1)).isNotEmpty(), "cards land in the new canvas")
         val link = store.cards(CanvasName("home"), ColumnId(1)).firstOrNull { it.isCanvasLink() }
         assertNotNull(link, "a link card to the new canvas is added on the current canvas")
-        assertEquals(CanvasName("imported"), link.linkedCanvas())
+        // The imported board is top-level, so the link must be ABSOLUTE ("/imported"). A relative
+        // "imported" would resolve under the current board ("home/imported") — the wrong board.
+        val canvasLink = link.segments.filterIsInstance<tdz.model.card.CardText>()
+            .flatMap { it.text }.filterIsInstance<tdz.model.card.CanvasLink>().first()
+        assertEquals("/imported", canvasLink.target, "imported board link is absolute")
     }
 
     @Test

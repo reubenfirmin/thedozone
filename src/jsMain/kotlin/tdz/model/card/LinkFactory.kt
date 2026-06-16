@@ -57,21 +57,20 @@ class LinkFactory(val link: String, val label: String) {
         } else {
             val mapLink = parseMapString("$trimmed($label)")
 
-            mapLink ?: CanvasLink(CanvasName(trimmed), label.shorten())
+            mapLink ?: CanvasLink(trimmed, label.shorten())
         }
     }
 
     /**
      * A bracketed token is a web link when the browser parses it as an absolute URL with a known web
-     * scheme (`https:`, `mailto:`, ...), or it names a host explicitly (`www.`), or it is a path /
-     * resource (`/`). A bare name with none of these markers (e.g. `google.com` or `My Canvas`) is a
-     * link to another canvas. Using the platform `URL` parser rather than string matching means we
-     * also accept `mailto:`/`tel:` and reject malformed inputs such as `https://` with no host.
+     * scheme (`https:`, `mailto:`, ...), or it names a host explicitly (`www.`). A bare name, a path
+     * fragment (e.g. `/a/b/c`, `sub/child`), or a navigation primitive (`..`, `~`, `/`) is a canvas
+     * link. Using the platform `URL` parser rather than string matching means we also accept
+     * `mailto:`/`tel:` and reject malformed inputs such as `https://` with no host.
      */
     private fun isWebLink(candidate: String): Boolean {
         if (parseAbsoluteWebUrl(candidate) != null) return true
         if (candidate.startsWith("www.")) return true
-        if (candidate.contains("/")) return true
         return false
     }
 

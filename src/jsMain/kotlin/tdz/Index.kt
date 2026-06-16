@@ -18,8 +18,6 @@ import tdz.model.Canvas
 import tdz.model.CanvasName
 import tdz.model.Direction
 import tdz.model.Split
-import tdz.model.LayoutTemplate.SINGLE_PANE
-import tdz.model.LayoutTemplates.canvasFromTemplate
 import tdz.model.Model
 import tdz.model.markdown.MarkdownService
 import tdz.helpPages
@@ -50,13 +48,8 @@ import zoned.framework.routing.Router
 import zoned.framework.routing.Zone.Companion.zone
 import zoned.framework.dom.onClick
 
-/** Build a canvas URL from a resolved hierarchy path. Pure; unit-tested. */
-fun canvasUrlFromPath(path: List<CanvasName>): String =
-    if (path.isEmpty()) "/" else "/" + path.joinToString("/") { it.normalized() }
-
 class Index(val model: Model, val eventBus: EventBus<Event>) {
 
-    fun canvasUrl(name: CanvasName): String = canvasUrlFromPath(model.path(name))
     fun currentCanvasUrl(): String = canvasUrl(model.currentCanvas().name)
 
     /** Render the current canvas if nothing is mounted (e.g. cold deep-link to an overlay route). */
@@ -168,21 +161,14 @@ class Index(val model: Model, val eventBus: EventBus<Event>) {
         }
     }
 
+    /**
+     * Navigation is a view concern: turn a [SwitchToCanvas] into a URL change. The board chain is
+     * created and made current by the route's dispatch to [tdz.controller.CanvasHierarchy] when the
+     * URL lands — Index does no model work here.
+     */
     private fun setupNavigationHandler() {
         eventBus.on<SwitchToCanvas> { event ->
-            val canvasName = event.canvasName
-
-            // Create canvas if it doesn't exist
-            if (!model.exists(canvasName)) {
-                val parentCanvas = currentCanvasName ?: model.currentCanvas().name
-                model.addCanvas(canvasFromTemplate(canvasName, parentCanvas, SINGLE_PANE))
-            }
-
-            // Change current canvas in model
-            model.changeCanvas(canvasName)
-
-            // Update URL with hierarchical path
-            Router.navigate(canvasUrl(canvasName))
+            Router.navigate(canvasUrl(event.canvasName))   // absolute path
         }
     }
 
@@ -237,7 +223,8 @@ class Index(val model: Model, val eventBus: EventBus<Event>) {
             }
             // Page Up goes to the parent board (if any); Page Down opens the child-board switcher.
             else if (keyEvent.key == "PageUp") {
-                model.currentCanvas().parent?.let { eventBus.fire(SwitchToCanvas(it)) }
+                val current = model.currentCanvas().name
+                if (!current.isRoot()) eventBus.fire(SwitchToCanvas(current.parentName()))
                 handled = true
             }
             else if (keyEvent.key == "PageDown") {

@@ -7,6 +7,7 @@ import tdz.controller.DragDrop
 import tdz.controller.events.Event
 import zoned.framework.events.EventBus
 import tdz.controller.events.SwitchToCanvas
+import tdz.resolveCanvasLinkTarget
 import tdz.model.*
 import tdz.model.ref
 import tdz.model.card.*
@@ -150,8 +151,8 @@ object CardRenderer {
             is ListGroup -> renderSegment(canvasName, segment, card, eventBus)
             is CardListItem -> throw Exception("Didn't expect ungrouped list item")
             is CardHeading -> renderSegment(segment)
-            is CardText -> renderSegment(segment, card, eventBus)
-            is Callout -> renderSegment(segment, card, eventBus)
+            is CardText -> renderSegment(canvasName, segment, card, eventBus)
+            is Callout -> renderSegment(canvasName, segment, card, eventBus)
             is CardCodeBlock -> renderRichText(segment)
             is Blockquote -> renderRichText(segment)
             is CardDiagram -> renderSegment(segment, card)
@@ -226,7 +227,7 @@ object CardRenderer {
                 }
 
                 segment.text.forEach {
-                    renderRichText(it, eventBus)
+                    renderRichText(canvasName, it, eventBus)
                 }
             }
             // No onClick here: toggling is handled by ONE delegated listener per column
@@ -516,15 +517,15 @@ object CardRenderer {
         }
     }
 
-    private fun FlowContent.renderSegment(segment: CardText, card: Card, eventBus: EventBus<Event>) {
+    private fun FlowContent.renderSegment(canvasName: CanvasName, segment: CardText, card: Card, eventBus: EventBus<Event>) {
         div {
             segment.text.forEach { text ->
-                renderRichText(text, eventBus)
+                renderRichText(canvasName, text, eventBus)
             }
         }
     }
 
-    private fun FlowContent.renderSegment(segment: Callout, card: Card, eventBus: EventBus<Event>) {
+    private fun FlowContent.renderSegment(canvasName: CanvasName, segment: Callout, card: Card, eventBus: EventBus<Event>) {
         div(CssClasses.CALLOUT) {
             // Row chrome from the .tdz-callout rule; only the per-instance indent is inline.
             if (segment.level > 0) css { paddingLeft = (6 + segment.level * 24).px }
@@ -537,7 +538,7 @@ object CardRenderer {
                     else -> "☛"
                 })
             }
-            segment.text.forEach { renderRichText(it, eventBus) }
+            segment.text.forEach { renderRichText(canvasName, it, eventBus) }
         }
     }
 
@@ -586,11 +587,11 @@ object CardRenderer {
         p {}
     }
 
-    private fun FlowContent.renderRichText(value: RichText, eventBus: EventBus<Event>) {
+    private fun FlowContent.renderRichText(canvasName: CanvasName, value: RichText, eventBus: EventBus<Event>) {
             when (value) {
             is CardCodeBlock -> renderRichText(value)
             is Blockquote -> renderRichText(value)
-            is LinkText -> renderRichText(value, eventBus)
+            is LinkText -> renderRichText(canvasName, value, eventBus)
             is Text -> renderRichText(value)
         }
     }
@@ -640,9 +641,9 @@ object CardRenderer {
         }
     }
 
-    private fun FlowContent.renderRichText(linkText: LinkText, eventBus: EventBus<Event>) {
+    private fun FlowContent.renderRichText(canvasName: CanvasName, linkText: LinkText, eventBus: EventBus<Event>) {
             when (linkText) {
-            is CanvasLink -> renderRichText(linkText, eventBus)
+            is CanvasLink -> renderRichText(canvasName, linkText, eventBus)
             is ExternalLink -> renderRichText(linkText)
             is ImageLink -> renderRichText(linkText)
             is MapLink -> renderRichText(linkText)
@@ -687,11 +688,15 @@ object CardRenderer {
         }
     }
 
-    private fun FlowContent.renderRichText(link: CanvasLink, eventBus: EventBus<Event>) {
-        val linkId = DomIds.canvasLink(link.canvasName)
+    private fun FlowContent.renderRichText(canvasName: CanvasName, link: CanvasLink, eventBus: EventBus<Event>) {
+        val linkId = DomIds.canvasLink(link.unresolvedName)
+        val absoluteTarget = resolveCanvasLinkTarget(canvasName, link.target)
 
         span(CssClasses.DROP_ZONE) {
-            attributes["data-canvas-name"] = link.canvasName.normalized()
+            // The id uses the bare leaf so element ids never contain "/" (fragile in CSS selectors).
+            // The data-canvas-name carries the full absolute path so DragDrop can route the drop
+            // to the same board that the click navigates to (absoluteTarget, not the bare leaf).
+            attributes["data-canvas-name"] = absoluteTarget.normalized()
             id = linkId
             css { display = Display.inlineBlock }
 
@@ -712,10 +717,10 @@ object CardRenderer {
                 +"❯❯ ${link.label}"
                 // The canvas route is a catch-all (/{canvas...}); build the URL directly rather
                 // than Route.path (which requires a fixed param count). Real nav is the onClick.
-                href = "/${link.canvasName.normalized()}"
+                href = "/${absoluteTarget.normalized()}"
 
                 onClick { event ->
-                    eventBus.fire(SwitchToCanvas(link.canvasName))
+                    eventBus.fire(SwitchToCanvas(absoluteTarget))
                     event.preventDefault()
                     event.stopPropagation()
                 }

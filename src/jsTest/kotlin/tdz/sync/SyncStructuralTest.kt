@@ -9,10 +9,12 @@ import tdz.controller.events.Event
 import zoned.framework.events.EventBus
 import tdz.controller.events.RefreshCanvas
 import tdz.model.CanvasName
+import tdz.model.ColumnId
 import tdz.model.LayoutTemplate.SINGLE_PANE
 import tdz.model.LayoutTemplates.canvasFromTemplate
 import tdz.model.Model
 import tdz.model.localstorage.CanvasDoc
+import tdz.model.localstorage.SyncEntry
 import tdz.model.localstorage.SyncConfigDoc
 import tdz.model.localstorage.SyncStateDoc
 import kotlin.test.Test
@@ -137,5 +139,31 @@ class SyncStructuralTest {
         val path = SyncPaths.manifestPath(t.root, canvas)
         assertEquals(1, t.storage.uploads.count { it == path },
             "a burst of structural events coalesces into one debounced manifest push")
+    }
+
+    @Test
+    fun structuralPushOfParentDoesNotDeleteChildBoardColumns(): dynamic = GlobalScope.promise {
+        // Regression: the per-canvas orphan sweep scoped by folder PREFIX, so a structural push of
+        // parent "a" (folder /_oss/a) also matched child "a/b"'s columns (/_oss/a/b/col-*.md) and
+        // batch-deleted them from the remote — silent child data loss. The sweep must match only the
+        // pushed board's OWN columns.
+        val t = Setup("_oss")
+        val a = CanvasName("a")
+        val ab = CanvasName("a/b")
+        t.model.addCanvas(canvasFromTemplate(a, a.parentName(), SINGLE_PANE))
+        t.model.addCanvas(canvasFromTemplate(ab, ab.parentName(), SINGLE_PANE))
+        t.controller().start()
+        delay(30)   // let the startup reconcile settle before seeding
+
+        // The child's column file is a known synced artifact (present on the remote and in state).
+        val childCol = SyncPaths.columnPath(t.root, ab, ColumnId(1))
+        t.storage.files[childCol] = RemoteFile(childCol, "r1", 1.0) to "# child content\n"
+        t.model.writeSyncState(t.model.readSyncState().with(childCol, SyncEntry(rev = "r1", localUpdatedAt = 1.0)))
+
+        t.bus.fire(RefreshCanvas(a, structural = true))   // structural change to the PARENT
+        delay(60)
+
+        assertTrue(t.storage.files.containsKey(childCol),
+            "a structural push of parent 'a' must NOT delete child 'a/b' column files")
     }
 }
