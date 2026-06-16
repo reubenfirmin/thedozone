@@ -108,7 +108,7 @@ jobs:
           node-version: '22'
 
       - name: Deploy to beta.do.zone
-        run: npx --yes wrangler@latest deploy
+        run: npx --yes wrangler@latest deploy --env beta
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
