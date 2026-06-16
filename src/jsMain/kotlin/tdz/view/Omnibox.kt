@@ -248,7 +248,7 @@ object Omnibox {
                     div("tdz-omnibox-label") { +"Go to board" }
                     input(type = InputType.text) {
                         ref(field)
-                        attributes["placeholder"] = "/work/today  —  type a path, or filter boards below"
+                        attributes["placeholder"] = "Type a path like /work/today, or filter boards below"
                         attributes["autocomplete"] = "off"
                         attributes["spellcheck"] = "false"
                         // Keys are handled on the input so the field keeps focus (typeahead intact);

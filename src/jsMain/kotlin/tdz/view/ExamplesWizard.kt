@@ -57,16 +57,18 @@ object ExamplesWizard {
     private val featureSteps = listOf(
         WizardStep(
             title = "Columns and cards",
-            explanation = "A column holds cards. Cards can be dragged between columns.",
+            explanation = "A column holds cards. Cards can be dragged between columns. You can " +
+                "organize your board in many different ways. Here are some examples.",
             cta = "That's cool, what next?",
             examples = ExampleBoards.COLUMNS_AND_CARDS,
         ),
         WizardStep(
             title = "It's all markdown",
-            explanation = "Right-click a column and choose Edit, or press Ctrl+' while it's " +
-                "focused, to switch to edit mode. Do the same to switch back.",
+            explanation = "Every card is just markdown. This board has one of each kind: tasks, " +
+                "callouts, a quote, code, a photo, a map, a diagram, even a flip card. Right-click a " +
+                "column and choose Edit (or press Ctrl+') to play with the raw markdown, then switch back.",
             cta = "Nice. Show me more",
-            preset = listOf(ExampleBoards.PROJECT),
+            preset = listOf(ExampleBoards.MARKDOWN_SHOWCASE),
         ),
         WizardStep(
             title = "Privacy, offline first",

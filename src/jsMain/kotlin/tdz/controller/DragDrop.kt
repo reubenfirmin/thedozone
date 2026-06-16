@@ -384,9 +384,10 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
         // absoluteTarget.normalized() — the full path, not the bare leaf).  The element id still
         // uses the bare leaf to keep "/" out of CSS selectors; reading the attribute avoids that
         // ambiguity and is the authoritative drop-routing value.
-        val targetCanvas = linkEl?.getAttribute("data-canvas-name")
-            ?.takeIf { it.isNotEmpty() }
-            ?.let { CanvasName(it) }
+        // Presence of the attribute — not non-emptiness — means "this is a link drop": the ROOT board
+        // normalizes to "" (e.g. a `..` link on a child of root points there), and an empty value is a
+        // valid target, not a missing one. getAttribute returns null only when it's genuinely absent.
+        val targetCanvas = linkEl?.getAttribute("data-canvas-name")?.let { CanvasName(it) }
         if (linkEl != null && targetCanvas != null) {
             handleWormholeDrop(event, canvasName, targetCanvas, linkEl)
             return

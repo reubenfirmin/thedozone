@@ -380,6 +380,62 @@ class WormholeDropRoutingTest {
         )
     }
 
+    /**
+     * Regression: a `..` parent-link on a child of the ROOT points to the root board, whose
+     * normalized name is "". Drop routing used to reject an empty `data-canvas-name` with
+     * `takeIf { isNotEmpty() }`, so dropping onto such a card did nothing. Presence of the attribute —
+     * not non-emptiness — is what marks a link drop; "" is a valid (root) target.
+     */
+    @Test
+    fun dropOnRootParentLinkChipSendsCardToRoot() {
+        val root = CanvasName("")
+        val childBoard = CanvasName("Work")
+        val model = Model(childBoard)
+        model.addCanvas(canvasFromTemplate(root, null, SINGLE_PANE))
+        model.addCanvas(canvasFromTemplate(childBoard, root, SINGLE_PANE))
+        val col = ColumnId(1)
+        model.updateColumn(childBoard, col, "# Card A\n[.. (Home)]\n\n# Card B\n")
+
+        val cards = model.cards(childBoard, col)
+        val leaf = CanvasName("..")
+        addToBody {
+            div {
+                id = DomIds.column(col)
+                cards.forEachIndexed { i, card ->
+                    div {
+                        id = DomIds.card(card.ref)
+                        css { width = 200.px; height = 40.px }
+                        if (i == 0) {
+                            span("canvas-drop-zone") {
+                                id = DomIds.canvasLink(leaf)
+                                attributes["data-canvas-name"] = root.normalized()   // "" — the root board
+                                css { display = Display.inlineBlock; width = 80.px; height = 20.px }
+                                +"❯❯ Home"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        val eventBus = EventBus<Event>()
+        val dragDrop = DragDrop(model, eventBus)
+        var sent: CardsSentToCanvas? = null
+        eventBus.on<CardsSentToCanvas> { sent = it }
+
+        val cardB = el(DomIds.card(cards[1].ref))
+        val columnEl = el(DomIds.column(col))
+        val chip = el(DomIds.canvasLink(leaf))
+
+        dragDrop.beginPortalTracking(cardB)
+        pointerMoveOver(chip)
+        dragDrop.handleDrop(dropEvent(cardB, columnEl), childBoard)
+        dragDrop.stopPortalTracking()
+
+        val sentEvent = assertNotNull(sent, "wormhole open over a ..→root link → the card must be sent")
+        assertEquals(root, sentEvent.targetCanvas, "a `..` link to the root must route the drop to the root board")
+    }
+
     @Test
     fun dropWithWormholeClosedReordersNormally() {
         val model = buildModel()

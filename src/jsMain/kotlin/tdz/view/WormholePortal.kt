@@ -4,6 +4,7 @@ import kotlinx.browser.window
 import kotlinx.css.*
 import kotlinx.css.properties.*
 import kotlinx.html.div
+import tdz.model.CanvasName
 import tdz.view.theme.ThemeManager
 import web.cssom.ClassName
 import web.dom.document
@@ -23,8 +24,8 @@ import tdz.view.theme.themedStyleSheet
 import zoned.framework.interop.transformOrigin
 import zoned.framework.routing.Zone.Companion.zone
 
-/** The two drop visuals for canvas links. Flip [WormholePortal.style] to A/B them. */
-enum class PortalStyle { VORTEX, BLACK_HOLE }
+/** The drop visuals for canvas links. Flip [WormholePortal.style] to A/B them. */
+enum class PortalStyle { VORTEX, BLACK_HOLE, VECTOR }
 
 /**
  * The drop visual for canvas links: a single shared, `position: fixed` effect pinned over whichever
@@ -40,8 +41,8 @@ enum class PortalStyle { VORTEX, BLACK_HOLE }
  */
 object WormholePortal {
 
-    /** Flip this (and reload) to compare the two drop visuals. */
-    var style: PortalStyle = PortalStyle.BLACK_HOLE
+    /** Flip this (and reload) to compare the drop visuals. */
+    var style: PortalStyle = PortalStyle.VECTOR
 
     private val ID get() = Zones.WORMHOLE.elementId
 
@@ -54,7 +55,11 @@ object WormholePortal {
         }
         if (el.getAttribute("data-style") != style.name) {
             el.setAttribute("data-style", style.name)
-            el.classes(if (style == PortalStyle.VORTEX) "tdz-wh-vortex" else "tdz-wh-bh")
+            el.classes(when (style) {
+                PortalStyle.VORTEX -> "tdz-wh-vortex"
+                PortalStyle.BLACK_HOLE -> "tdz-wh-bh"
+                PortalStyle.VECTOR -> "tdz-wh-vec"
+            })
             Zones.WORMHOLE.swap {
                 when (style) {
                     PortalStyle.VORTEX -> {
@@ -68,7 +73,19 @@ object WormholePortal {
                         div("tdz-bh-core")
                         div("tdz-bh-shock")
                     }
+                    PortalStyle.VECTOR -> {
+                        // A wireframe tunnel: concentric stroked diamonds receding into a glowing core.
+                        div("tdz-vec-ring tdz-vec-r1")
+                        div("tdz-vec-ring tdz-vec-r2")
+                        div("tdz-vec-ring tdz-vec-r3")
+                        div("tdz-vec-ring tdz-vec-r4")
+                        div("tdz-vec-core")
+                        div("tdz-vec-shock")
+                    }
                 }
+                // The destination board name, shown on the portal (which sits ABOVE the dragged card
+                // mirror that otherwise hides the targeted link) so it's clear which board you're in.
+                div("tdz-wh-label")
             }
         }
         return el
@@ -87,6 +104,9 @@ object WormholePortal {
             width = size.px
             height = size.px
         }
+        // Name the destination on the portal (the chip itself is hidden under the dragged card).
+        val target = linkEl.getAttribute("data-canvas-name")?.let { CanvasName(it) }
+        portal.querySelector(".tdz-wh-label")?.textContent = target?.let { "→ ${omniboxLabel(it)}" } ?: ""
         portal.classList.remove(ClassName("tdz-wh-flash"))
         portal.classList.add(ClassName("tdz-wh-on"))
     }
@@ -171,6 +191,19 @@ object WormholePortal {
                     el.style.opacity = "0"
                 }, 160)
             }
+            PortalStyle.VECTOR -> {
+                // Warp in: spin down into the core, matching the wireframe tunnel's inward pull.
+                el.style.transition = listOf(
+                    Transition("transform", 460.ms, cubicBezier(0.6, 0.05, 0.9, 0.30)),
+                    Transition("opacity", 460.ms, Timing.easeOut),
+                ).joinToString(", ")
+                window.requestAnimationFrame {
+                    el.style.transform = Transforms().apply {
+                        translate(dx.px, dy.px); scale(0.03); rotate(420.deg)
+                    }.toString()
+                    el.style.opacity = "0"
+                }
+            }
         }
         window.setTimeout({ el.remove() }, 540)
     }
@@ -214,6 +247,24 @@ object WormholePortal {
                 transition += Transition("opacity", 130.ms, Timing.ease)
             }
             rule("#$ID.tdz-wh-on") { opacity = 1.0 }
+            // Destination name, pinned just below the portal — a high-contrast pill (readable on any
+            // theme/background) accented with the link color. Sits above the dragged card mirror.
+            rule("#$ID .tdz-wh-label") {
+                position = Position.absolute
+                top = 100.pct
+                left = 50.pct
+                transform { translateX((-50).pct) }
+                marginTop = 8.px
+                whiteSpace = WhiteSpace.nowrap
+                backgroundColor = Color("rgba(15,15,20,0.92)")
+                color = Color.white
+                border = Border(1.px, BorderStyle.solid, c)
+                padding = Padding(3.px, 9.px)
+                borderRadius = 12.px
+                fontSize = 12.px
+                fontWeight = FontWeight.bold
+                fontFamily = ThemeManager.current.fontFamily
+            }
             rule("""#$ID .tdz-wh-swirl, #$ID .tdz-wh-swirl2, #$ID .tdz-wh-core,
                     #$ID .tdz-bh-glow, #$ID .tdz-bh-disk, #$ID .tdz-bh-core, #$ID .tdz-bh-shock""") {
                 position = Position.absolute
@@ -293,6 +344,58 @@ object WormholePortal {
             }
             rule("#$ID.tdz-wh-bh.tdz-wh-flash .tdz-bh-shock") {
                 animation(shockwave, 520.ms, Timing.easeOut, fillMode = FillMode.forwards)
+            }
+
+            // ---- VECTOR (arcade wireframe tunnel) ----
+            // Stroked diamonds receding into the core — no filled gradients, so it reads as 2D vector
+            // line art (Tempest/Asteroids) rather than a spinning disc. The neon glow is a drop-shadow.
+            val vecTunnel = keyframes("tdz-vec-tunnel") {
+                at(0.pct) { opacity = 0.0; transform { rotate(30.deg); scale(1.3) } }
+                at(12.pct) { opacity = 1.0; transform { rotate(36.deg); scale(1.06) } }
+                at(86.pct) { opacity = 0.9; transform { rotate(80.deg); scale(0.12) } }
+                at(100.pct) { opacity = 0.0; transform { rotate(90.deg); scale(0.0) } }
+            }
+            val vecShockwave = keyframes("tdz-vec-shockwave") {
+                at(0.pct) { opacity = 0.9; transform { rotate(45.deg); scale(0.25) } }
+                at(100.pct) { opacity = 0.0; transform { rotate(45.deg); scale(2.6) } }
+            }
+            val vecFlash = keyframes("tdz-vec-flash") {
+                at(0.pct) { filter(brightness(1), dropShadow(0.px, 0.px, 12.px, c)) }
+                at(35.pct) { transform { scale(1.25) }; filter(brightness(2.4), dropShadow(0.px, 0.px, 30.px, c)) }
+                at(100.pct) { opacity = 0.0; transform { scale(0.6) }; filter(brightness(1), dropShadow(0.px, 0.px, 12.px, c)) }
+            }
+
+            rule("#$ID.tdz-wh-vec") { filter(dropShadow(0.px, 0.px, 9.px, c)) }   // neon glow on the wireframe
+            rule("#$ID .tdz-vec-ring, #$ID .tdz-vec-core, #$ID .tdz-vec-shock") {
+                position = Position.absolute
+                inset = Inset(0.px)
+            }
+            // Diamonds (a square is a diamond at 45°); transparent fill = see-through wireframe.
+            rule("#$ID .tdz-vec-ring") {
+                border = Border(2.px, BorderStyle.solid, c)
+                animation(vecTunnel, 1.7.s, Timing.linear, iterationCount = IterationCount.infinite)
+            }
+            // Stagger the rings a quarter-cycle apart so they stream inward continuously.
+            rule("#$ID .tdz-vec-r2") { animation(vecTunnel, 1.7.s, Timing.linear, delay = 0.42.s, iterationCount = IterationCount.infinite) }
+            rule("#$ID .tdz-vec-r3") { animation(vecTunnel, 1.7.s, Timing.linear, delay = 0.85.s, iterationCount = IterationCount.infinite) }
+            rule("#$ID .tdz-vec-r4") { animation(vecTunnel, 1.7.s, Timing.linear, delay = 1.27.s, iterationCount = IterationCount.infinite) }
+            rule("#$ID .tdz-vec-core") {
+                inset = Inset(40.pct)
+                backgroundColor = c
+                transform { rotate(45.deg) }
+                boxShadow += BoxShadow(c, 0.px, 0.px, 12.px, 0.px)
+            }
+            rule("#$ID .tdz-vec-shock") {
+                border = Border(2.px, BorderStyle.solid, c)
+                opacity = 0.0
+                transform { rotate(45.deg); scale(0.25) }
+            }
+            rule("#$ID.tdz-wh-vec.tdz-wh-flash") {
+                opacity = 1.0
+                animation(vecFlash, 500.ms, Timing.easeOut, fillMode = FillMode.forwards)
+            }
+            rule("#$ID.tdz-wh-vec.tdz-wh-flash .tdz-vec-shock") {
+                animation(vecShockwave, 500.ms, Timing.easeOut, fillMode = FillMode.forwards)
             }
         }
     }

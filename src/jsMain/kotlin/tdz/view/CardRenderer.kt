@@ -49,12 +49,6 @@ object CardRenderer {
     /** Sane ceiling on list nesting depth; parsing never exceeds 2, so beyond this is malformed. */
     private const val MAX_LIST_DEPTH = 32
 
-    private val circledNumbers = listOf("⓪", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩",
-                                        "⑪", "⑫", "⑬", "⑭", "⑮", "⑯", "⑰", "⑱", "⑲", "⑳", "㉑",
-                                        "㉒", "㉓", "㉔", "㉕", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜",
-                                        "㉝", "㉞", "㉟", "㊱", "㊲", "㊳", "㊴", "㊵", "㊶", "㊷", "㊸",
-                                        "㊹", "㊺", "㊻", "㊼", "㊽", "㊾", "㊿")
-
     /**
      * Render a stack of cards. [loose] opens up the vertical rhythm — more space between cards and
      * between the segments within a card — for reading-oriented surfaces like the help overlay,
@@ -422,13 +416,21 @@ object CardRenderer {
                     value = segment.done.toString()
                 }
 
-                span(if (segment.done) "${CssClasses.MARKER} ${CssClasses.MARKER_DONE}" else CssClasses.MARKER) {
-                    val ascii = ThemeManager.current.markerStyle == MarkerStyle.ASCII
+                val ascii = ThemeManager.current.markerStyle == MarkerStyle.ASCII
+                val markerClass = buildString {
+                    append(CssClasses.MARKER)
+                    if (segment.done) append(" ${CssClasses.MARKER_DONE}")
+                    // Non-ASCII numbered items get a CSS circle badge (plain digit padded inside a drawn
+                    // ring), not a cramped, font-fallback-janky Unicode circled glyph.
+                    else if (!ascii && segment.type == ListMemberType.NUMBERED) append(" ${CssClasses.MARKER_NUM}")
+                }
+                span(markerClass) {
                     if (segment.done) {
                         +(if (ascii) "[X]" else "\u2713")
                     } else {
                         if (segment.type == ListMemberType.NUMBERED) {
-                            +(if (ascii) "${index + 1}." else circledNumbers[index])
+                            // 1-based plain digit; the circle ring + internal padding is .tdz-marker-num.
+                            +(if (ascii) "${index + 1}." else "${index + 1}")
                         } else if (segment.type == ListMemberType.BULLET) {
                             +(if (ascii) "[ ]" else "\u2610")
                         } else if (segment.type == ListMemberType.ARROW) {
@@ -544,8 +546,10 @@ object CardRenderer {
             // opt out of content-visibility (its intrinsic-size placeholder reserved a tall box around
             // the tiny chip), so a stack of links is tight instead of acres of whitespace.
             rule(".${CssClasses.CARD_LINK}") {
-                margin = Margin(4.px, 0.px)
-                padding = Padding(0.px)
+                // Tight vertically, but keep the theme's horizontal margin AND padding so the chip
+                // lines up with the left edge of regular cards' content (not flush to the column).
+                margin = Margin(vertical = 4.px, horizontal = t.cardMargin)
+                padding = Padding(vertical = 2.px, horizontal = t.cardPadding)
                 contentVisibility = ContentVisibility.visible
             }
             // A card that is nothing but an image renders the photo full-bleed: no margin, no
@@ -573,6 +577,9 @@ object CardRenderer {
                 rule(".${CssClasses.CARD_STRIP}") {
                     padding = Padding(0.px)
                     overflow = Overflow.hidden
+                    // Drop the card border so the colored header bleeds flush to the top edge — a
+                    // (transparent) border otherwise leaves a 1-2px line of the column showing above it.
+                    borderStyle = BorderStyle.none
                 }
             }
             // TUI frame variant: the title straddles the top border line.
@@ -711,6 +718,24 @@ object CardRenderer {
                 fontWeight = FontWeight.bold
             }
             rule(".${CssClasses.MARKER_DONE}") { color = t.checkDone }
+            // Numbered marker = a drawn circle badge holding the plain digit, padded inside the ring
+            // (a Unicode circled digit can't be padded and font-fallbacks unevenly). currentColor keeps
+            // the ring in the marker's own text color.
+            rule(".${CssClasses.MARKER_NUM}") {
+                display = Display.inlineFlex
+                alignItems = Align.center
+                justifyContent = JustifyContent.center
+                boxSizing = BoxSizing.borderBox
+                minWidth = 1.55.em
+                height = 1.55.em
+                padding = Padding(horizontal = 0.38.em)   // room inside the ring (and for 2-digit numbers)
+                marginRight = 0.45.rem                     // gap to the text (overrides MARKER's paddingRight)
+                border = Border(1.5.px, BorderStyle.solid, Color("currentColor"))
+                borderRadius = 50.pct
+                fontSize = 0.92.em
+                lineHeight = LineHeight("1")
+                verticalAlign = VerticalAlign.middle
+            }
             rule(".${CssClasses.CALLOUT}") { padding = Padding(vertical = 1.px, horizontal = 6.px) }
         }
     }
@@ -773,11 +798,15 @@ object CardRenderer {
         // strokes/arrows were invisible against a light card. stroke = text color, fill = card background.
         val diagramStroke = t.fg
         val diagramFill = t.cardBg
-        val noml = listOf(
-            "#stroke: $diagramStroke",
-            "#fill: $diagramFill",
-            segment.text,
-        ).joinToString("\n")
+        // Bias diagrams to flow left-to-right (cards are narrow and tall, so a wide diagram reads
+        // better) — unless the author set their own #direction.
+        val hasDirection = segment.text.lineSequence().any { it.trimStart().startsWith("#direction") }
+        val noml = buildList {
+            add("#stroke: $diagramStroke")
+            add("#fill: $diagramFill")
+            if (!hasDirection) add("#direction: right")
+            add(segment.text)
+        }.joinToString("\n")
 
         val canvasRef = Ref<HTMLCanvasElement>()
         canvas {
@@ -821,8 +850,32 @@ object CardRenderer {
     }
 
     private fun FlowContent.renderRichText(codeBlock: CardCodeBlock) {
+        val theme = ThemeManager.current
         pre {
             classes += "microlight"
+            // position for the absolute copy button; right padding keeps it clear of the code.
+            css {
+                position = Position.relative
+                paddingRight = 40.px
+            }
+            button {
+                attributes["aria-label"] = "Copy"
+                +"⧉"
+                attributes["title"] = "Copy"
+                css {
+                    position = Position.absolute
+                    top = 4.px
+                    right = 4.px
+                    backgroundColor = Color.transparent
+                    borderStyle = BorderStyle.none
+                    cursor = Cursor.pointer
+                    color = theme.fg
+                    fontSize = 15.px
+                }
+                onClick {
+                    web.navigator.navigator.clipboard.writeTextAsync(codeBlock.text)
+                }
+            }
             code {
                 +codeBlock.text
             }
@@ -929,7 +982,7 @@ object CardRenderer {
                 css {
                     cursor = Cursor.pointer
                     display = Display.inlineBlock
-                    margin = Margin(vertical = 3.px, horizontal = 8.px)    // a little breathing room around the badge
+                    margin = Margin(vertical = 8.px, horizontal = 8.px)    // breathing room around the badge
                     marginLeft = 0.px                                      // left-justified (no gap on the left)
                     padding = Padding(vertical = 2.px, horizontal = 8.px)
                     border = Border(1.px, BorderStyle.solid, ThemeManager.current.link)

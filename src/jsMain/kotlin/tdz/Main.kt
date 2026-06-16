@@ -76,11 +76,13 @@ object settingsPages : Routes<Index>(tdzIndex, "/settings") {
 }
 
 fun main() {
-    // Restore the saved theme before the first render so its colors/font apply immediately.
-    tdzModel.getTheme()?.let { saved ->
+    // Apply the saved theme (or the default — Rainbow Gaps) before the first render so its
+    // colors/font and the theme-color meta apply immediately.
+    val initialTheme = tdzModel.getTheme()?.let { saved ->
         themes.firstOrNull { it.name == saved }
             ?: longFormTheme.takeIf { saved == "Immaterial" }   // theme renamed; honor old saves
-    }?.let { ThemeManager.use(it) }
+    } ?: ThemeManager.current
+    ThemeManager.use(initialTheme)
     // Debug instrumentation (verbose console logging + sync logs) is off in production, enabled
     // on demand via the `?debug` URL flag.
     val debugEnabled = kotlinx.browser.window.location.search

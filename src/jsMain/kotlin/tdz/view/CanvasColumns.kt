@@ -368,10 +368,30 @@ class CanvasColumns(val canvas: Canvas,
     private fun setColumnHeaderAccent(columnId: ColumnId, color: String?) {
         styleSheet(ColumnContainer.accentStyleId(columnId)) {
             if (color != null) {
-                // !important: must beat the theme's global .tdz-card-header rule.
-                rule("#${DomIds.column(columnId)} .${CssClasses.CARD_HEADER}") { important("background", color) }
+                // !important: must beat the theme's global .tdz-card-header rule. The title color
+                // tracks the band's own luminance (light text on a dark color, dark on a light one) —
+                // general, derived from the color, not the theme.
+                rule("#${DomIds.column(columnId)} .${CssClasses.CARD_HEADER}") {
+                    important("background", color)
+                    important("color", contrastingText(color))
+                }
             }
         }
+    }
+
+    /** Black or white, whichever reads better on [hex] (`#rgb`/`#rrggbb`), by perceived luminance. */
+    private fun contrastingText(hex: String): String {
+        val h = hex.removePrefix("#")
+        val (r, g, b) = when (h.length) {
+            3 -> Triple(h[0].digitToIntOrNull(16), h[1].digitToIntOrNull(16), h[2].digitToIntOrNull(16))
+                .let { (rr, gg, bb) -> Triple(rr?.times(17), gg?.times(17), bb?.times(17)) }
+            else -> Triple(
+                h.take(2).toIntOrNull(16), h.drop(2).take(2).toIntOrNull(16), h.drop(4).take(2).toIntOrNull(16),
+            )
+        }
+        if (r == null || g == null || b == null) return "#1d1b20"   // unparseable → assume light band
+        val luma = 0.299 * r + 0.587 * g + 0.114 * b
+        return if (luma < 140) "#ffffff" else "#1d1b20"
     }
 
     /**

@@ -39,6 +39,7 @@ object CssClasses {
     const val TASK = "tdz-task"
     const val MARKER = "tdz-marker"
     const val MARKER_DONE = "tdz-marker-done"
+    const val MARKER_NUM = "tdz-marker-num"   // numbered-list marker (circled digit) — rendered a touch larger
     const val CALLOUT = "tdz-callout"
     const val H1 = "tdz-h1"
     const val H2 = "tdz-h2"

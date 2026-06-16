@@ -452,9 +452,10 @@ val hackerTheme = Theme(
 )
 
 /**
- * "Poodle Rocks" — a light theme modeled on Google Docs/Drive (Material document UI): a soft grey
- * canvas, white cards with thin Material borders and rounded corners, Roboto/Google Sans type, and
- * Google-blue accents with a green "done" tick.
+ * "Poodle Rocks" — a light theme following Material 3 (m3.material.io/components/cards): a tonal
+ * surface canvas, clean elevated white cards with 12dp corners and a SUBTLE level-1 shadow (no
+ * colored header strip — M3 cards are plain surfaces), the M3 primary purple as the accent, Roboto
+ * type, and M3 tonal containers/outline-variant for menus.
  */
 val poodleRocksTheme = Theme(
     name = "Poodle Rocks",
@@ -467,72 +468,73 @@ val poodleRocksTheme = Theme(
     baseFontSize = 16.px,
     lineHeight = "1.5",
     headingFont = "'Google Sans', 'Product Sans', Roboto, ui-sans-serif, system-ui, Arial, sans-serif",
-    heading1FontSize = 2.0.rem,
-    heading2FontSize = 1.4.rem,
+    heading1FontSize = 1.9.rem,
+    heading2FontSize = 1.35.rem,
     headingLetterSpacing = 0.em,
     heading1PadBottom = 0.2.em,
     markerStyle = MarkerStyle.UNICODE,
     titleInBorder = false,
-    titleInStrip = true,                   // card titles sit in a Google-blue header strip
-    cardHeaderBg = Color("#1a73e8"),
-    cardHeaderFg = Color("#ffffff"),
-    appBg = Color("#f1f3f4"),              // Google grey canvas
-    appGradientInner = Color("#ffffff"),
-    appGradientOuter = Color("#f1f3f4"),
-    appBgImage = "radial-gradient(120% 90% at 50% -10%, #ffffff 0%, #f1f3f4 60%)",
-    fg = Color("#202124"),                 // Google grey 900
+    // Clean by default — the header band is transparent, so a title just sits atop the card (no
+    // colored strip). But the strip mechanism stays ON so a per-column color tints that band: the
+    // "card top = column color" accent (applyColumnStyle → setColumnHeaderAccent).
+    titleInStrip = true,
+    cardHeaderBg = Color("transparent"),   // no band until a column color is set
+    cardHeaderFg = Color("#1d1b20"),       // M3 on-surface — dark title on the white card / light band
+    appBg = Color("#f3edf7"),              // M3 surface-container (tonal)
+    appGradientInner = Color("#fef7ff"),
+    appGradientOuter = Color("#f3edf7"),
+    appBgImage = "radial-gradient(120% 90% at 50% -10%, #fef7ff 0%, #f3edf7 60%)",
+    fg = Color("#1d1b20"),                 // M3 on-surface
     layoutBorder = Color("transparent"),
     columnBorder = Color("transparent"),   // the sheet is defined by elevation, not a stroke
-    columnFocusBorder = Color("#1a73e8"),  // Google blue
-    focusTopStripe = true,                 // hovered column shows a bold blue top stripe, not a full frame
-    // Stacked surfaces: grey canvas (0) → white column "sheet" (1dp) → white cards (2dp). The sheet
-    // is a real surface the cards rest on, each level casting its own shadow (Material elevation).
-    panelBg = Color("#ffffff"),
-    columnShadow = listOf(   // 1dp sheet (Material elevation, 3 layers)
-        BoxShadow(Color("rgba(0,0,0,0.14)"), 0.px, 1.px, 1.px, 0.px),
-        BoxShadow(Color("rgba(0,0,0,0.12)"), 0.px, 2.px, 1.px, (-1).px),
-        BoxShadow(Color("rgba(0,0,0,0.20)"), 0.px, 1.px, 3.px, 0.px),
+    columnFocusBorder = Color("#6750a4"),  // M3 primary
+    focusTopStripe = true,                 // hovered column shows a bold primary top stripe
+    // Tonal stacked surfaces: surface-container canvas → near-white column sheet → white cards, each
+    // lifted by a subtle M3 level-1 shadow rather than the heavier Material 2 elevation.
+    panelBg = Color("#fffbff"),            // M3 surface (the column sheet)
+    columnShadow = listOf(                 // M3 elevation level 1 (2 layers, subtle)
+        BoxShadow(Color("rgba(0,0,0,0.30)"), 0.px, 1.px, 2.px, 0.px),
+        BoxShadow(Color("rgba(0,0,0,0.15)"), 0.px, 1.px, 3.px, 1.px),
     ),
-    columnRadius = 8.px,
+    columnRadius = 12.px,
     columnGap = 16.px,
-    cardBorder = Color("transparent"),     // pure Material surface — elevation alone, no outline
-    cardBg = Color("#ffffff"),             // white "document" cards
-    cardShadow = Color("transparent"),     // unused — cardElevation provides Material elevation
-    cardRadius = 8.px,
-    cardMargin = 14.px,
+    cardBorder = Color("transparent"),     // pure M3 surface — elevation alone, no outline
+    cardBg = Color("#ffffff"),             // elevated white card surface on the tonal canvas
+    cardShadow = Color("transparent"),     // unused — cardElevation provides the M3 elevation
+    cardRadius = 12.px,                    // M3 medium corner
+    cardMargin = 12.px,
     cardPadding = 16.px,
-    // Authoritative MDC elevation (umbra / penumbra / ambient): rests at 2dp, lifts to 8dp on hover.
-    cardElevation = listOf(            // Material 2dp resting elevation (3 layers)
-        BoxShadow(Color("rgba(0,0,0,0.14)"), 0.px, 2.px, 2.px, 0.px),
-        BoxShadow(Color("rgba(0,0,0,0.12)"), 0.px, 3.px, 1.px, (-2).px),
-        BoxShadow(Color("rgba(0,0,0,0.20)"), 0.px, 1.px, 5.px, 0.px),
+    // M3 elevation: elevated card rests at level 1 and lifts to ~level 3 on hover — far subtler than
+    // Material 2's umbra/penumbra/ambient stack.
+    cardElevation = listOf(                // M3 level 1
+        BoxShadow(Color("rgba(0,0,0,0.30)"), 0.px, 1.px, 2.px, 0.px),
+        BoxShadow(Color("rgba(0,0,0,0.15)"), 0.px, 1.px, 3.px, 1.px),
     ),
-    cardElevationHover = listOf(       // deeper 8dp lift on hover
-        BoxShadow(Color("rgba(0,0,0,0.14)"), 0.px, 8.px, 10.px, 1.px),
-        BoxShadow(Color("rgba(0,0,0,0.12)"), 0.px, 3.px, 14.px, 2.px),
-        BoxShadow(Color("rgba(0,0,0,0.20)"), 0.px, 5.px, 5.px, (-3).px),
+    cardElevationHover = listOf(           // M3 level 3
+        BoxShadow(Color("rgba(0,0,0,0.30)"), 0.px, 1.px, 3.px, 0.px),
+        BoxShadow(Color("rgba(0,0,0,0.15)"), 0.px, 4.px, 8.px, 3.px),
     ),
-    heading1 = Color("#202124"),
+    heading1 = Color("#1d1b20"),
     headingGlow = Color("transparent"),
     headingGradient = "",
-    heading2 = Color("#3c4043"),           // Google grey 800
-    link = Color("#1a73e8"),               // Google blue
-    linkBg = Color("rgba(26,115,232,0.10)"),
-    linkHoverBg = Color("rgba(26,115,232,0.20)"),
-    checkDone = Color("#1e8e3e"),          // Google green
-    menuBg = Color("#ffffff"),
-    menuBorder = Color("#dadce0"),
-    menuFg = Color("#202124"),
-    menuTitle = Color("#5f6368"),          // Google grey 700
-    menuDisabled = Color("#9aa0a6"),
-    menuHover = Color("rgba(60,64,67,0.08)"),
-    dragPlaceholder = Color("#e8f0fe"),    // Google blue-50 selection fill
+    heading2 = Color("#49454f"),           // M3 on-surface-variant
+    link = Color("#6750a4"),               // M3 primary
+    linkBg = Color("rgba(103,80,164,0.10)"),
+    linkHoverBg = Color("rgba(103,80,164,0.20)"),
+    checkDone = Color("#6750a4"),          // M3 primary
+    menuBg = Color("#fef7ff"),             // M3 surface-container-low
+    menuBorder = Color("#cac4d0"),         // M3 outline-variant
+    menuFg = Color("#1d1b20"),
+    menuTitle = Color("#49454f"),          // M3 on-surface-variant
+    menuDisabled = Color("#79747e"),       // M3 outline
+    menuHover = Color("rgba(103,80,164,0.08)"),   // M3 primary state layer
+    dragPlaceholder = Color("#e8def8"),    // M3 secondary-container (selection fill)
     dragMirrorBg = Color("#ffffff"),
-    shadow = Color("rgba(60,64,67,0.30)"),
-    icon = Color("#5f6368"),
-    iconFaint = Color("rgba(60,64,67,0.40)"),
-    watermark = Color("rgba(60,64,67,0.08)"),
-    taskHover = Color("rgba(60,64,67,0.08)"),
+    shadow = Color("rgba(0,0,0,0.30)"),
+    icon = Color("#49454f"),
+    iconFaint = Color("rgba(73,69,79,0.45)"),
+    watermark = Color("rgba(73,69,79,0.08)"),
+    taskHover = Color("rgba(103,80,164,0.08)"),
 )
 
 /**
@@ -688,7 +690,7 @@ val themes = listOf(blueRoomTheme, dosTheme, rainbowGapsTheme, smoothDarkTheme, 
 
 /** Holds the active theme. Switching applies on the next render (callers trigger a re-render). */
 object ThemeManager {
-    var current: Theme = blueRoomTheme
+    var current: Theme = rainbowGapsTheme
         private set
 
     fun use(theme: Theme) {
