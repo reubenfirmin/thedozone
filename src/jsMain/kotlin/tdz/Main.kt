@@ -28,7 +28,10 @@ val tdzIndex = Index(tdzModel, eventBus)
 object canvasPages : Routes<Index>(tdzIndex, "/") {
 
     val home = route(mode = RenderMode.PARTIAL) { "/" to {
-        index(tdzModel.currentCanvas())
+        // "/" IS the root board — dispatch through the controller (same as the board route) so root
+        // becomes current. Without this, navigating to "/" (e.g. after deleting the current board)
+        // would leave `currentCanvas` pointing at the now-deleted board.
+        index(tdzController.openCanvasPath(rootCanvas))
     } }.title { "The Do Zone" }
 
     val board = route(mode = RenderMode.PARTIAL) { "/{canvas...}" to { params ->

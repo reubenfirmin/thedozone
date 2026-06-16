@@ -178,6 +178,35 @@ class WormholeDropRoutingTest {
         assertNull(sent, "dropping a link card on its own chip must NOT send it into its own board")
     }
 
+    @Test
+    fun aChipOutsideAnyColumnIsNotAWormholeTarget() {
+        // Regression (intermittent): Sortable's floating drag mirror is a clone of the card — with a
+        // copy of the chip — appended to <body>, OUTSIDE any column, and it follows the pointer. The
+        // identity check alone misses that clone; only in-column chips may be wormhole targets.
+        val model = buildModel()
+        val cards = model.cards(source, column)
+        buildDom(cards)
+        // A stray chip on <body>, standing in for the drag mirror's cloned chip.
+        addToBody {
+            span("canvas-drop-zone") {
+                id = "mirror-chip"
+                attributes["data-canvas-name"] = target.normalized()
+                css { display = Display.inlineBlock; width = 80.px; height = 20.px }
+            }
+        }
+        val dragDrop = DragDrop(model, EventBus<Event>())
+        val cardB = el(DomIds.card(cards[1].ref))
+        val mirrorChip = el("mirror-chip")
+
+        dragDrop.beginPortalTracking(cardB)
+        pointerMoveOver(mirrorChip)
+
+        val portal = document.getElementById(ElementId(Zones.WORMHOLE.elementId))
+        val open = portal != null && portal.classList.contains(ClassName("tdz-wh-on"))
+        assertFalse(open, "a chip outside any column (drag-mirror clone) must not open a wormhole")
+        dragDrop.stopPortalTracking()
+    }
+
     /**
      * The dodge fix: while the wormhole is open, Sortable must not relocate its placeholder —
      * every relocation reflows the column and shifts the link card out from under the pointer,

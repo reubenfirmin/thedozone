@@ -27,4 +27,15 @@ class PathRouteTest {
         assertTrue(tdzModel.exists(CanvasName("a/x")))
         assertTrue(tdzModel.exists(CanvasName("b/x")))
     }
+
+    @Test fun navigatingToRootMakesRootCurrent() {
+        // Regression: deleting the current board re-homes to "/", which hits the HOME route. That
+        // route must make root current — otherwise currentCanvas stays the deleted board and the
+        // next action (split, etc.) silently no-ops against a stale, storage-less canvas.
+        Router.mount(canvasPages, helpPages, settingsPages)
+        Router.navigate("/dogs")
+        assertEquals("dogs", tdzModel.currentCanvas().name.normalized(), "on the board first")
+        Router.navigate("/")
+        assertTrue(tdzModel.currentCanvas().name.isRoot(), "navigating to / makes root current, not the prior board")
+    }
 }

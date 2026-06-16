@@ -234,11 +234,14 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
         dropZones = document.querySelectorAll(".${CssClasses.DROP_ZONE}").let { zones ->
             (0 until zones.length).mapNotNull { zones[it] }
         }.filterNot { zone ->
-            // A card can't fall into its OWN wormhole: exclude the chip(s) inside the dragged card
-            // (or any card in a multi-drag group), so the portal never lights over what you're
-            // dragging and a drop-on-self can't swallow the card into its own linked board.
+            // Wormhole targets must be REAL in-board chips. Exclude:
+            //  (a) any chip not inside a column — Sortable's floating drag MIRROR is a clone of the
+            //      card (with a copy of the chip) appended to <body>, and it follows the pointer, so
+            //      it would otherwise light its own wormhole (intermittently, by clone timing); and
+            //  (b) the dragged card's own chip (or a multi-drag group member's), so a card can't fall
+            //      into itself.
             val card = zone.closest(DomIds.CARD_SELECTOR)
-            card != null && (card === dragged || selected.any { it === card })
+            zone.closest(DomIds.COLUMN_SELECTOR) == null || card === dragged || selected.any { it === card }
         }
         installPortalHook()
     }
