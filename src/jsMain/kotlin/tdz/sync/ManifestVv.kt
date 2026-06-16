@@ -35,7 +35,10 @@ object ManifestVv {
         val wire = storageJson.decodeFromString<CanvasWire>(manifestContent)
         val vv = buildMap {
             byPath.forEach { (path, vector) ->
-                val parsed = SyncPaths.parseColumn(path) ?: return@forEach
+                // Root-aware parse: the canvas name is the FULL path (may be nested, e.g. parent/child).
+                // The no-root overload returns only the last segment, so a nested board would never
+                // match `canvas` here and every vv entry would be dropped (silent LWW data loss).
+                val parsed = SyncPaths.parseColumn(path, root) ?: return@forEach
                 if (parsed.first.normalized() != canvas.normalized()) return@forEach
                 put(parsed.second.toString(), vector)
             }

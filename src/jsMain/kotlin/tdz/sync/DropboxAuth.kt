@@ -53,12 +53,18 @@ object DropboxAuth {
             redirectUri(), state, "code", "offline", SCOPES, "none", true,
         ).await()
         // PKCE verifier must survive into the code exchange; persist keyed by state.
-        localStorage.setItem(VERIFIER_KEY, auth.getCodeVerifier())
+        val verifier = auth.getCodeVerifier()
+        localStorage.setItem(VERIFIER_KEY, verifier)
 
-        val code = awaitPopupCode(url, state)
+        // Clear the persisted verifier no matter what: if the popup is closed or errors, a stale
+        // verifier left behind would be reused by the next connect attempt and break PKCE.
+        val code = try {
+            awaitPopupCode(url, state)
+        } finally {
+            localStorage.removeItem(VERIFIER_KEY)
+        }
 
-        auth.setCodeVerifier(localStorage.getItem(VERIFIER_KEY) ?: "")
-        localStorage.removeItem(VERIFIER_KEY)
+        auth.setCodeVerifier(verifier)
 
         val tokenResult = auth.getAccessTokenFromCode(redirectUri(), code).await()
         val refreshToken = tokenResult.result.refresh_token as String

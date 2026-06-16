@@ -57,6 +57,9 @@ object CssClasses {
     const val CARD_SELECTED = "tdz-card-selected"
     const val CARD_DRAG_GROUP = "tdz-card-drag-group"
 
+    // External: the microlight syntax-highlighter library matches code blocks by this class.
+    const val MICROLIGHT = "microlight"
+
     /** The class as a CSS selector: `.tdz-card`. */
     fun sel(className: String) = ".$className"
 }

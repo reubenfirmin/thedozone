@@ -118,7 +118,7 @@ class LocalFolderModal(
                         val s = statusRef.element
                         with(eventBus) {
                             s.on<SyncStatusChanged> { s.textContent = stateText(it.state) }
-                            s.on<SyncConflict> { s.textContent = "Conflict on ${it.path}: ${it.winner} kept" }
+                            s.on<SyncConflict> { s.textContent = "Conflict on ${it.path}: ${it.winner.name.lowercase()} kept" }
                         }
                     }
                 }

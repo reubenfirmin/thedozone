@@ -47,8 +47,12 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
      * raw. So a write from ANY path — editor save, drag persist, a sync pull writing localStorage
      * underneath this instance — naturally misses the cache; there is no hook to forget.
      * Without this, cards() re-parsed on every call and getCardByIndex made drops O(n²).
+     *
+     * Bounded so a long session browsing many boards can't grow it without limit; eviction is FIFO
+     * (insertion order) and harmless — an evicted column simply re-parses on its next read.
      */
     private val parsedColumns = mutableMapOf<String, Pair<String, List<Card>>>()
+    private val maxParsedColumns = 512
 
     override fun cards(canvasName: CanvasName, columnId: ColumnId): List<Card> {
         val stored = fs.getColumn(canvasName, columnId) ?: return listOf()
@@ -56,6 +60,9 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
         parsedColumns[key]?.let { (raw, parsed) -> if (raw == stored) return parsed }
         val parsed = MarkdownService.fromMd(stored, columnId)
         parsedColumns[key] = stored to parsed
+        if (parsedColumns.size > maxParsedColumns) {
+            parsedColumns.keys.firstOrNull()?.takeIf { it != key }?.let { parsedColumns.remove(it) }
+        }
         return parsed
     }
 

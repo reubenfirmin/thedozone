@@ -51,7 +51,8 @@ class LocalFolderStorage(private val root: LocalDir) : RemoteStorage {
         if (ifMatchRev != null && existing != null && rev(existing.meta()) != ifMatchRev) {
             throw RevConflictException(path)
         }
-        val file = existing ?: parent.file(name, create = true)!!
+        val file = existing ?: parent.file(name, create = true)
+            ?: throw Exception("failed to create local file: $path")
         file.write(content)
         val m = file.meta()
         return RemoteFile(path, rev(m), m.lastModified)

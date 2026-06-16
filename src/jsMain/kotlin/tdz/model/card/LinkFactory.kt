@@ -10,6 +10,11 @@ val imageSuffices = setOf(".jpg", ".JPG", ".png", ".PNG", ".gif", ".GIF", ".svg"
 /** Schemes we treat as openable web links when a token parses as an absolute URL in the browser. */
 private val webSchemes = setOf("http:", "https:", "mailto:", "tel:", "ftp:", "ftps:")
 
+/** `map(lat, long[, zoom][, height])`. Compiled once — parseMapString runs per bracketed token. */
+private val mapRegex = Regex("map\\s*\\((-?\\d+(?:\\.\\d+)?),\\s*(-?\\d+(?:\\.\\d+)?)" +
+        "(?:,\\s*(-?\\d+(?:\\.\\d+)?))?" +
+        "(?:,\\s*(-?\\d+(?:\\.\\d+)?))?\\)")
+
 /**
  * @param link - the link to something
  * @param label - what should be displayed
@@ -17,10 +22,7 @@ private val webSchemes = setOf("http:", "https:", "mailto:", "tel:", "ftp:", "ft
 class LinkFactory(val link: String, val label: String) {
 
     fun parseMapString(input: String): MapLink? {
-        val regex = Regex("map\\s*\\((-?\\d+(?:\\.\\d+)?),\\s*(-?\\d+(?:\\.\\d+)?)" +
-                "(?:,\\s*(-?\\d+(?:\\.\\d+)?))?" +
-                "(?:,\\s*(-?\\d+(?:\\.\\d+)?))?\\)")
-        val matchResult = regex.find(input)
+        val matchResult = mapRegex.find(input)
         return if (matchResult != null) {
             debug("Found a map! $input", mapLog)
             val (lat, long, zoom, height) = matchResult.destructured

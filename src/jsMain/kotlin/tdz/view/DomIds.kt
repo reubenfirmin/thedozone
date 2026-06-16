@@ -45,6 +45,11 @@ object DomIds {
 
     fun isCard(elementId: String) = elementId.startsWith(CARD)
 
+    /** Id for a card's embedded diagram <canvas>. Deliberately NOT under the [CARD] prefix: a `card-`
+     *  id on a child element matches [CARD_SELECTOR] and would hijack the drag system's card lookup
+     *  (a grabbed diagram card would resolve to the canvas, killing the drag). */
+    fun diagramCanvas(ref: CardRef) = "diagram-${ref.columnId}-${ref.index}"
+
     fun canvasLink(name: CanvasName) = "$CANVAS_LINK${name.normalized()}"
 
     /** The canvas a canvas-link drop zone points at, or null if [elementId] isn't one. */

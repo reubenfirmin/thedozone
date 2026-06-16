@@ -142,7 +142,12 @@ data class Theme(
     val iconFaint: Color,
     val watermark: Color,
     val taskHover: Color,
-)
+) {
+    /** True when the theme draws no visible card border (transparent color or zero width). The flip
+     *  animation adds a transient outline in that case so the turning edge stays legible. */
+    val cardBorderInvisible: Boolean
+        get() = "transparent" in cardBorder.toString() || borderWidth.toString() == "0px"
+}
 
 /** Default theme: "Blue Room" — dark navy, orange/gold headings, sky-blue cards. */
 val blueRoomTheme = Theme(

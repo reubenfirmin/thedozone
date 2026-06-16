@@ -25,6 +25,16 @@ class ManifestVvTest {
         assertTrue(written.contains("\"columns\":\"0\""), "canvas fields preserved: $written")
     }
 
+    @Test fun writeAttachesVvForNestedCanvas() {
+        // A nested board's column path carries the FULL canvas path (parent/child); write() must
+        // match it against the canvas via the root-aware parse, or every vv entry is dropped and
+        // concurrent edits to nested boards silently lose to last-write-wins.
+        val manifest = """{"name":"child","parentId":null,"columns":"0","layouts":""}"""
+        val written = ManifestVv.write(manifest, root = "/n", canvas = CanvasName("parent/child"),
+            byPath = mapOf("/n/parent/child/col-0.md" to mapOf("dev1" to 7L)))
+        assertEquals(mapOf("dev1" to 7L), ManifestVv.readOne(written, ColumnId(0)))
+    }
+
     @Test fun readMissingVvIsEmptyMap() {
         val manifest = """{"name":"_","parentId":null,"columns":"0","layouts":""}"""
         assertEquals(emptyMap(), ManifestVv.read(manifest, "/n", CanvasName("_")))
