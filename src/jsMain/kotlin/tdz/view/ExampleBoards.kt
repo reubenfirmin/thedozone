@@ -5,6 +5,7 @@ import tdz.model.ColumnId
 import tdz.model.ColumnLayoutSpec
 import tdz.model.Split
 import tdz.rootCanvas
+import tdz.view.theme.longFormTheme
 
 /**
  * The curated example boards shown in the intro wizard's "Columns and cards" step. Each is pure
@@ -302,8 +303,78 @@ object ExampleBoards {
         )
     }
 
+    /**
+     * A flashcard deck of flip cards: each card carries a `//` face boundary, so the question shows
+     * first and the answer is one click (↻) away. A title banner with a BACKGROUND IMAGE spans the
+     * top, with four category columns of flip cards below.
+     *
+     * It previews the Long Form theme (dark text on a white surface), which guarantees the dark text
+     * reads over a LIGHT wallpaper — wallpaper legibility is otherwise the user's own responsibility,
+     * since they can set any image under any theme.
+     */
+    val SPANISH_EXAM_PREP = run {
+        val root = ColumnId(0)
+        val banner = ColumnId(1)
+        val gridRow = ColumnId(2)
+        val cats = listOf(ColumnId(10), ColumnId(11), ColumnId(12), ColumnId(13))
+
+        // A light, airy Mediterranean photo — dark Long Form text reads over it.
+        fun wallpaper(url: String) = "<!--tdz-col:{\"wallpaper\":\"$url\"}-->"
+        // One flip card: question on the front, answer (the `//` is the face boundary) on the back.
+        fun card(front: String, back: String) = "$front\n//\n$back"
+        fun deck(heading: String, vararg cards: String) = "$heading\n\n" + cards.joinToString("\n\n")
+
+        val md = mapOf(
+            banner to wallpaper("https://images.pexels.com/photos/37800921/pexels-photo-37800921.jpeg") +
+                "\n# Spanish Exam Prep\n\nTap the ↻ on any card to flip the question to its answer.",
+            cats[0] to deck(
+                "# Greetings",
+                card("\"Good morning\"", "Buenos días"),
+                card("\"Good evening\"", "Buenas tardes"),
+                card("\"How are you?\"", "¿Cómo estás?"),
+                card("\"Nice to meet you\"", "Mucho gusto"),
+                card("\"See you tomorrow\"", "Hasta mañana"),
+            ),
+            cats[1] to deck(
+                "# Common verbs",
+                card("to be (permanent)", "ser\nSoy estudiante."),
+                card("to have", "tener\nTengo dos hermanos."),
+                card("to go", "ir\nVoy al mercado."),
+                card("to want", "querer\nQuiero aprender español."),
+                card("to be able to", "poder\n¿Puedes ayudarme?"),
+            ),
+            cats[2] to deck(
+                "# Food & dining",
+                card("\"the bill, please\"", "La cuenta, por favor"),
+                card("\"I'm hungry\"", "Tengo hambre"),
+                card("breakfast", "el desayuno"),
+                card("\"a table for two\"", "Una mesa para dos"),
+                card("\"it's delicious\"", "Está delicioso"),
+            ),
+            cats[3] to deck(
+                "# Numbers & time",
+                card("seven", "siete"),
+                card("\"What time is it?\"", "¿Qué hora es?"),
+                card("today / tomorrow", "hoy / mañana"),
+                card("\"on Monday\"", "el lunes"),
+                card("one hundred", "cien"),
+            ),
+        )
+        ExampleBoard(
+            title = "Spanish exam prep",
+            tagline = "Flip cards: question on the front, answer on the back.",
+            columns = listOf(root, banner, gridRow) + cats,
+            layouts = listOf(
+                ColumnLayoutSpec(root, Split.HORIZONTAL, listOf(banner, gridRow)),
+                ColumnLayoutSpec(gridRow, Split.VERTICAL, cats),
+            ),
+            content = md,
+            theme = longFormTheme,   // dark-on-white, so the dark text reads over the light wallpaper
+        )
+    }
+
     /** Step one — "Columns and cards": pick a board to see how columns and cards work. */
-    val COLUMNS_AND_CARDS: List<ExampleBoard> = listOf(WEEK, VACATION, MEETING)
+    val COLUMNS_AND_CARDS: List<ExampleBoard> = listOf(WEEK, VACATION, MEETING, SPANISH_EXAM_PREP)
 
     /** Every example board, for invariants. */
     val ALL: List<ExampleBoard> = COLUMNS_AND_CARDS + listOf(PROJECT) + MULTI_BOARD

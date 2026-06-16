@@ -15,8 +15,24 @@ import kotlin.test.assertTrue
 class ExampleBoardsTest {
 
     @Test
-    fun stepOneOffersThreeExamples() {
-        assertEquals(3, ExampleBoards.COLUMNS_AND_CARDS.size, "week planner / vacation planner / meeting notes")
+    fun stepOneOffersFourExamples() {
+        assertEquals(4, ExampleBoards.COLUMNS_AND_CARDS.size,
+            "week planner / vacation planner / meeting notes / spanish exam prep")
+    }
+
+    @Test
+    fun spanishExamPrepIsAFlipCardDeckWithABackgroundImageAndAReadableTheme() {
+        val spanish = ExampleBoards.COLUMNS_AND_CARDS.first { it.title.contains("Spanish") }
+        // The decks are flip cards: parse a category column and confirm it has CardSideBreak faces.
+        val greetings = spanish.content.entries.first { it.value.contains("Greetings") }.value
+        val cards = MarkdownService.fromMd(greetings, ColumnId(0))
+        val flipCards = cards.count { c -> c.segments.any { it is tdz.model.card.CardSideBreak } }
+        assertTrue(flipCards >= 4, "the greetings deck is mostly flip cards; got $flipCards")
+        // Exactly one column carries a wallpaper background image (the banner).
+        val wallpapered = spanish.content.values.count { it.contains("<!--tdz-col:") && it.contains("wallpaper") }
+        assertEquals(1, wallpapered, "one column has a background image")
+        // It previews a dark-on-white theme so that dark text is legible over the light wallpaper.
+        assertEquals("Long Form", spanish.theme?.name, "deck previews the Long Form (dark-on-white) theme")
     }
 
     @Test

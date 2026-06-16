@@ -40,6 +40,8 @@ internal object MarkdownWriter {
                     is CardText -> renderRichText(segment.text)
                     is Callout -> "${"  ".repeat(segment.level)}${"-".repeat(segment.weight)} ${renderRichText(segment.text)}"
                     is CardDiagram -> "---\n${segment.text}\n---"
+                    // A flip card's face boundary — round-trips back to the `//` that produced it.
+                    is CardSideBreak -> "//"
                     else -> throw Exception("Not supported: $segment")
                 })
                 output.append("\n")

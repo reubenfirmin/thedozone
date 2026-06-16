@@ -21,6 +21,19 @@ object CssClasses {
     const val CARD_FLOURISH = "tdz-card-flourish"
     const val LOOSE_SEG = "tdz-loose-seg"
 
+    // Flip cards (a card with `//` face boundaries). FLIP marks the CARD element, which turns in 3D
+    // (perspective lives in the card's own transform, so a scrolling column doesn't flatten it). The
+    // front faces the viewer; the back is pre-rotated 180° (reads forward once turned, overlaid so the
+    // card's height can animate from one side to the next); other faces are hidden.
+    const val FLIP = "tdz-flip"
+    const val FLIP_BTN = "tdz-flip-btn"
+    const val FLIP_SIDE = "tdz-flip-side"        // base face (backface hidden, carries the padding)
+    const val FLIP_FRONT = "tdz-flip-front"      // the face facing the viewer (in flow, sizes the card)
+    const val FLIP_BACKFACE = "tdz-flip-backface" // the incoming face (overlaid, rotateY 180)
+    const val FLIP_HIDDEN = "tdz-flip-hidden"    // any other face: display:none
+    const val FLIP_TURN = "tdz-flip-turn"        // the card mid-turn: rotated 180°
+    const val FLIP_RING = "tdz-flip-ring"        // transient outline while turning, when the theme card has no border
+
     // Card content.
     const val TASK = "tdz-task"
     const val MARKER = "tdz-marker"

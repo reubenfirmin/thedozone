@@ -8,6 +8,8 @@ import tdz.model.LayoutTemplate.SINGLE_PANE
 import tdz.model.LayoutTemplates.canvasFromTemplate
 import tdz.model.Model
 import tdz.rootCanvas
+import tdz.view.theme.Theme
+import tdz.view.theme.ThemeManager
 import zoned.framework.events.EventBus
 
 /**
@@ -23,6 +25,9 @@ object ExampleLoader {
     /** Child boards (non-root) this loader has created, so they can be wiped on [reset]. */
     private val createdChildren = mutableSetOf<CanvasName>()
 
+    /** The user's theme before an example previewed a different one — restored on [reset]. */
+    private var savedTheme: Theme? = null
+
     /** Replace the root board with a single example (the step-one gallery picks). */
     fun load(model: Model, eventBus: EventBus<Event>, board: ExampleBoard) =
         loadScene(model, eventBus, listOf(board))
@@ -31,6 +36,7 @@ object ExampleLoader {
     fun loadScene(model: Model, eventBus: EventBus<Event>, boards: List<ExampleBoard>) {
         wipeChildren(model)                                          // clear a prior scene's children first
         clearRootContent(model)
+        applyTheme(boards.firstNotNullOfOrNull { it.theme })         // preview the requested theme, if any
         boards.forEach { board ->
             model.addCanvas(board.canvas())                          // overwrite/create the manifest
             board.content.forEach { (col, md) -> model.updateColumn(board.name, col, md) }
@@ -40,11 +46,23 @@ object ExampleLoader {
         eventBus.fire(RefreshCanvas(rootCanvas))
     }
 
+    /** Preview [wanted] (remembering the user's theme to restore later), or restore the user's theme
+     *  when an example carries none. Never persisted — a reload keeps the user's real theme. */
+    private fun applyTheme(wanted: Theme?) {
+        if (wanted != null) {
+            if (savedTheme == null) savedTheme = ThemeManager.current
+            if (ThemeManager.current != wanted) ThemeManager.use(wanted)
+        } else {
+            savedTheme?.let { ThemeManager.use(it); savedTheme = null }
+        }
+    }
+
     /**
      * Wipe everything the tour created: delete the child boards, empty the root, and navigate home
      * (the user may be looking at a child board when they leave). Back to a pristine empty board.
      */
     fun reset(model: Model, eventBus: EventBus<Event>) {
+        applyTheme(null)                                             // restore the user's theme, if previewed
         val onChild = model.currentCanvas().name != rootCanvas
         wipeChildren(model)
         clearRootContent(model)
