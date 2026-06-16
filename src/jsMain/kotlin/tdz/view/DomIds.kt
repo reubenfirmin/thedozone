@@ -20,6 +20,10 @@ object DomIds {
     /** CSS attribute selector matching card elements (Sortable's draggable filter, parked-card sweeps). */
     const val CARD_SELECTOR = "[id^='$CARD']"
 
+    /** CSS attribute selector matching column elements — distinguishes real in-board content from
+     *  Sortable's floating drag mirror/clones (which live on <body>, outside any column). */
+    const val COLUMN_SELECTOR = "[id^='$COLUMN']"
+
     fun column(columnId: ColumnId) = "$COLUMN$columnId"
 
     /** The columnId encoded in a column element id, or null if [elementId] isn't one. */

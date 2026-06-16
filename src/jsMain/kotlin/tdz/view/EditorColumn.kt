@@ -24,9 +24,15 @@ import zoned.framework.interop.important
 import tdz.view.theme.themedStyleSheet
 import zoned.framework.libs.AceEditor
 import zoned.framework.libs.aceCommand
+import zoned.framework.libs.aceCompleter
+import zoned.framework.libs.aceCompletion
+import zoned.framework.libs.aceEditorOptions
+import zoned.framework.libs.acePlainEditorOptions
 import zoned.framework.libs.aceRange
 import zoned.framework.libs.loadAce
+import zoned.framework.libs.loadAceLanguageTools
 import tdz.view.theme.ThemeManager
+import kotlin.js.RegExp
 
 /**
  * Editor mode for a column using Ace editor.
@@ -39,12 +45,17 @@ import tdz.view.theme.ThemeManager
 class EditorColumn(
     val canvas: Canvas,
     val columnId: ColumnId,
-    val eventBus: EventBus<Event>
+    val eventBus: EventBus<Event>,
+    /** Live source of existing board names for the `[link]` autocompleter (read at completion time
+     *  so boards created/renamed mid-session are offered). Defaults to none (e.g. in tests). */
+    val boardNames: () -> List<CanvasName> = { emptyList() },
 ) {
 
     private var aceEditor: AceEditor? = null
     /** The editor's root element, parked here across detach/re-adopt (Ace's DOM lives inside). */
     private var rootEl: web.html.HTMLElement? = null
+    /** Set by "Undo edits": the next [detach] discards the buffer instead of saving it. */
+    private var discardOnDetach = false
     /** Number of full Ace initializations — the reuse contract is that toggles keep this at 1. */
     internal var initCount = 0
         private set
@@ -93,8 +104,14 @@ class EditorColumn(
                     val editor = ace.edit(editorId)
                     aceEditor = editor
                     // Configure editor
-                    editor.setTheme(ThemeManager.current.editorTheme)
+                    val theme = ThemeManager.current
+                    editor.setTheme(theme.editorTheme)
                     editor.setFontSize(16)
+                    // Reading-oriented themes get a plain editor (no gutter/line-numbers, no print
+                    // margin, no active-line highlight); code themes keep the full code-editor chrome.
+                    // The face stays monospace either way — Ace mis-positions the cursor/selection/
+                    // autocomplete popup under a proportional font.
+                    if (theme.editorPlain) editor.setOptions(acePlainEditorOptions())
                     editor.getSession().apply {
                         setMode("ace/mode/markdown")
                         setUseWrapMode(true)
@@ -104,6 +121,7 @@ class EditorColumn(
                     installListContinuation(editor)
                     installListIndent(editor)
                     installEditorShortcuts(editor)
+                    installBoardLinkCompletion(editor)
                     ensureEditorMarkdownStyles()
 
                     editor.setValue(text)
@@ -118,12 +136,42 @@ class EditorColumn(
     /** The current buffer text (test seam). */
     internal fun text(): String = aceEditor?.getValue() ?: ""
 
+    /** True once the board-link completer is wired (language_tools loaded + options applied). Test seam. */
+    internal fun completerInstalled(): Boolean = aceEditor?.completers?.isNotEmpty() == true
+
+    /** Number of suggestions our completer last produced (-1 if never asked). Test seam. */
+    internal var lastCompletionCount = -1
+        private set
+
+    /** Force the autocomplete popup with [textBefore] in the buffer and the caret at its end, so a
+     *  test can confirm Ace actually invokes our completer end-to-end. Test seam. */
+    internal fun triggerCompletionForTest(textBefore: String) {
+        val ed = aceEditor ?: return
+        ed.setValue(textBefore)
+        ed.clearSelection()   // setValue selects all; drop the selection, leaving the caret at the end
+        ed.execCommand("startAutocomplete")
+    }
+
+    /** Type [ch] through the command pipeline (as a keystroke would), exercising LIVE autocompletion
+     *  — the path a real user hits, unlike the manual [triggerCompletionForTest]. Test seam. */
+    internal fun typeForTest(ch: String) {
+        val ed = aceEditor ?: return
+        ed.commands.exec("insertstring", ed, ch)
+    }
+
+    /**
+     * Discard the unsaved buffer ("Undo edits"): the upcoming [detach] skips its save, so the model
+     * keeps the pre-edit content and the column re-renders from it. One-shot — cleared on detach.
+     */
+    fun revert() { discardOnDetach = true }
+
     /**
      * Save and PARK (not destroy): the root element is pulled out of the DOM before the column
-     * rebuild discards its parent, keeping Ace's DOM alive for the next [render] to re-adopt.
+     * rebuild discards its parent, keeping Ace's DOM alive for the next [render] to re-adopt. After
+     * a [revert] the buffer is dropped instead of saved.
      */
     fun detach() {
-        save()
+        if (discardOnDetach) discardOnDetach = false else save()
         rootEl?.remove()
     }
 
@@ -204,6 +252,46 @@ class EditorColumn(
         })
     }
 
+    /**
+     * Suggest existing board names while the cursor sits inside an unclosed `[ ]` link. Ace's
+     * autocompletion lives in the `language_tools` extension, so load it on demand (mirroring how
+     * [loadAce] code-splits Ace itself), then register a single completer that replaces Ace's
+     * default word/snippet completers — we only want board names here, not generic word completion.
+     */
+    private fun installBoardLinkCompletion(editor: AceEditor) {
+        loadAceLanguageTools().then<Unit> {
+            val completer = aceCompleter(
+                // `[` opens the menu immediately, even before any name is typed (live autocompletion
+                // otherwise needs a non-empty prefix, so a bare `[` would pop nothing).
+                triggerCharacters = arrayOf("["),
+                // Treat every non-bracket, non-newline char as part of the token, so a multi-word
+                // board name ("My Other Canvas") is one prefix back to the opening `[` — without
+                // this, Ace's default word tokenizer would cut the prefix at the first space.
+                identifierRegexps = arrayOf(RegExp("[^\\[\\]\\r\\n]")),
+                getCompletions = { _, session, pos, _, callback ->
+                    val line = session.getLine(pos.row)
+                    val before = line.substring(0, pos.column)
+                    // Bracket auto-close already dropped a `]` right after the cursor when the user
+                    // typed `[`; only emit our own closer when one isn't already there, or the buffer
+                    // ends up `[/a/x (x)]]`.
+                    val closer = if (pos.column < line.length && line[pos.column] == ']') "" else "]"
+                    val suggestions = boardLinkCompletions(before, boardNames(), canvas.name)
+                    lastCompletionCount = suggestions.size
+                    callback(null, suggestions.map { s ->
+                        // caption = leaf so Ace's prefix-matching works on the board name; meta =
+                        // breadcrumb shows the parent path as a grey hint. value inserts the absolute
+                        // link text so the buffer becomes [/a/x (x)] (closing ] added only if needed).
+                        val insertValue = "${s.absolutePath} (${s.leaf})$closer"
+                        aceCompletion(caption = s.leaf, value = insertValue, meta = s.breadcrumb.ifEmpty { "board" })
+                    }.toTypedArray())
+                },
+            )
+            // Order matters: setOptions seeds Ace's default completers, so overwrite AFTER it.
+            editor.setOptions(aceEditorOptions(enableBasicAutocompletion = true, enableLiveAutocompletion = true))
+            editor.completers = arrayOf(completer)
+        }
+    }
+
     /** Move the cursor to the previous/next heading line; false (Ace default) if there is none. */
     private fun jumpToHeading(ed: AceEditor, forward: Boolean): Boolean {
         val target = headingRow(ed.getValue().split("\n"), ed.getCursorPosition().row, forward) ?: return false
@@ -268,6 +356,43 @@ class EditorColumn(
         aceEditor = null
         rootEl = null
     }
+}
+
+/**
+ * A single board suggested by the board-link completer.
+ *
+ * @param absolutePath  The board's absolute path, always starting with `/` (e.g. `/a/x`). Inserted
+ *                      into the link text so the link resolves unambiguously regardless of the
+ *                      editing board's location.
+ * @param leaf          The last path segment in display form (e.g. `x`). Used as the completion
+ *                      caption so Ace's prefix-matching filters on the human-visible name.
+ * @param breadcrumb    The parent path in display form (e.g. `a`). Shown as a grey hint in the
+ *                      popup so boards with the same leaf are distinguishable. Empty for top-level boards.
+ */
+internal data class BoardSuggestion(val absolutePath: String, val leaf: String, val breadcrumb: String)
+
+/**
+ * Board-link suggestions for the text [beforeCursor] (the line up to the caret): the existing
+ * [boards] to offer when the caret sits inside an unclosed `[ ]`, minus [self] (no self-links),
+ * de-duplicated by absolute path and sorted. Empty when the caret isn't inside a bracket link. Ace
+ * narrows this list by the typed prefix (matching against caption = leaf); this only decides whether
+ * to offer anything and what pool.
+ */
+internal fun boardLinkCompletions(beforeCursor: String, boards: List<CanvasName>, self: CanvasName): List<BoardSuggestion> {
+    val open = beforeCursor.lastIndexOf('[')
+    val close = beforeCursor.lastIndexOf(']')
+    if (open < 0 || close > open) return emptyList()
+    val selfPath = "/" + self.normalized()
+    return boards
+        .filter { it.normalized().isNotEmpty() }
+        .map { BoardSuggestion(
+            absolutePath = "/" + it.normalized(),
+            leaf = it.leaf(),
+            breadcrumb = it.parentName().display(),
+        ) }
+        .filter { it.absolutePath != selfPath }
+        .distinctBy { it.absolutePath }
+        .sortedBy { it.absolutePath }
 }
 
 /** Row of the previous (forward=false) or next (forward=true) markdown heading relative to

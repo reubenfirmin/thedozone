@@ -15,8 +15,9 @@ object HelpContent {
         - Split column, stacked — Ctrl+Alt+↑ / ↓ / ⌘+⌥+↑ / ↓
 
         ## Boards & Navigation
+        - Open the board palette — Ctrl+K or Ctrl+L (or Page Down) / ⌘+K or ⌘+L (or fn+↓)
         - Go to the parent board — Page Up / fn+↑
-        - Open the child-board switcher — Page Down / fn+↓
+        In the palette: type a path (like /work/today) and Enter to go there, creating it if new; type to filter the current board's children; ↑ / ↓ to move and Enter to open; Page Up jumps to the parent; Esc closes.
 
         ## App
         - Open Sync — Ctrl+Shift+D / ⌘+⇧+D
@@ -34,6 +35,13 @@ object HelpContent {
         - Beginning / end of document — Ctrl+Home / End / ⌘+↑ / ↓
         - Jump to the previous / next heading — Ctrl+↑ / ↓ / ⌃+↑ / ↓
         - Focus the previous / next column from the editor — Alt+← / → / ⌥+← / →
+        - Undo / redo — Ctrl+Z / Ctrl+Shift+Z / ⌘+Z / ⇧+⌘+Z
+        - Select all — Ctrl+A / ⌘+A
+        - Find — Ctrl+F / ⌘+F
+        - Find next / previous — Ctrl+K / Ctrl+Shift+K / ⌘+G / ⇧+⌘+G
+        - Replace — Ctrl+H / ⌥+⌘+F
+        - Move the line up / down — Alt+↑ / ↓ / ⌥+↑ / ↓
+        - Delete the line — Ctrl+D / ⌘+D
 
         ## Mouse
         - Show the context menu — Right-click

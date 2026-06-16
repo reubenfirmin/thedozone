@@ -5,6 +5,7 @@ import tdz.model.CanvasName
 import tdz.model.ColumnId
 import tdz.model.ColumnLayoutSpec
 import tdz.rootCanvas
+import tdz.view.theme.Theme
 
 /**
  * A self-contained example board the intro wizard can drop onto the canvas: which canvas it
@@ -20,6 +21,10 @@ data class ExampleBoard(
     val content: Map<ColumnId, String>,
     val name: CanvasName = rootCanvas,
     val parent: CanvasName? = null,
+    // A board may request a UI theme to be PREVIEWED while it's shown (e.g. a flashcard deck that
+    // wants dark-on-white). [ExampleLoader] applies it without persisting and restores the user's
+    // theme when the tour resets. Null = leave the user's theme alone.
+    val theme: Theme? = null,
 ) {
     /** This board as a [Canvas]. */
     fun canvas(): Canvas = Canvas(name, parent, columns, layouts)

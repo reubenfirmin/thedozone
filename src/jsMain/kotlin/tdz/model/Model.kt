@@ -7,7 +7,7 @@ import tdz.model.card.ListGroup
 import tdz.model.localstorage.*
 import tdz.model.markdown.MarkdownService
 import tdz.rootCanvas
-import zoned.framework.Debugger.debug
+
 
 /**
  * The app's persistent state: canvases, columns (markdown), cards (projections of that markdown),
@@ -31,24 +31,13 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
         loaded
     }
 
-    /**
-     * Recursive function that produces list of canvases from top down to this canvas, inclusive
-     */
-    fun path(canvasName: CanvasName): List<CanvasName> {
-
-        if (canvasName.normalized().isEmpty() || canvasName == rootCanvas) {
-            return listOf(rootCanvas)
-        }
-        val canvas = getCanvas(canvasName) ?: throw Exception("ERROR - null canvas when navigating for $canvasName")
-
-        return if (canvas.parent == null) {
-            listOf(canvasName)
-        } else {
-            return path(canvas.parent) + canvas.name
-        }
-    }
-
     fun changeCanvas(canvasName: CanvasName) {
+        // Root is the empty path and is never created by ensurePath, yet it must always be
+        // reachable (e.g. PageUp to root from a top-level board after a cold deep-link, where root
+        // was never materialized). Materialize it on demand so navigation never lands on null.
+        if (canvasName.isRoot() && !exists(canvasName)) {
+            addCanvas(canvasFromTemplate(rootCanvas, null, SINGLE_PANE))
+        }
         currentCanvas = getCanvas(canvasName)
     }
 
@@ -106,31 +95,14 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
         fs.storeColumn(column, canvasName, markdown)
     }
 
-    /** Moves [srcCard] into [toCanvas] (creating it if needed); returns the destination column. */
+    /** Moves [srcCard] into [toCanvas] (creating it if needed); returns the destination column.
+     *  Reparenting via drag is intentionally removed — a board's parent is set only at creation.
+     *  (Explicit reparent will come later via a context-menu action.) */
     fun moveCardToCanvas(srcCard: Card, fromCanvas: CanvasName, toCanvas: CanvasName): ColumnId {
-
-        val canvasBeingMoved = srcCard.linkedCanvas()
-        if (canvasBeingMoved != null) {
-            // canvas is being moved - the source card represents a canvas, so we'll move that canvas (and the card)
-            // to the dest
-            if (canvasBeingMoved != toCanvas) {
-                val existing = fs.getCanvas(canvasBeingMoved)
-                if (existing != null) {
-                    // The link card stands for its canvas: moving it moves the canvas in the
-                    // hierarchy, so the linked canvas's parent follows the card.
-                    fs.storeCanvas(Canvas(existing.name, toCanvas, existing.columns, existing.layouts))
-                } // otherwise, it's a new canvas, and we don't need to store it yet
-            } else {
-                // happens when user drops card onto itself??
-                debug("Card dropped onto itself, ignoring")
-            }
-        }
-
         val destCanvas = fs.getCanvas(toCanvas)
-            ?: canvasFromTemplate(name = toCanvas, parent = fromCanvas, SINGLE_PANE).also { fs.storeCanvas(it) }
+            ?: canvasFromTemplate(name = toCanvas, parent = toCanvas.parentName(), SINGLE_PANE).also { fs.storeCanvas(it) }
 
         val intendedColumn = srcCard.metadata.columnId
-
         val destColumn = if (destCanvas.columns.contains(intendedColumn)
             && !destCanvas.layoutMap.containsKey(intendedColumn)) {
             intendedColumn
@@ -138,7 +110,6 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
             destCanvas.firstNonLayout()
         }
 
-        // update cards
         val cards = cards(toCanvas, destColumn)
         saveCards(toCanvas, destColumn, cards + srcCard)
         // Removal is positional by design (cards have no stable ids; markdown is the source of truth).

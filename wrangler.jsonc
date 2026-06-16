@@ -1,8 +1,12 @@
 {
-  // Cloudflare Worker serving thedozone2 as static assets on beta.do.zone.
-  // Deployed by .github/workflows/ci.yml via `npx wrangler deploy`.
+  // Cloudflare Worker serving thedozone2 as static assets. Two environments:
+  //   npx wrangler deploy --env beta        -> beta.do.zone  (worker thedozone2-beta)
+  //   npx wrangler deploy --env production  -> the.do.zone   (worker thedozone2-production)
+  // `assets` and `compatibility_date` are inherited by both; `routes` are per-env. The worker name
+  // is the top-level "thedozone2" with wrangler's automatic "-<env>" suffix. CI (ci.yml) deploys
+  // --env beta on push to main.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "thedozone2-beta",
+  "name": "thedozone2",
   "compatibility_date": "2026-06-07",
   "assets": {
     // The full site assembled by `./gradlew jsBrowserDistribution`.
@@ -10,9 +14,18 @@
     // SPA: serve index.html for unmatched routes instead of 404.
     "not_found_handling": "single-page-application"
   },
-  // Attach the custom domain. Wrangler creates the DNS record on deploy,
+  // Attach the custom domain per environment. Wrangler creates the DNS record on deploy,
   // provided do.zone is an active zone in the target Cloudflare account.
-  "routes": [
-    { "pattern": "beta.do.zone", "custom_domain": true }
-  ]
+  "env": {
+    "beta": {
+      "routes": [
+        { "pattern": "beta.do.zone", "custom_domain": true }
+      ]
+    },
+    "production": {
+      "routes": [
+        { "pattern": "the.do.zone", "custom_domain": true }
+      ]
+    }
+  }
 }

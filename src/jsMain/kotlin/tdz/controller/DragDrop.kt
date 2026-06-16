@@ -233,6 +233,15 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
         if (r.height > 0) dragCardH = r.height
         dropZones = document.querySelectorAll(".${CssClasses.DROP_ZONE}").let { zones ->
             (0 until zones.length).mapNotNull { zones[it] }
+        }.filterNot { zone ->
+            // Wormhole targets must be REAL in-board chips. Exclude:
+            //  (a) any chip not inside a column — Sortable's floating drag MIRROR is a clone of the
+            //      card (with a copy of the chip) appended to <body>, and it follows the pointer, so
+            //      it would otherwise light its own wormhole (intermittently, by clone timing); and
+            //  (b) the dragged card's own chip (or a multi-drag group member's), so a card can't fall
+            //      into itself.
+            val card = zone.closest(DomIds.CARD_SELECTOR)
+            zone.closest(DomIds.COLUMN_SELECTOR) == null || card === dragged || selected.any { it === card }
         }
         installPortalHook()
     }
@@ -371,7 +380,14 @@ class DragDrop(private val model: Model, private val eventBus: EventBus<Event>) 
         // this before stopPortalTracking) — NOT by Sortable's drop target, which reflects wherever
         // the placeholder happened to sit after shuffling cards around. Wormhole open = card goes in.
         val linkEl = activeLink as? HTMLElement
-        val targetCanvas = linkEl?.let { DomIds.canvasLinkName(it.id.asString()) }
+        // Read the absolute target board from the data-canvas-name attribute (set by CardRenderer to
+        // absoluteTarget.normalized() — the full path, not the bare leaf).  The element id still
+        // uses the bare leaf to keep "/" out of CSS selectors; reading the attribute avoids that
+        // ambiguity and is the authoritative drop-routing value.
+        // Presence of the attribute — not non-emptiness — means "this is a link drop": the ROOT board
+        // normalizes to "" (e.g. a `..` link on a child of root points there), and an empty value is a
+        // valid target, not a missing one. getAttribute returns null only when it's genuinely absent.
+        val targetCanvas = linkEl?.getAttribute("data-canvas-name")?.let { CanvasName(it) }
         if (linkEl != null && targetCanvas != null) {
             handleWormholeDrop(event, canvasName, targetCanvas, linkEl)
             return

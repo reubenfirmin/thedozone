@@ -19,12 +19,27 @@ object CssClasses {
     const val CARD_HEADER = "tdz-card-header"
     const val CARD_BODY = "tdz-card-body"
     const val CARD_FLOURISH = "tdz-card-flourish"
+    const val CARD_LINK = "tdz-card-link"     // a card whose only content is a canvas link → compact nav chip
     const val LOOSE_SEG = "tdz-loose-seg"
+
+    // Flip cards (a card with `//` face boundaries). FLIP marks the CARD element, which turns in 3D
+    // (perspective lives in the card's own transform, so a scrolling column doesn't flatten it). The
+    // front faces the viewer; the back is pre-rotated 180° (reads forward once turned, overlaid so the
+    // card's height can animate from one side to the next); other faces are hidden.
+    const val FLIP = "tdz-flip"
+    const val FLIP_BTN = "tdz-flip-btn"
+    const val FLIP_SIDE = "tdz-flip-side"        // base face (backface hidden, carries the padding)
+    const val FLIP_FRONT = "tdz-flip-front"      // the face facing the viewer (in flow, sizes the card)
+    const val FLIP_BACKFACE = "tdz-flip-backface" // the incoming face (overlaid, rotateY 180)
+    const val FLIP_HIDDEN = "tdz-flip-hidden"    // any other face: display:none
+    const val FLIP_TURN = "tdz-flip-turn"        // the card mid-turn: rotated 180°
+    const val FLIP_RING = "tdz-flip-ring"        // transient outline while turning, when the theme card has no border
 
     // Card content.
     const val TASK = "tdz-task"
     const val MARKER = "tdz-marker"
     const val MARKER_DONE = "tdz-marker-done"
+    const val MARKER_NUM = "tdz-marker-num"   // numbered-list marker (circled digit) — rendered a touch larger
     const val CALLOUT = "tdz-callout"
     const val H1 = "tdz-h1"
     const val H2 = "tdz-h2"

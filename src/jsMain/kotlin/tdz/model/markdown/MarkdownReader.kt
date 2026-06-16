@@ -13,6 +13,7 @@ import tdz.model.markdown.MarkdownListElement.consumeCallout
 import tdz.model.markdown.MarkdownListElement.consumeListElement
 import tdz.model.markdown.MarkdownWhitespace.consumeEmptyLine
 import tdz.model.markdown.MarkdownWhitespace.consumeSeparator
+import tdz.model.markdown.MarkdownWhitespace.consumeSideBreak
 
  /**
  * Markdown -> Cards (column assignment via embedded metadata comments)
@@ -70,6 +71,9 @@ internal object MarkdownReader {
                 // before separator/empty-line: a blank line both ends the quote and the card
                 consumeBlockquote(trimmed, line, state) -> {}
                 consumeMetadataLine(trimmed, state) -> {}
+                // A lone `//` is a within-card face boundary (flip card); after the block consumers
+                // above, so a `//` inside a code/diagram/quote block stays literal.
+                consumeSideBreak(trimmed, state) -> {}
                 consumeSeparator(trimmed, state) -> {}
                 consumeEmptyLine(trimmed, state) -> {}
                 consumeListElement(line, state) -> {}

@@ -50,26 +50,34 @@ class CanvasImporter(private val store: CanvasStore) {
 
     private fun importAsNewCanvas(fileName: String, doc: TdzDocument, currentCanvas: Canvas): ImportResult {
         val name = uniqueName(fileName)
-        if (doc.prototype != null) {
-            store.addCanvas(Canvas(name, currentCanvas.name, doc.prototype.columns, doc.prototype.layouts))
-        } else {
-            val columnCount = doc.cards.map { it.metadata.columnId }.distinct().size
-            store.addCanvas(
-                Canvas(
-                    name, currentCanvas.name, (0..columnCount).map(::ColumnId),
-                    listOf(ColumnLayoutSpec(ColumnId(0), Split.VERTICAL, (1..columnCount).map(::ColumnId))),
-                )
-            )
-        }
+        store.addCanvas(boardFrom(name, name.parentName(), doc))
         saveCardsInto(name, doc.cards)
         val linkColumn = addLinkCard(currentCanvas, name)
         return ImportResult(currentCanvas.name, listOf(linkColumn))
     }
 
     private fun importHere(doc: TdzDocument, currentCanvas: Canvas): ImportResult {
+        // A blank target — exactly one EMPTY content column — ADOPTS the uploaded file's column
+        // layout, so uploading a multi-column board into a fresh board restores its columns instead
+        // of cramming every card into the single column. An in-use board just merges the cards.
+        val content = currentCanvas.columns.filterNot { currentCanvas.layoutMap.containsKey(it) }
+        if (content.size == 1 && store.cards(currentCanvas.name, content.first()).isEmpty()) {
+            store.addCanvas(boardFrom(currentCanvas.name, currentCanvas.parent, doc))
+        }
         val changed = saveCardsInto(currentCanvas.name, doc.cards)
         return ImportResult(currentCanvas.name, changed)
     }
+
+    /** The board (keeping [name] + [parent]) to persist for [doc]: its prototype's layout when
+     *  present, else a flat single-row layout auto-generated over the cards' source columns. */
+    private fun boardFrom(name: CanvasName, parent: CanvasName?, doc: TdzDocument): Canvas =
+        if (doc.prototype != null) {
+            Canvas(name, parent, doc.prototype.columns, doc.prototype.layouts)
+        } else {
+            val columnCount = doc.cards.map { it.metadata.columnId }.distinct().size
+            Canvas(name, parent, (0..columnCount).map(::ColumnId),
+                listOf(ColumnLayoutSpec(ColumnId(0), Split.VERTICAL, (1..columnCount).map(::ColumnId))))
+        }
 
     /** Save cards grouped by their source column, remapping any non-leaf target onto the first leaf. */
     private fun saveCardsInto(canvasName: CanvasName, cards: List<Card>): List<ColumnId> {
@@ -89,7 +97,9 @@ class CanvasImporter(private val store: CanvasStore) {
         val column = currentCanvas.firstNonLayout()
         val existing = store.cards(currentCanvas.name, column)
         val link = Card(
-            listOf(CardText(listOf<RichText>(CanvasLink(target, target.display())))),
+            // Imported boards are created top-level, so the link must be ABSOLUTE — a relative
+            // target would resolve under whatever board the link is viewed from (wrong board).
+            listOf(CardText(listOf<RichText>(CanvasLink("/" + target.normalized(), target.display())))),
             CardMetadata(column),
             existing.size,
         )

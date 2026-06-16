@@ -35,6 +35,7 @@ interface CanvasMenuActions {
     fun splitEven(split: Split)   // SplitColumn: divide focused column into 2 equal panes
     fun distribute(split: Split)  // AddColumn: add a pane to the containing layout
     fun deleteColumn()            // DeleteColumn: remove the column + rearrange the layout
+    fun revertColumn()            // discard the open editor's unsaved buffer, back to card mode
     fun setTheme(theme: Theme)    // switch the active UI theme
     fun openCloudSync()           // open the cloud-sync setup modal
     fun openLocalFolderSync()     // open the local-folder sync modal
@@ -67,15 +68,21 @@ fun canvasSections(
     installAvailable: Boolean = false,
 ): List<MenuSection> = listOf(
     MenuSection(
-        items = listOf(
-            MenuItem(
+        items = buildList {
+            add(MenuItem(
                 label = columnMode?.let { if (it == Mode.CARD) "Edit" else "Save" } ?: "Switch column",
                 enabled = columnMode != null,
                 onSelect = actions::toggleColumn,
-            ),
-            MenuItem(label = "Clear Done", shortcut = "Ctrl+;", onSelect = actions::clearDone),
-            MenuItem(label = "Delete Column", enabled = columnMode != null, onSelect = actions::deleteColumn),
-        ),
+            ))
+            if (columnMode == Mode.EDITOR) {
+                // Editing this column: offer Save's counterpart, and drop the card-mode actions
+                // (Clear Done / Delete Column) — they don't apply while the markdown is open.
+                add(MenuItem(label = "Undo edits", onSelect = actions::revertColumn))
+            } else {
+                add(MenuItem(label = "Clear Done", shortcut = "Ctrl+;", onSelect = actions::clearDone))
+                add(MenuItem(label = "Delete Column", enabled = columnMode != null, onSelect = actions::deleteColumn))
+            }
+        },
     ),
     MenuSection(
         title = "Split",
@@ -188,6 +195,7 @@ fun canvasMenu(
         override fun deleteColumn() {
             columnId?.let { eventBus.fire(DeleteColumn(model.currentCanvas().name, it)) }
         }
+        override fun revertColumn() { columnId?.let { columns.revertMode(it) } }
         override fun setTheme(theme: Theme) {
             ThemeManager.use(theme)
             model.setTheme(theme.name)   // remember across reloads (localStorage via the model)

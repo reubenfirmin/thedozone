@@ -8,12 +8,8 @@ import kotlin.test.assertTrue
 
 class ModelWormholeTest {
 
-    /**
-     * A canvas-link card stands for its canvas: wormholing it to another board MOVES the canvas in
-     * the hierarchy, so the linked canvas's parent must follow the card.
-     */
     @Test
-    fun movingACanvasLinkCardReparentsTheLinkedCanvas() {
+    fun movingACanvasLinkCardDoesNotReparentTheLinkedCanvas() {
         val model = Model(CanvasName("_wh-a"))
         val a = CanvasName("_wh-a"); val b = CanvasName("_wh-b"); val c = CanvasName("_wh-c")
         model.addCanvas(canvasFromTemplate(a, null, SINGLE_PANE))
@@ -25,6 +21,6 @@ class ModelWormholeTest {
 
         model.moveCardToCanvas(linkCard, fromCanvas = a, toCanvas = b)
 
-        assertEquals(b, model.getCanvas(c)?.parent, "the linked canvas is reparented under the destination")
+        assertEquals(a, model.getCanvas(c)?.parent, "moving a link card must NOT reparent the linked canvas")
     }
 }

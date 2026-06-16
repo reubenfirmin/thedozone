@@ -7,6 +7,7 @@ import tdz.controller.DragDrop
 import tdz.controller.events.Event
 import zoned.framework.events.EventBus
 import tdz.controller.events.SwitchToCanvas
+import tdz.resolveCanvasLinkTarget
 import tdz.model.*
 import tdz.model.ref
 import tdz.model.card.*
@@ -14,6 +15,7 @@ import tdz.view.theme.FlourishStyle
 import tdz.view.theme.MarkerStyle
 import tdz.view.theme.ThemeManager
 import tdz.view.theme.themedStyleSheet
+import web.cssom.ClassName
 import web.dom.document
 import web.html.HTMLCanvasElement
 import web.html.HTMLDivElement
@@ -23,9 +25,14 @@ import zoned.framework.dom.Ref
 import zoned.framework.dom.onClick
 import zoned.framework.dom.onMount
 import zoned.framework.dom.ref
+import zoned.framework.interop.BackfaceVisibility
+import zoned.framework.interop.TransformStyle
+import zoned.framework.interop.backfaceVisibility
 import zoned.framework.interop.backgroundClipText
 import zoned.framework.interop.containIntrinsicSize
 import zoned.framework.interop.css
+import zoned.framework.interop.transformStyle
+import zoned.framework.interop.transitionNone
 import zoned.framework.interop.getHtmlElement
 import zoned.framework.interop.important
 import zoned.framework.interop.webkitTextFillColor
@@ -41,12 +48,6 @@ object CardRenderer {
 
     /** Sane ceiling on list nesting depth; parsing never exceeds 2, so beyond this is malformed. */
     private const val MAX_LIST_DEPTH = 32
-
-    private val circledNumbers = listOf("⓪", "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩",
-                                        "⑪", "⑫", "⑬", "⑭", "⑮", "⑯", "⑰", "⑱", "⑲", "⑳", "㉑",
-                                        "㉒", "㉓", "㉔", "㉕", "㉖", "㉗", "㉘", "㉙", "㉚", "㉛", "㉜",
-                                        "㉝", "㉞", "㉟", "㊱", "㊲", "㊳", "㊴", "㊵", "㊶", "㊷", "㊸",
-                                        "㊹", "㊺", "㊻", "㊼", "㊽", "㊾", "㊿")
 
     /**
      * Render a stack of cards. [loose] opens up the vertical rhythm — more space between cards and
@@ -99,12 +100,23 @@ object CardRenderer {
             else if (imageOnly) append(" ${CssClasses.CARD_IMAGE}")    // photo fills the card, no inner frame
             else if (t.titleInStrip && leadingHeading) append(" ${CssClasses.CARD_STRIP}")
             else if (t.titleInBorder && leadingHeading) append(" ${CssClasses.CARD_FRAMED}")
+            // A link-only card is a compact nav chip, not a prose block (drops margin/padding/flourish).
+            if (card.isCanvasLink()) append(" ${CssClasses.CARD_LINK}")
             if (loose) append(" ${CssClasses.CARD_LOOSE}")
         }
     }
 
     private fun DIV.buildCard(canvasName: CanvasName, card: Card, eventBus: EventBus<Event>, loose: Boolean) {
         val t = ThemeManager.current
+        // A card with `//` face boundaries is a FLIP card: show one side at a time with a top-right
+        // flip affordance. It skips the TUI/Material "leading-heading-into-the-chrome" treatment —
+        // each side renders its own headings inline.
+        val sides = card.segments.splitOnSideBreak()
+        if (sides.size > 1) {
+            id = DomIds.card(card.ref)
+            buildFlipCard(canvasName, card, sides, eventBus, loose)
+            return
+        }
         // TUI: a non-title card's leading heading becomes the panel's title, sitting in the top
         // border line (┌─ title ─┐). h1-only cards are excluded — they get the chromeless label
         // treatment below instead of an empty group-box frame.
@@ -140,9 +152,208 @@ object CardRenderer {
                 }
             }
             // Ornamental centered divider at the foot of content cards (not h1-only title cards).
-            if (t.cardFooterFlourish && !chromeless) div(CssClasses.CARD_FLOURISH) {}
+            if (t.cardFooterFlourish && !chromeless && !card.isCanvasLink()) div(CssClasses.CARD_FLOURISH) {}
         }
         if (stripTitle != null) div(CssClasses.CARD_BODY) { body() } else body()
+    }
+
+    /** Flip-card turn duration; the CSS transition and the JS swap timing share this value. */
+    private const val FLIP_MS = 360
+
+    /**
+     * A flip card is a genuine 3D flip: the whole CARD element turns 180° about its vertical axis —
+     * border, fill, and shadow with it (it keeps the theme's normal card rules, no special bg).
+     *
+     * Depth comes from `perspective(...)` INSIDE the card's own transform (not on an ancestor) — the
+     * column is a scroll container, which would otherwise flatten the 3D. The front face is in flow
+     * and sizes the card; the back is overlaid and pre-rotated 180° so it reads forward once turned.
+     * One click turns the card to 180° (revealing the back) while the card's HEIGHT animates from the
+     * front's to the back's measured height, so it grows/shrinks smoothly DURING the flip rather than
+     * after. At the end, with the transition suppressed, the card snaps back to 0° and promotes the
+     * revealed side to the front (height back to auto) in the same frame, so nothing jumps. N sides —
+     * the back is always the NEXT one.
+     *
+     * When the theme's card has no visible border (e.g. Long Form), a transient outline
+     * ([CssClasses.FLIP_RING]) is added for the duration of the turn so the turning edge is visible.
+     * State is DOM-local and ephemeral: a column re-render restarts at side 0.
+     */
+    private fun DIV.buildFlipCard(
+        canvasName: CanvasName,
+        card: Card,
+        sides: List<List<CardSegment>>,
+        eventBus: EventBus<Event>,
+        loose: Boolean,
+    ) {
+        ensureFlipStyles()
+        // Mark the card element itself as the rotating surface and capture it — `ref` here binds to
+        // the card div we're building into.
+        classes = classes + CssClasses.FLIP
+        val cardRef = Ref<HTMLElement>()
+        ref(cardRef)
+
+        // If the theme draws no visible card border, the turning edge would be invisible; add a
+        // transient outline just while turning so the flip reads.
+        val t = ThemeManager.current
+        val needsRing = "transparent" in t.cardBorder.toString() || t.borderWidth.toString() == "0px"
+
+        val n = sides.size
+        val btnRef = Ref<HTMLElement>()
+        val sideRefs = mutableListOf<Ref<HTMLElement>>()
+        var current = 0
+        var animating = false
+
+        button(classes = CssClasses.FLIP_BTN) {
+            ref(btnRef)
+            +"↻ 1/$n"
+            attributes["aria-label"] = "Flip card"
+            onClick { ev ->
+                // Never let a flip start a drag or the column's double-click-to-edit.
+                ev.stopPropagation(); ev.preventDefault()
+                if (animating || n < 2) return@onClick
+                animating = true
+                val next = (current + 1) % n
+                val el = cardRef.element
+                // Animate the card height from the current side to the incoming side (the back face,
+                // overlaid with height:auto, so its offsetHeight is the natural target) so it grows
+                // smoothly during the turn instead of snapping after.
+                val startH = el.offsetHeight
+                val endH = sideRefs[next].element.offsetHeight
+                el.style.height = "${startH}px"
+                el.getBoundingClientRect()                              // pin the start height
+                if (needsRing) el.classList.add(ClassName(CssClasses.FLIP_RING))
+                el.classList.add(ClassName(CssClasses.FLIP_TURN))      // turn 0° -> 180°
+                el.style.height = "${endH}px"                          // ...while height eases to the back's
+                kotlinx.browser.window.setTimeout({
+                    current = next
+                    // Snap back to 0° with the transition suppressed (inline, like the wormhole), promote
+                    // the revealed side to the front, and release the explicit height — all in one frame,
+                    // so nothing jumps; then restore the stylesheet transition for the next turn.
+                    el.style.transition = "none"
+                    el.classList.remove(ClassName(CssClasses.FLIP_TURN))
+                    setFaces(sideRefs, current, (current + 1) % n)
+                    el.style.height = ""                                // back to auto (natural for the new front)
+                    el.getBoundingClientRect()                          // commit the 0° / no-transition state
+                    el.style.transition = ""                            // back to the stylesheet's transition
+                    if (needsRing) el.classList.remove(ClassName(CssClasses.FLIP_RING))
+                    btnRef.element.textContent = "↻ ${current + 1}/$n"
+                    animating = false
+                }, FLIP_MS)
+            }
+        }
+        sides.forEachIndexed { i, segments ->
+            val sideRef = Ref<HTMLElement>()
+            sideRefs.add(sideRef)
+            // Initial faces set here (not just in JS) so there's no flash before mount: side 0 faces
+            // the viewer, side 1 is the overlaid back, the rest are hidden.
+            val face = when (i) {
+                0 -> CssClasses.FLIP_FRONT
+                1 -> CssClasses.FLIP_BACKFACE
+                else -> CssClasses.FLIP_HIDDEN
+            }
+            div("${CssClasses.FLIP_SIDE} $face") {
+                ref(sideRef)
+                for (segment in segments) {
+                    if (loose) div(CssClasses.LOOSE_SEG) { renderSegment(canvasName, segment, card, eventBus) }
+                    else renderSegment(canvasName, segment, card, eventBus)
+                }
+            }
+        }
+    }
+
+    /** Make side [front] the viewer-facing (in-flow) face, side [back] the overlaid incoming face, and
+     *  hide every other side — toggling typed classes only, no inline style. */
+    private fun setFaces(sideRefs: List<Ref<HTMLElement>>, front: Int, back: Int) {
+        sideRefs.forEachIndexed { i, r ->
+            val cl = r.element.classList
+            cl.remove(ClassName(CssClasses.FLIP_FRONT))
+            cl.remove(ClassName(CssClasses.FLIP_BACKFACE))
+            cl.remove(ClassName(CssClasses.FLIP_HIDDEN))
+            cl.add(ClassName(when (i) {
+                front -> CssClasses.FLIP_FRONT
+                back -> CssClasses.FLIP_BACKFACE
+                else -> CssClasses.FLIP_HIDDEN
+            }))
+        }
+    }
+
+    private fun ensureFlipStyles() {
+        val t = ThemeManager.current
+        themedStyleSheet("tdz-flip-styles") {
+            // The whole card turns. Depth comes from perspective() in the card's OWN transform (an
+            // ancestor `perspective` would be flattened by the scrolling column); preserve-3d keeps the
+            // two faces in the card's 3D space so the back face's backface-visibility works. Fill /
+            // border / shadow are the theme's ordinary `.tdz-card` — no special bg. Both transform and
+            // height transition, so the card grows/shrinks smoothly as it turns.
+            val ease = cubicBezier(0.45, 0.05, 0.25, 1.0)
+            rule(".${CssClasses.CARD}.${CssClasses.FLIP}") {
+                position = Position.relative
+                padding = Padding(0.px)
+                // border-box so the pinned/animated height (measured via offsetHeight, which includes
+                // the border) matches exactly — otherwise the card jumps when the height is pinned.
+                boxSizing = BoxSizing.borderBox
+                // content-visibility:auto (on the base .tdz-card) applies paint containment, which
+                // FORCES transform-style:flat and would silently kill the 3D — opt back out here.
+                contentVisibility = ContentVisibility.visible
+                transformStyle(TransformStyle.PRESERVE_3D)
+                transform { perspective(900.px); rotateY(0.deg) }
+                transition += Transition("transform", FLIP_MS.ms, ease)
+                transition += Transition("height", FLIP_MS.ms, ease)
+            }
+            rule(".${CssClasses.CARD}.${CssClasses.FLIP}.${CssClasses.FLIP_TURN}") {
+                transform { perspective(900.px); rotateY(180.deg) }
+            }
+            // When the theme draws no visible card border, add a real one to the card for the duration
+            // of the turn so the flipping edge reads. box-sizing:border-box (above) means coloring the
+            // 1px border in causes no layout shift.
+            rule(".${CssClasses.CARD}.${CssClasses.FLIP}.${CssClasses.FLIP_RING}") {
+                border = Border(1.px, BorderStyle.solid, t.fg)
+            }
+            rule(".${CssClasses.FLIP_SIDE}") {
+                padding = Padding(t.cardPadding)
+                boxSizing = BoxSizing.borderBox
+                backfaceVisibility(BackfaceVisibility.HIDDEN)
+            }
+            // Front is in flow (sizes the card when height is auto); back is overlaid with height:auto
+            // so its measured offsetHeight is the natural target for the height animation.
+            rule(".${CssClasses.FLIP_FRONT}") { position = Position.relative }
+            rule(".${CssClasses.FLIP_BACKFACE}") {
+                position = Position.absolute
+                top = 0.px; left = 0.px
+                width = 100.pct
+                transform { rotateY(180.deg) }
+                pointerEvents = PointerEvents.none
+            }
+            rule(".${CssClasses.FLIP_HIDDEN}") { display = Display.none }
+            // The drag mirror (Sortable lifts a clone to <body>, class CARD_DRAG): flatten the 3D and
+            // drop the transition so the clone renders and tracks the cursor without lag.
+            rule(".${CssClasses.CARD}.${CssClasses.FLIP}.${CssClasses.CARD_DRAG}") {
+                transform = Transforms.none
+                transformStyle(TransformStyle.FLAT)
+                transitionNone()
+            }
+            rule(".${CssClasses.FLIP_BTN}") {
+                position = Position.absolute
+                top = 4.px; right = 4.px
+                zIndex = 2
+                cursor = Cursor.pointer
+                padding = Padding(1.px, 7.px)
+                fontSize = 11.px
+                fontFamily = t.fontFamily
+                lineHeight = LineHeight("1.4")
+                backgroundColor = t.menuBg
+                color = t.menuFg
+                border = Border(1.px, BorderStyle.solid, t.menuBorder)
+                borderRadius = 10.px
+                opacity = 0.65
+                transition += Transition("opacity", 120.ms, Timing.easeOut)
+            }
+            rule(".${CssClasses.FLIP_BTN}:hover") { opacity = 1.0 }
+            // The arrow turns (and reads backwards) with the card, so hide it for the duration of the
+            // flip; it fades back in once the card has settled. Outranks the base + hover rules.
+            rule(".${CssClasses.CARD}.${CssClasses.FLIP}.${CssClasses.FLIP_TURN} .${CssClasses.FLIP_BTN}") {
+                opacity = 0.0
+            }
+        }
     }
 
     private fun FlowContent.renderSegment(canvasName: CanvasName, segment: CardSegment, card: Card, eventBus: EventBus<Event>) {
@@ -150,8 +361,8 @@ object CardRenderer {
             is ListGroup -> renderSegment(canvasName, segment, card, eventBus)
             is CardListItem -> throw Exception("Didn't expect ungrouped list item")
             is CardHeading -> renderSegment(segment)
-            is CardText -> renderSegment(segment, card, eventBus)
-            is Callout -> renderSegment(segment, card, eventBus)
+            is CardText -> renderSegment(canvasName, segment, card, eventBus)
+            is Callout -> renderSegment(canvasName, segment, card, eventBus)
             is CardCodeBlock -> renderRichText(segment)
             is Blockquote -> renderRichText(segment)
             is CardDiagram -> renderSegment(segment, card)
@@ -205,13 +416,21 @@ object CardRenderer {
                     value = segment.done.toString()
                 }
 
-                span(if (segment.done) "${CssClasses.MARKER} ${CssClasses.MARKER_DONE}" else CssClasses.MARKER) {
-                    val ascii = ThemeManager.current.markerStyle == MarkerStyle.ASCII
+                val ascii = ThemeManager.current.markerStyle == MarkerStyle.ASCII
+                val markerClass = buildString {
+                    append(CssClasses.MARKER)
+                    if (segment.done) append(" ${CssClasses.MARKER_DONE}")
+                    // Non-ASCII numbered items get a CSS circle badge (plain digit padded inside a drawn
+                    // ring), not a cramped, font-fallback-janky Unicode circled glyph.
+                    else if (!ascii && segment.type == ListMemberType.NUMBERED) append(" ${CssClasses.MARKER_NUM}")
+                }
+                span(markerClass) {
                     if (segment.done) {
                         +(if (ascii) "[X]" else "\u2713")
                     } else {
                         if (segment.type == ListMemberType.NUMBERED) {
-                            +(if (ascii) "${index + 1}." else circledNumbers[index])
+                            // 1-based plain digit; the circle ring + internal padding is .tdz-marker-num.
+                            +(if (ascii) "${index + 1}." else "${index + 1}")
                         } else if (segment.type == ListMemberType.BULLET) {
                             +(if (ascii) "[ ]" else "\u2610")
                         } else if (segment.type == ListMemberType.ARROW) {
@@ -226,7 +445,7 @@ object CardRenderer {
                 }
 
                 segment.text.forEach {
-                    renderRichText(it, eventBus)
+                    renderRichText(canvasName, it, eventBus)
                 }
             }
             // No onClick here: toggling is handled by ONE delegated listener per column
@@ -323,6 +542,16 @@ object CardRenderer {
             // between the segments within them (the .tdz-loose-seg wrappers).
             rule(".${CssClasses.CARD_LOOSE}") { marginBottom = 24.px }
             rule(".${CssClasses.LOOSE_SEG}") { marginBottom = 12.px }
+            // A link-only card is a nav chip, not a prose block: drop the prose margin/padding, and
+            // opt out of content-visibility (its intrinsic-size placeholder reserved a tall box around
+            // the tiny chip), so a stack of links is tight instead of acres of whitespace.
+            rule(".${CssClasses.CARD_LINK}") {
+                // Tight vertically, but keep the theme's horizontal margin AND padding so the chip
+                // lines up with the left edge of regular cards' content (not flush to the column).
+                margin = Margin(vertical = 4.px, horizontal = t.cardMargin)
+                padding = Padding(vertical = 2.px, horizontal = t.cardPadding)
+                contentVisibility = ContentVisibility.visible
+            }
             // A card that is nothing but an image renders the photo full-bleed: no margin, no
             // padding, no frame — just the picture, clipped to the card's own rounded corners.
             rule(".${CssClasses.CARD_IMAGE}") {
@@ -348,6 +577,9 @@ object CardRenderer {
                 rule(".${CssClasses.CARD_STRIP}") {
                     padding = Padding(0.px)
                     overflow = Overflow.hidden
+                    // Drop the card border so the colored header bleeds flush to the top edge — a
+                    // (transparent) border otherwise leaves a 1-2px line of the column showing above it.
+                    borderStyle = BorderStyle.none
                 }
             }
             // TUI frame variant: the title straddles the top border line.
@@ -486,6 +718,24 @@ object CardRenderer {
                 fontWeight = FontWeight.bold
             }
             rule(".${CssClasses.MARKER_DONE}") { color = t.checkDone }
+            // Numbered marker = a drawn circle badge holding the plain digit, padded inside the ring
+            // (a Unicode circled digit can't be padded and font-fallbacks unevenly). currentColor keeps
+            // the ring in the marker's own text color.
+            rule(".${CssClasses.MARKER_NUM}") {
+                display = Display.inlineFlex
+                alignItems = Align.center
+                justifyContent = JustifyContent.center
+                boxSizing = BoxSizing.borderBox
+                minWidth = 1.55.em
+                height = 1.55.em
+                padding = Padding(horizontal = 0.38.em)   // room inside the ring (and for 2-digit numbers)
+                marginRight = 0.45.rem                     // gap to the text (overrides MARKER's paddingRight)
+                border = Border(1.5.px, BorderStyle.solid, Color("currentColor"))
+                borderRadius = 50.pct
+                fontSize = 0.92.em
+                lineHeight = LineHeight("1")
+                verticalAlign = VerticalAlign.middle
+            }
             rule(".${CssClasses.CALLOUT}") { padding = Padding(vertical = 1.px, horizontal = 6.px) }
         }
     }
@@ -516,15 +766,15 @@ object CardRenderer {
         }
     }
 
-    private fun FlowContent.renderSegment(segment: CardText, card: Card, eventBus: EventBus<Event>) {
+    private fun FlowContent.renderSegment(canvasName: CanvasName, segment: CardText, card: Card, eventBus: EventBus<Event>) {
         div {
             segment.text.forEach { text ->
-                renderRichText(text, eventBus)
+                renderRichText(canvasName, text, eventBus)
             }
         }
     }
 
-    private fun FlowContent.renderSegment(segment: Callout, card: Card, eventBus: EventBus<Event>) {
+    private fun FlowContent.renderSegment(canvasName: CanvasName, segment: Callout, card: Card, eventBus: EventBus<Event>) {
         div(CssClasses.CALLOUT) {
             // Row chrome from the .tdz-callout rule; only the per-instance indent is inline.
             if (segment.level > 0) css { paddingLeft = (6 + segment.level * 24).px }
@@ -537,7 +787,7 @@ object CardRenderer {
                     else -> "☛"
                 })
             }
-            segment.text.forEach { renderRichText(it, eventBus) }
+            segment.text.forEach { renderRichText(canvasName, it, eventBus) }
         }
     }
 
@@ -548,11 +798,15 @@ object CardRenderer {
         // strokes/arrows were invisible against a light card. stroke = text color, fill = card background.
         val diagramStroke = t.fg
         val diagramFill = t.cardBg
-        val noml = listOf(
-            "#stroke: $diagramStroke",
-            "#fill: $diagramFill",
-            segment.text,
-        ).joinToString("\n")
+        // Bias diagrams to flow left-to-right (cards are narrow and tall, so a wide diagram reads
+        // better) — unless the author set their own #direction.
+        val hasDirection = segment.text.lineSequence().any { it.trimStart().startsWith("#direction") }
+        val noml = buildList {
+            add("#stroke: $diagramStroke")
+            add("#fill: $diagramFill")
+            if (!hasDirection) add("#direction: right")
+            add(segment.text)
+        }.joinToString("\n")
 
         val canvasRef = Ref<HTMLCanvasElement>()
         canvas {
@@ -586,18 +840,42 @@ object CardRenderer {
         p {}
     }
 
-    private fun FlowContent.renderRichText(value: RichText, eventBus: EventBus<Event>) {
+    private fun FlowContent.renderRichText(canvasName: CanvasName, value: RichText, eventBus: EventBus<Event>) {
             when (value) {
             is CardCodeBlock -> renderRichText(value)
             is Blockquote -> renderRichText(value)
-            is LinkText -> renderRichText(value, eventBus)
+            is LinkText -> renderRichText(canvasName, value, eventBus)
             is Text -> renderRichText(value)
         }
     }
 
     private fun FlowContent.renderRichText(codeBlock: CardCodeBlock) {
+        val theme = ThemeManager.current
         pre {
             classes += "microlight"
+            // position for the absolute copy button; right padding keeps it clear of the code.
+            css {
+                position = Position.relative
+                paddingRight = 40.px
+            }
+            button {
+                attributes["aria-label"] = "Copy"
+                +"⧉"
+                attributes["title"] = "Copy"
+                css {
+                    position = Position.absolute
+                    top = 4.px
+                    right = 4.px
+                    backgroundColor = Color.transparent
+                    borderStyle = BorderStyle.none
+                    cursor = Cursor.pointer
+                    color = theme.fg
+                    fontSize = 15.px
+                }
+                onClick {
+                    web.navigator.navigator.clipboard.writeTextAsync(codeBlock.text)
+                }
+            }
             code {
                 +codeBlock.text
             }
@@ -640,9 +918,9 @@ object CardRenderer {
         }
     }
 
-    private fun FlowContent.renderRichText(linkText: LinkText, eventBus: EventBus<Event>) {
+    private fun FlowContent.renderRichText(canvasName: CanvasName, linkText: LinkText, eventBus: EventBus<Event>) {
             when (linkText) {
-            is CanvasLink -> renderRichText(linkText, eventBus)
+            is CanvasLink -> renderRichText(canvasName, linkText, eventBus)
             is ExternalLink -> renderRichText(linkText)
             is ImageLink -> renderRichText(linkText)
             is MapLink -> renderRichText(linkText)
@@ -687,11 +965,15 @@ object CardRenderer {
         }
     }
 
-    private fun FlowContent.renderRichText(link: CanvasLink, eventBus: EventBus<Event>) {
-        val linkId = DomIds.canvasLink(link.canvasName)
+    private fun FlowContent.renderRichText(canvasName: CanvasName, link: CanvasLink, eventBus: EventBus<Event>) {
+        val linkId = DomIds.canvasLink(link.unresolvedName)
+        val absoluteTarget = resolveCanvasLinkTarget(canvasName, link.target)
 
         span(CssClasses.DROP_ZONE) {
-            attributes["data-canvas-name"] = link.canvasName.normalized()
+            // The id uses the bare leaf so element ids never contain "/" (fragile in CSS selectors).
+            // The data-canvas-name carries the full absolute path so DragDrop can route the drop
+            // to the same board that the click navigates to (absoluteTarget, not the bare leaf).
+            attributes["data-canvas-name"] = absoluteTarget.normalized()
             id = linkId
             css { display = Display.inlineBlock }
 
@@ -700,7 +982,7 @@ object CardRenderer {
                 css {
                     cursor = Cursor.pointer
                     display = Display.inlineBlock
-                    margin = Margin(vertical = 10.px, horizontal = 8.px)   // breathing room around the badge
+                    margin = Margin(vertical = 8.px, horizontal = 8.px)    // breathing room around the badge
                     marginLeft = 0.px                                      // left-justified (no gap on the left)
                     padding = Padding(vertical = 2.px, horizontal = 8.px)
                     border = Border(1.px, BorderStyle.solid, ThemeManager.current.link)
@@ -712,10 +994,10 @@ object CardRenderer {
                 +"❯❯ ${link.label}"
                 // The canvas route is a catch-all (/{canvas...}); build the URL directly rather
                 // than Route.path (which requires a fixed param count). Real nav is the onClick.
-                href = "/${link.canvasName.normalized()}"
+                href = "/${absoluteTarget.normalized()}"
 
                 onClick { event ->
-                    eventBus.fire(SwitchToCanvas(link.canvasName))
+                    eventBus.fire(SwitchToCanvas(absoluteTarget))
                     event.preventDefault()
                     event.stopPropagation()
                 }

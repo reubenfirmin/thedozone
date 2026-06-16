@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <!-- Installed-PWA titlebar / mobile address-bar color. Defaults to the Blue Room theme's appBg;
+         ThemeManager updates it at runtime so the standalone window's titlebar tracks the theme. -->
+    <meta name="theme-color" content="#1a2b3c">
     <title>The Do Zone</title>
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
@@ -25,23 +28,10 @@
 </head>
 
 <body>
-<!-- PWA: stash the install prompt (fires before the Kotlin bundle boots) for the in-app "Install app"
-     menu item, and register the offline service worker. Both are best-effort / no-op where unsupported. -->
-<script>
-  window.__tdzDeferredInstall = null;
-  window.addEventListener('beforeinstallprompt', function (e) {
-    e.preventDefault();
-    window.__tdzDeferredInstall = e;
-  });
-  window.addEventListener('appinstalled', function () {
-    window.__tdzDeferredInstall = null;
-  });
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', function () {
-      navigator.serviceWorker.register('/sw.js').catch(function () {});
-    });
-  }
-</script>
+<!-- PWA install capture + service-worker registration. A same-origin file (not inline) so the CSP
+     can use script-src 'self' with no 'unsafe-inline'; plain <script src> (no defer) so it still runs
+     before the bundle and catches beforeinstallprompt. See pwa-install.js. -->
+<script src="/pwa-install.js"></script>
 <!-- Google Identity Services (GIS) for Google Drive sync OAuth. Loaded async; exposes google.accounts.oauth2. -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="/main.bundle.js"></script>

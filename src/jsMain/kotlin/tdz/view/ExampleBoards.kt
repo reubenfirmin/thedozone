@@ -5,6 +5,7 @@ import tdz.model.ColumnId
 import tdz.model.ColumnLayoutSpec
 import tdz.model.Split
 import tdz.rootCanvas
+import tdz.view.theme.longFormTheme
 
 /**
  * The curated example boards shown in the intro wizard's "Columns and cards" step. Each is pure
@@ -24,7 +25,7 @@ object ExampleBoards {
                 # Monday
 
                 ## Standup
-                9am — share blockers
+                9am - share blockers
 
                 ## To do
                 * /Review the PRs
@@ -128,20 +129,27 @@ object ExampleBoards {
                 Sam, Priya, Alex
 
                 - Keep updates under two minutes
-                -- Decisions only — park the deep dives
+                -- Decisions only, park the deep dives
 
                 ## Notes
                 * Roadmap looks good for Q3
                 * /Confirm the launch date
                 * Follow up on pricing
+
+                ## 🤯 Mind-blower
+                About 80% of the features in a typical product are rarely or never used (Standish, Pendo). The hard part isn't building more. It's finding the 20% that matters.
             """.trimIndent(),
             right to """
                 # Flow
 
                 ---
-                [Idea] -> [Design]
-                [Design] -> [Build]
-                [Build] -> [Ship]
+                [Idea] -> [Spec]
+                [Spec] -> [Build]
+                [Build] -> [<choice>Review]
+                [Review] ship -> [Ship]
+                [Review] iterate -> [Build]
+                [Ship] -> [Learn]
+                [Learn] -> [Idea]
                 ---
 
                 > Ship the smallest thing that teaches us something.
@@ -233,22 +241,59 @@ object ExampleBoards {
      * wipes them when the wizard closes.
      */
     val MULTI_BOARD: List<ExampleBoard> = run {
-        val home = "[_ (← Home Board)]"
-        listOf(
-            singleColumn(
-                "Multiple boards", "One board links to the next.", rootCanvas, null,
-                """
-                    # Your boards
-
-                    Each link below opens a board of its own — and the address is bookmarkable.
-
+        val home = "[~ (← Home Board)]"
+        // The root is a 3-column board: the board links on the left, a stack of cards to sort in the
+        // middle (drag each over the matching link — the wormhole sends it to that board), spare right.
+        val root = ColumnId(0)
+        val linksCol = ColumnId(1)
+        val sortCol = ColumnId(2)
+        val spareCol = ColumnId(3)
+        val rootBoard = ExampleBoard(
+            title = "Multiple boards",
+            tagline = "One board links to the next.",
+            columns = listOf(root, linksCol, sortCol, spareCol),
+            layouts = listOf(ColumnLayoutSpec(root, Split.VERTICAL, listOf(linksCol, sortCol, spareCol))),
+            content = mapOf(
+                linksCol to """
+                    ## Work board
+                    This links to my work board
                     [Work]
 
+                    ## Home board
+                    This links to my home board
                     [Home]
 
+                    ## Travel board
+                    This links to my travel board
                     [Travel]
                 """.trimIndent(),
+                sortCol to """
+                    # Sort these cards
+
+                    Drag these cards over the blue board links at the left.
+
+                    ## Porto trip
+                    * Book the hostel
+                    * Find a cheap flight
+                    * Pack the plug adapter
+
+                    ## House
+                    * Water the plants
+                    * Take out the bins
+                    * Fix the leaky tap
+
+                    ## Monday standup
+                    * Prep three talking points
+                    * Review the design doc
+                    * Reply to Sam
+                """.trimIndent(),
+                spareCol to "",
             ),
+            name = rootCanvas,
+            parent = null,
+        )
+        listOf(
+            rootBoard,
             singleColumn(
                 "Work", "", CanvasName("Work"), rootCanvas,
                 """
@@ -302,9 +347,142 @@ object ExampleBoards {
         )
     }
 
+    /**
+     * A flashcard deck of flip cards: each card carries a `//` face boundary, so the question shows
+     * first and the answer is one click (↻) away. A title banner with a BACKGROUND IMAGE spans the
+     * top, with four category columns of flip cards below.
+     *
+     * It previews the Long Form theme (dark text on a white surface), which guarantees the dark text
+     * reads over a LIGHT wallpaper — wallpaper legibility is otherwise the user's own responsibility,
+     * since they can set any image under any theme.
+     */
+    val SPANISH_EXAM_PREP = run {
+        val root = ColumnId(0)
+        val banner = ColumnId(1)
+        val gridRow = ColumnId(2)
+        val cats = listOf(ColumnId(10), ColumnId(11), ColumnId(12), ColumnId(13))
+
+        // A light, airy Mediterranean photo — dark Long Form text reads over it.
+        fun wallpaper(url: String) = "<!--tdz-col:{\"wallpaper\":\"$url\"}-->"
+        // One flip card: question on the front, answer (the `//` is the face boundary) on the back.
+        fun card(front: String, back: String) = "$front\n//\n$back"
+        fun deck(heading: String, vararg cards: String) = "$heading\n\n" + cards.joinToString("\n\n")
+
+        val md = mapOf(
+            banner to wallpaper("https://images.pexels.com/photos/37800921/pexels-photo-37800921.jpeg") +
+                "\n# Spanish Exam Prep\n\nTap the ↻ on any card to flip the question to its answer.",
+            cats[0] to deck(
+                "# Greetings",
+                card("\"Good morning\"", "Buenos días"),
+                card("\"Good evening\"", "Buenas tardes"),
+                card("\"How are you?\"", "¿Cómo estás?"),
+                card("\"Nice to meet you\"", "Mucho gusto"),
+                card("\"See you tomorrow\"", "Hasta mañana"),
+            ),
+            cats[1] to deck(
+                "# Common verbs",
+                card("to be (permanent)", "ser\nSoy estudiante."),
+                card("to have", "tener\nTengo dos hermanos."),
+                card("to go", "ir\nVoy al mercado."),
+                card("to want", "querer\nQuiero aprender español."),
+                card("to be able to", "poder\n¿Puedes ayudarme?"),
+            ),
+            cats[2] to deck(
+                "# Food & dining",
+                card("\"the bill, please\"", "La cuenta, por favor"),
+                card("\"I'm hungry\"", "Tengo hambre"),
+                card("breakfast", "el desayuno"),
+                card("\"a table for two\"", "Una mesa para dos"),
+                card("\"it's delicious\"", "Está delicioso"),
+            ),
+            cats[3] to deck(
+                "# Numbers & time",
+                card("seven", "siete"),
+                card("\"What time is it?\"", "¿Qué hora es?"),
+                card("today / tomorrow", "hoy / mañana"),
+                card("\"on Monday\"", "el lunes"),
+                card("one hundred", "cien"),
+            ),
+        )
+        ExampleBoard(
+            title = "Spanish exam prep",
+            tagline = "Flip cards: question on the front, answer on the back.",
+            columns = listOf(root, banner, gridRow) + cats,
+            layouts = listOf(
+                ColumnLayoutSpec(root, Split.HORIZONTAL, listOf(banner, gridRow)),
+                ColumnLayoutSpec(gridRow, Split.VERTICAL, cats),
+            ),
+            content = md,
+            theme = longFormTheme,   // dark-on-white, so the dark text reads over the light wallpaper
+        )
+    }
+
+    /**
+     * The "It's all markdown" step's playground: three columns holding one of (almost) every card
+     * type — headings, text, a blockquote, callouts, a task list with a done item, a numbered list, a
+     * code block, a photo, a map, a flip card, a diagram, and a canvas link — so the user can right-
+     * click → Edit and poke at the raw markdown behind each.
+     */
+    val MARKDOWN_SHOWCASE = run {
+        val root = ColumnId(0)
+        val cols = listOf(ColumnId(1), ColumnId(2), ColumnId(3))
+        val md = mapOf(
+            cols[0] to """
+                # Markdown playground
+
+                Right-click a column and choose Edit (or press Ctrl+') to see the raw markdown behind these cards, then switch back.
+
+                ## Headings & text
+                Start a line with # for a big heading, ## for a smaller one. Everything else is plain text.
+
+                > A blockquote starts its line with > and stands apart.
+
+                - A single dash is a callout.
+                -- Two dashes make a stronger one.
+
+                ---
+                [Write] -> [Edit]
+                [Edit] -> [Ship]
+                ---
+            """.trimIndent(),
+            cols[1] to """
+                # To-do
+                * Try editing this list
+                * /This one is finished
+                * Drag a card to another column
+
+                ## Numbered steps
+                1. First
+                2. Second
+                3. Third
+
+                ```
+                greet = name => "Hi " + name
+                ```
+            """.trimIndent(),
+            cols[2] to """
+                [https://images.pexels.com/photos/22033733/pexels-photo-22033733.jpeg (A photo card)]
+
+                # Pin a place
+                [map(36.7213, -4.4214, 12, 200) (Málaga)]
+
+                Tap the ↻ to flip me
+                //
+                A // line turns one card into a flip card.
+            """.trimIndent(),
+        )
+        ExampleBoard(
+            title = "Markdown playground",
+            tagline = "One of every card type to poke at.",
+            columns = listOf(root) + cols,
+            layouts = listOf(ColumnLayoutSpec(root, Split.VERTICAL, cols)),
+            content = md,
+        )
+    }
+
     /** Step one — "Columns and cards": pick a board to see how columns and cards work. */
-    val COLUMNS_AND_CARDS: List<ExampleBoard> = listOf(WEEK, VACATION, MEETING)
+    val COLUMNS_AND_CARDS: List<ExampleBoard> = listOf(WEEK, VACATION, MEETING, SPANISH_EXAM_PREP)
 
     /** Every example board, for invariants. */
-    val ALL: List<ExampleBoard> = COLUMNS_AND_CARDS + listOf(PROJECT) + MULTI_BOARD
+    val ALL: List<ExampleBoard> = COLUMNS_AND_CARDS + listOf(PROJECT, MARKDOWN_SHOWCASE) + MULTI_BOARD
 }

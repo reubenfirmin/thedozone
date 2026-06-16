@@ -17,7 +17,7 @@ import zoned.framework.routing.RenderMode
 import zoned.framework.routing.Router
 import zoned.framework.routing.Routes
 
-val rootCanvas = CanvasName("_")
+val rootCanvas = CanvasName("")
 val tdzModel = Model(rootCanvas)
 val eventBus = EventBus<Event>()
 val tdzController = Controller(eventBus, tdzModel)
@@ -28,21 +28,20 @@ val tdzIndex = Index(tdzModel, eventBus)
 object canvasPages : Routes<Index>(tdzIndex, "/") {
 
     val home = route(mode = RenderMode.PARTIAL) { "/" to {
-        index(tdzModel.currentCanvas())
+        // "/" IS the root board — dispatch through the controller (same as the board route) so root
+        // becomes current. Without this, navigating to "/" (e.g. after deleting the current board)
+        // would leave `currentCanvas` pointing at the now-deleted board.
+        index(tdzController.openCanvasPath(rootCanvas))
     } }.title { "The Do Zone" }
 
     val board = route(mode = RenderMode.PARTIAL) { "/{canvas...}" to { params ->
-        val segments = params.segments("canvas")
-        val canvasName = segments.lastOrNull() ?: ""
-
-        val canvas = tdzModel.getCanvas(CanvasName(canvasName))
-        if (canvas == null) {
-            Router.navigate("/")
-        } else {
-            index(canvas)
-        }
+        val name = CanvasName(params.segments("canvas").joinToString("/"))
+        // Any path is valid: the controller builds the missing chain (idempotent) and makes it
+        // current; the view renders. The route only maps URL -> action -> render.
+        index(tdzController.openCanvasPath(name))
     } }.title { params ->
-        params.segments("canvas").lastOrNull()?.let { "$it — The Do Zone" } ?: "The Do Zone"
+        CanvasName(params.segments("canvas").joinToString("/")).leaf()
+            .ifEmpty { null }?.let { "$it — The Do Zone" } ?: "The Do Zone"
     }
 }
 
@@ -77,11 +76,13 @@ object settingsPages : Routes<Index>(tdzIndex, "/settings") {
 }
 
 fun main() {
-    // Restore the saved theme before the first render so its colors/font apply immediately.
-    tdzModel.getTheme()?.let { saved ->
+    // Apply the saved theme (or the default — Rainbow Gaps) before the first render so its
+    // colors/font and the theme-color meta apply immediately.
+    val initialTheme = tdzModel.getTheme()?.let { saved ->
         themes.firstOrNull { it.name == saved }
             ?: longFormTheme.takeIf { saved == "Immaterial" }   // theme renamed; honor old saves
-    }?.let { ThemeManager.use(it) }
+    } ?: ThemeManager.current
+    ThemeManager.use(initialTheme)
     // Debug instrumentation (verbose console logging + sync logs) is off in production, enabled
     // on demand via the `?debug` URL flag.
     val debugEnabled = kotlinx.browser.window.location.search

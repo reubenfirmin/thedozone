@@ -15,10 +15,23 @@ import tdz.controller.events.RefreshColumns
 import tdz.model.ref
 import tdz.controller.events.SplitColumn
 import tdz.controller.events.TaskToggleDone
+import tdz.model.Canvas
+import tdz.model.CanvasName
 import tdz.model.Model
 import tdz.model.markdown.MarkdownService
 
-class Controller(eventBus: EventBus<Event>, model: Model) {
+class Controller(private val eventBus: EventBus<Event>, private val model: Model) {
+
+    /**
+     * Open a board by path: dispatch to [CanvasHierarchy] to build any missing chain (the hierarchy
+     * business logic lives there), make the leaf current, and return it for the view to render. This
+     * is dispatch only — the route calls it; the Controller does not contain the logic.
+     */
+    fun openCanvasPath(name: CanvasName): Canvas {
+        if (!name.isRoot()) CanvasHierarchy.ensurePath(model, name)
+        model.changeCanvas(name)
+        return model.currentCanvas()
+    }
 
     init {
         eventBus.on<TaskToggleDone> { event ->
@@ -129,8 +142,24 @@ class Controller(eventBus: EventBus<Event>, model: Model) {
         canvasName: tdz.model.CanvasName,
         transform: (tdz.model.Canvas) -> tdz.model.Canvas,
     ) {
-        val canvas = model.getCanvas(canvasName) ?: return
-        val updated = transform(canvas)
+        // Loud guards: a layout action that quietly does nothing (no canvas, a throwing transform,
+        // or a no-op result) is exactly the "click the icon, nothing happens, no error" failure —
+        // surface each so it can never fail silently again.
+        val canvas = model.getCanvas(canvasName) ?: run {
+            console.error("[layout] no stored canvas '${canvasName.normalized()}' — current board is " +
+                "stale (its manifest isn't in storage); cannot apply the layout change.")
+            return
+        }
+        val updated = runCatching { transform(canvas) }.getOrElse { t ->
+            console.error("[layout] transform of '${canvasName.normalized()}' failed: ${t.message} " +
+                "(columns=${canvas.columns}, layouts=${canvas.layouts})")
+            return
+        }
+        if (updated == canvas) {
+            console.warn("[layout] transform of '${canvasName.normalized()}' was a no-op " +
+                "(columns=${canvas.columns}, layouts=${canvas.layouts}).")
+            return
+        }
         model.addCanvas(updated)        // fs.storeCanvas overwrites by name
         model.changeCanvas(canvasName)  // reload currentCanvas from the updated spec
         eventBus.fire(RefreshCanvas(canvasName))

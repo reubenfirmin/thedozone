@@ -30,6 +30,7 @@ class CanvasMenuTest {
         val splits = mutableListOf<Split>()
         val distributes = mutableListOf<Split>()
         var deleted = 0
+        var reverted = 0
         val themed = mutableListOf<Theme>()
         var cloudSync = 0
         var localFolderSync = 0
@@ -46,6 +47,7 @@ class CanvasMenuTest {
         override fun splitEven(split: Split) { splits += split }
         override fun distribute(split: Split) { distributes += split }
         override fun deleteColumn() { deleted++ }
+        override fun revertColumn() { reverted++ }
         override fun setTheme(theme: Theme) { themed += theme }
         override fun openCloudSync() { cloudSync++ }
         override fun openLocalFolderSync() { localFolderSync++ }
@@ -77,6 +79,28 @@ class CanvasMenuTest {
         val toggle = canvasSections(Mode.EDITOR, RecordingActions()).first().items.first()
         assertEquals("Save", toggle.label)
         assertTrue(toggle.enabled)
+    }
+
+    @Test
+    fun editorModeHidesClearDoneAndDeleteColumn() {
+        val items = allItems(canvasSections(Mode.EDITOR, RecordingActions()))
+        assertFalse(items.any { it.label == "Clear Done" }, "Clear Done is hidden while editing")
+        assertFalse(items.any { it.label == "Delete Column" }, "Delete Column is hidden while editing")
+    }
+
+    @Test
+    fun editorModeOffersUndoEditsWiredToRevert() {
+        val actions = RecordingActions()
+        val undo = allItems(canvasSections(Mode.EDITOR, actions)).first { it.label == "Undo edits" }
+        assertTrue(undo.enabled)
+        undo.onSelect()
+        assertEquals(1, actions.reverted)
+    }
+
+    @Test
+    fun cardModeHasNoUndoEdits() {
+        val items = allItems(canvasSections(Mode.CARD, RecordingActions()))
+        assertFalse(items.any { it.label == "Undo edits" }, "Undo edits only appears while editing")
     }
 
     @Test

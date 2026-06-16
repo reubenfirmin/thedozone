@@ -18,6 +18,9 @@ object ZLayer {
     /** Sync status corner badge. */
     const val SYNC_BADGE = 9_000
 
+    /** Window Controls Overlay titlebar strip (installed PWA on desktop Chromium). */
+    const val TITLEBAR = 9_500
+
     /** Floating context menu. */
     const val CONTEXT_MENU = 9_999
 

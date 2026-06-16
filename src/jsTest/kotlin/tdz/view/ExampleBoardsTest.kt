@@ -15,8 +15,24 @@ import kotlin.test.assertTrue
 class ExampleBoardsTest {
 
     @Test
-    fun stepOneOffersThreeExamples() {
-        assertEquals(3, ExampleBoards.COLUMNS_AND_CARDS.size, "week planner / vacation planner / meeting notes")
+    fun stepOneOffersFourExamples() {
+        assertEquals(4, ExampleBoards.COLUMNS_AND_CARDS.size,
+            "week planner / vacation planner / meeting notes / spanish exam prep")
+    }
+
+    @Test
+    fun spanishExamPrepIsAFlipCardDeckWithABackgroundImageAndAReadableTheme() {
+        val spanish = ExampleBoards.COLUMNS_AND_CARDS.first { it.title.contains("Spanish") }
+        // The decks are flip cards: parse a category column and confirm it has CardSideBreak faces.
+        val greetings = spanish.content.entries.first { it.value.contains("Greetings") }.value
+        val cards = MarkdownService.fromMd(greetings, ColumnId(0))
+        val flipCards = cards.count { c -> c.segments.any { it is tdz.model.card.CardSideBreak } }
+        assertTrue(flipCards >= 4, "the greetings deck is mostly flip cards; got $flipCards")
+        // Exactly one column carries a wallpaper background image (the banner).
+        val wallpapered = spanish.content.values.count { it.contains("<!--tdz-col:") && it.contains("wallpaper") }
+        assertEquals(1, wallpapered, "one column has a background image")
+        // It previews a dark-on-white theme so that dark text is legible over the light wallpaper.
+        assertEquals("Long Form", spanish.theme?.name, "deck previews the Long Form (dark-on-white) theme")
     }
 
     @Test
@@ -37,8 +53,13 @@ class ExampleBoardsTest {
         val children = scene.filter { it.name != rootCanvas }
         assertEquals(3, children.size, "three child boards")
 
+        // Count canvas links wherever they sit — embedded in a card with a heading/description, not
+        // only as a link-only card.
         fun links(b: ExampleBoard) = b.content.values
-            .flatMap { MarkdownService.fromMd(it, ColumnId(0)) }.count { it.isCanvasLink() }
+            .flatMap { MarkdownService.fromMd(it, ColumnId(0)) }
+            .flatMap { it.segments }
+            .flatMap { it.links() }
+            .count { it.isCanvasLink() }
 
         assertEquals(3, links(root), "root links to the three child boards")
         children.forEach { child ->
@@ -46,6 +67,21 @@ class ExampleBoardsTest {
             val tasks = child.content.values.joinToString("\n").lines().count { it.trimStart().startsWith("* ") }
             assertTrue(tasks >= 1, "${child.name.normalized()} carries example content")
         }
+    }
+
+    @Test
+    fun markdownShowcaseHasAVarietyOfCardTypes() {
+        val showcase = ExampleBoards.MARKDOWN_SHOWCASE
+        val cards = showcase.content.values.flatMap { MarkdownService.fromMd(it, ColumnId(0)) }
+        val segs = cards.flatMap { it.segments }
+        assertTrue(segs.any { it is tdz.model.card.CardHeading }, "has a heading")
+        assertTrue(segs.any { it is tdz.model.card.ListGroup }, "has a list/task group")
+        assertTrue(segs.any { it is tdz.model.card.Callout }, "has a callout")
+        assertTrue(segs.any { it is tdz.model.card.Blockquote }, "has a blockquote")
+        assertTrue(segs.any { it is tdz.model.card.CardCodeBlock }, "has a code block")
+        assertTrue(segs.any { it is tdz.model.card.CardDiagram }, "has a diagram")
+        assertTrue(segs.any { it is tdz.model.card.CardSideBreak }, "has a flip card")
+        assertTrue(cards.any { it.isImageLink() }, "has an image card")
     }
 
     @Test
