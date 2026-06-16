@@ -35,6 +35,10 @@ enum class FlourishStyle { LINE_DIAMOND, DOTS }
 data class Theme(
     val name: String,
     val editorTheme: String,
+    // Prose-editor chrome: hide the gutter/line-numbers, print margin, and active-line highlight, and
+    // use the app font instead of a monospace one — for reading-oriented themes. Code themes keep the
+    // "nerdy" code-editor look (gutter + fixed font), so this defaults off.
+    val editorPlain: Boolean = false,
     val fontFamily: String,        // app-wide font (DOS uses a monospace bitmap-style font)
     val borderStyle: String,       // CSS border-style: "solid", or "double" for ANSI framing
     val borderWidth: LinearDimension,
@@ -456,6 +460,7 @@ val poodleRocksTheme = Theme(
     name = "Poodle Rocks",
     headingDropShadow = Color.transparent,
     editorTheme = "ace/theme/chrome",
+    editorPlain = true,                    // Poodle Rocks: white-document cards read as prose, not code
     fontFamily = "Roboto, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Arial, sans-serif",
     borderStyle = "solid",
     borderWidth = 1.px,
@@ -540,6 +545,7 @@ val longFormTheme = Theme(
     name = "Long Form",
     headingDropShadow = Color.transparent,
     editorTheme = "ace/theme/github",
+    editorPlain = true,                    // Long Form: a clean prose editor, no code chrome
     fontFamily = "'Source Serif 4', Charter, 'Iowan Old Style', Georgia, 'Times New Roman', serif",
     borderStyle = "solid",
     borderWidth = 1.px,
@@ -567,7 +573,8 @@ val longFormTheme = Theme(
     cardBg = Color("transparent"),
     cardShadow = Color("transparent"),
     cardRadius = 0.px,
-    cardMargin = 16.px,                    // generous spacing between blocks
+    cardMargin = 8.px,                     // modest block spacing (cards are transparent here, so a
+                                           // big margin is just raw whitespace insetting the content)
     cardPadding = 8.px,
     cardFooterFlourish = true,
     flourishStyle = FlourishStyle.DOTS,    // Medium's "· · ·" section break, not the line-and-diamond

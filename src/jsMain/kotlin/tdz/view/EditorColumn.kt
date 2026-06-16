@@ -27,6 +27,7 @@ import zoned.framework.libs.aceCommand
 import zoned.framework.libs.aceCompleter
 import zoned.framework.libs.aceCompletion
 import zoned.framework.libs.aceEditorOptions
+import zoned.framework.libs.acePlainEditorOptions
 import zoned.framework.libs.aceRange
 import zoned.framework.libs.loadAce
 import zoned.framework.libs.loadAceLanguageTools
@@ -103,8 +104,14 @@ class EditorColumn(
                     val editor = ace.edit(editorId)
                     aceEditor = editor
                     // Configure editor
-                    editor.setTheme(ThemeManager.current.editorTheme)
+                    val theme = ThemeManager.current
+                    editor.setTheme(theme.editorTheme)
                     editor.setFontSize(16)
+                    // Reading-oriented themes get a plain editor (no gutter/line-numbers, no print
+                    // margin, no active-line highlight); code themes keep the full code-editor chrome.
+                    // The face stays monospace either way — Ace mis-positions the cursor/selection/
+                    // autocomplete popup under a proportional font.
+                    if (theme.editorPlain) editor.setOptions(acePlainEditorOptions())
                     editor.getSession().apply {
                         setMode("ace/mode/markdown")
                         setUseWrapMode(true)
@@ -262,14 +269,19 @@ class EditorColumn(
                 // this, Ace's default word tokenizer would cut the prefix at the first space.
                 identifierRegexps = arrayOf(RegExp("[^\\[\\]\\r\\n]")),
                 getCompletions = { _, session, pos, _, callback ->
-                    val before = session.getLine(pos.row).substring(0, pos.column)
+                    val line = session.getLine(pos.row)
+                    val before = line.substring(0, pos.column)
+                    // Bracket auto-close already dropped a `]` right after the cursor when the user
+                    // typed `[`; only emit our own closer when one isn't already there, or the buffer
+                    // ends up `[/a/x (x)]]`.
+                    val closer = if (pos.column < line.length && line[pos.column] == ']') "" else "]"
                     val suggestions = boardLinkCompletions(before, boardNames(), canvas.name)
                     lastCompletionCount = suggestions.size
                     callback(null, suggestions.map { s ->
                         // caption = leaf so Ace's prefix-matching works on the board name; meta =
-                        // breadcrumb shows the parent path as a grey hint. value inserts the
-                        // absolute link text including the closing ] so the buffer becomes [/a/x (x)].
-                        val insertValue = "${s.absolutePath} (${s.leaf})]"
+                        // breadcrumb shows the parent path as a grey hint. value inserts the absolute
+                        // link text so the buffer becomes [/a/x (x)] (closing ] added only if needed).
+                        val insertValue = "${s.absolutePath} (${s.leaf})$closer"
                         aceCompletion(caption = s.leaf, value = insertValue, meta = s.breadcrumb.ifEmpty { "board" })
                     }.toTypedArray())
                 },

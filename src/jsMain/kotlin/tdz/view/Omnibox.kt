@@ -319,7 +319,10 @@ object Omnibox {
                 padding = Padding(10.px, 12.px)
                 fontSize = 15.px
                 fontFamily = t.fontFamily
-                backgroundColor = t.scrimBg
+                // appBg is the theme's base surface (white on light themes, dark on dark) so the field
+                // reads with menuFg on both — scrimBg was a dark overlay that became gray-on-gray in
+                // light themes.
+                backgroundColor = t.appBg
                 color = t.menuFg
                 border = Border(1.px, BorderStyle.solid, t.menuBorder)
                 borderRadius = 6.px

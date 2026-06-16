@@ -20,5 +20,7 @@ data class CanvasLink(val target: String, val label: String) : LinkText {
      *  navigation must resolve from [target] via resolveCanvasLinkTarget). */
     val unresolvedName: CanvasName get() = CanvasName(target)
 
-    override fun toMarkdown() = "[$target ($label)]"
+    // Drop the redundant `(label)` when it adds nothing over the path — `[Butt]`, not `[Butt (Butt)]`
+    // (and `[..]`, not `[.. (..)]`). A distinct label (e.g. an absolute link `[/a/b/c (c)]`) keeps it.
+    override fun toMarkdown() = if (label == target) "[$target]" else "[$target ($label)]"
 }

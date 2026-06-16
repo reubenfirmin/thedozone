@@ -296,7 +296,10 @@ object ExamplesWizard {
                 cursor = Cursor.pointer
                 textAlign = TextAlign.left
                 width = 100.pct
-                backgroundColor = t.scrimBg
+                // menuHover is the theme's subtle on-panel tint (a light wash on dark panels, a dark
+                // wash on light ones), so the button reads as a distinct surface under menuFg text on
+                // BOTH — scrimBg was a dark overlay that became black-on-gray in light themes.
+                backgroundColor = t.menuHover
                 color = t.menuFg
                 border = Border(1.px, BorderStyle.solid, t.menuBorder)
                 borderRadius = 8.px

@@ -106,6 +106,8 @@ object CardRenderer {
             else if (imageOnly) append(" ${CssClasses.CARD_IMAGE}")    // photo fills the card, no inner frame
             else if (t.titleInStrip && leadingHeading) append(" ${CssClasses.CARD_STRIP}")
             else if (t.titleInBorder && leadingHeading) append(" ${CssClasses.CARD_FRAMED}")
+            // A link-only card is a compact nav chip, not a prose block (drops margin/padding/flourish).
+            if (card.isCanvasLink()) append(" ${CssClasses.CARD_LINK}")
             if (loose) append(" ${CssClasses.CARD_LOOSE}")
         }
     }
@@ -156,7 +158,7 @@ object CardRenderer {
                 }
             }
             // Ornamental centered divider at the foot of content cards (not h1-only title cards).
-            if (t.cardFooterFlourish && !chromeless) div(CssClasses.CARD_FLOURISH) {}
+            if (t.cardFooterFlourish && !chromeless && !card.isCanvasLink()) div(CssClasses.CARD_FLOURISH) {}
         }
         if (stripTitle != null) div(CssClasses.CARD_BODY) { body() } else body()
     }
@@ -538,6 +540,14 @@ object CardRenderer {
             // between the segments within them (the .tdz-loose-seg wrappers).
             rule(".${CssClasses.CARD_LOOSE}") { marginBottom = 24.px }
             rule(".${CssClasses.LOOSE_SEG}") { marginBottom = 12.px }
+            // A link-only card is a nav chip, not a prose block: drop the prose margin/padding, and
+            // opt out of content-visibility (its intrinsic-size placeholder reserved a tall box around
+            // the tiny chip), so a stack of links is tight instead of acres of whitespace.
+            rule(".${CssClasses.CARD_LINK}") {
+                margin = Margin(4.px, 0.px)
+                padding = Padding(0.px)
+                contentVisibility = ContentVisibility.visible
+            }
             // A card that is nothing but an image renders the photo full-bleed: no margin, no
             // padding, no frame — just the picture, clipped to the card's own rounded corners.
             rule(".${CssClasses.CARD_IMAGE}") {
@@ -919,7 +929,7 @@ object CardRenderer {
                 css {
                     cursor = Cursor.pointer
                     display = Display.inlineBlock
-                    margin = Margin(vertical = 10.px, horizontal = 8.px)   // breathing room around the badge
+                    margin = Margin(vertical = 3.px, horizontal = 8.px)    // a little breathing room around the badge
                     marginLeft = 0.px                                      // left-justified (no gap on the left)
                     padding = Padding(vertical = 2.px, horizontal = 8.px)
                     border = Border(1.px, BorderStyle.solid, ThemeManager.current.link)

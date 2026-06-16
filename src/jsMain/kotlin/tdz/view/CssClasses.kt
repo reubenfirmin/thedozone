@@ -19,6 +19,7 @@ object CssClasses {
     const val CARD_HEADER = "tdz-card-header"
     const val CARD_BODY = "tdz-card-body"
     const val CARD_FLOURISH = "tdz-card-flourish"
+    const val CARD_LINK = "tdz-card-link"     // a card whose only content is a canvas link → compact nav chip
     const val LOOSE_SEG = "tdz-loose-seg"
 
     // Flip cards (a card with `//` face boundaries). FLIP marks the CARD element, which turns in 3D
