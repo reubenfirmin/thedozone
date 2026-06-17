@@ -43,6 +43,9 @@ object IntroCard {
 
     private val ID get() = Zones.INTRO.elementId
 
+    /** The accented instruction verb (e.g. "Right-click") — styled and live-updated by selector. */
+    private const val ACCENT_CLASS = "tdz-intro-accent"
+
     /**
      * Show the welcome card iff [canvas] is the ROOT board in its pristine state (a single, empty content
      * column); otherwise remove it. Child boards starting empty is normal navigation, not a first run, so
@@ -94,7 +97,7 @@ object IntroCard {
                     div("tdz-intro-text") {
                         div("tdz-intro-h") { +"Welcome to The Do Zone" }
                         div("tdz-intro-p") {
-                            span("tdz-intro-accent") { +instruction() }
+                            span(ACCENT_CLASS) { +instruction() }
                             +" anywhere to open the menu and get started."
                         }
                         // The card itself is click-through (pointer-events: none); the button opts
@@ -120,7 +123,7 @@ object IntroCard {
         if (hintHooked) return
         hintHooked = true
         PointerHint.onChange {
-            Zones.INTRO.resolve()?.querySelector(".tdz-intro-accent")?.textContent = instruction()
+            Zones.INTRO.resolve()?.querySelector(".$ACCENT_CLASS")?.textContent = instruction()
         }
     }
 
@@ -205,7 +208,7 @@ object IntroCard {
                 opacity = 0.92
                 fontFamily = t.fontFamily
             }
-            rule("#$ID .tdz-intro-accent") {
+            rule("#$ID .$ACCENT_CLASS") {
                 color = t.link
                 fontWeight = FontWeight.w700
                 whiteSpace = WhiteSpace.nowrap

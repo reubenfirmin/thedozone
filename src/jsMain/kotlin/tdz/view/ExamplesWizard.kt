@@ -37,6 +37,26 @@ object ExamplesWizard {
 
     private val ID get() = Zones.EXAMPLES_WIZARD.elementId
 
+    // Component-private CSS class names, shared between the markup builders and the stylesheet
+    // selectors below so a rename can't silently desync the two. (The keyframes names live inline —
+    // they're declared once and referenced by handle, not by literal.)
+    private const val PANEL_CLASS = "tdz-wiz-panel"
+    private const val TOP_CLASS = "tdz-wiz-top"
+    private const val TITLE_CLASS = "tdz-wiz-title"
+    private const val CLOSE_CLASS = "tdz-wiz-close"
+    private const val PROGRESS_CLASS = "tdz-wiz-progress"
+    private const val STEP_TITLE_CLASS = "tdz-wiz-step-title"
+    private const val EXPLAIN_CLASS = "tdz-wiz-explain"
+    private const val EX_HEAD_CLASS = "tdz-wiz-ex-head"
+    private const val EX_INTRO_CLASS = "tdz-wiz-ex-intro"
+    private const val EXAMPLES_CLASS = "tdz-wiz-examples"
+    private const val EXAMPLE_CLASS = "tdz-wiz-example"
+    private const val EX_TITLE_CLASS = "tdz-wiz-ex-title"
+    private const val EX_TAG_CLASS = "tdz-wiz-ex-tag"
+    private const val FOOTER_CLASS = "tdz-wiz-footer"
+    private const val RESET_CLASS = "tdz-wiz-reset"
+    private const val NEXT_CLASS = "tdz-wiz-next"
+
     /**
      * One step of the wizard: a teaching point, optional clickable [examples] (a gallery the user
      * picks from), and an optional [preset] board dropped onto the canvas on arrival (so there's
@@ -115,28 +135,28 @@ object ExamplesWizard {
         addToBody {
             div {
                 zone(Zones.EXAMPLES_WIZARD)
-                div("tdz-wiz-panel") {
-                    div("tdz-wiz-top") {
-                        div("tdz-wiz-title") { +"What is this?" }
-                        button(classes = "tdz-wiz-close", type = ButtonType.button) {
+                div(PANEL_CLASS) {
+                    div(TOP_CLASS) {
+                        div(TITLE_CLASS) { +"What is this?" }
+                        button(classes = CLOSE_CLASS, type = ButtonType.button) {
                             +"×"
                             onClick { exit(model, eventBus) }
                         }
                     }
                     // The step indicator counts feature steps only; the welcome card (index 0) sits
                     // outside the count, so it shows no progress line.
-                    if (stepIndex > 0) div("tdz-wiz-progress") { +"Step $stepIndex of ${featureSteps.size}" }
+                    if (stepIndex > 0) div(PROGRESS_CLASS) { +"Step $stepIndex of ${featureSteps.size}" }
                     renderStep(step, model, eventBus)
-                    div("tdz-wiz-footer") {
+                    div(FOOTER_CLASS) {
                         // Reset only earns its place on the step that loads and swaps example
                         // boards; the welcome card and later steps are preset or informational.
                         if (step.examples.isNotEmpty()) {
-                            button(classes = "tdz-wiz-reset", type = ButtonType.button) {
+                            button(classes = RESET_CLASS, type = ButtonType.button) {
                                 +"Reset board"
                                 onClick { ExampleLoader.reset(model, eventBus) }
                             }
                         }
-                        button(classes = "tdz-wiz-next", type = ButtonType.button) {
+                        button(classes = NEXT_CLASS, type = ButtonType.button) {
                             // Each step carries its own forward label; the last step's doubles as the
                             // finish label, since the button ends the tour there.
                             +step.cta
@@ -152,19 +172,19 @@ object ExamplesWizard {
     }
 
     private fun FlowContent.renderStep(step: WizardStep, model: Model, eventBus: EventBus<Event>) {
-        div("tdz-wiz-step-title") { +step.title }
-        div("tdz-wiz-explain") { +step.explanation }
+        div(STEP_TITLE_CLASS) { +step.title }
+        div(EXPLAIN_CLASS) { +step.explanation }
         // Informational steps (privacy, the context menu) carry no examples — skip the gallery.
         if (step.examples.isNotEmpty()) {
-            div("tdz-wiz-ex-head") { +"Examples" }
-            div("tdz-wiz-ex-intro") { +"Click the buttons to see previews." }
-            div("tdz-wiz-examples") {
+            div(EX_HEAD_CLASS) { +"Examples" }
+            div(EX_INTRO_CLASS) { +"Click the buttons to see previews." }
+            div(EXAMPLES_CLASS) {
                 step.examples.forEach { example ->
-                    button(classes = "tdz-wiz-example", type = ButtonType.button) {
+                    button(classes = EXAMPLE_CLASS, type = ButtonType.button) {
                         // Replaces the board in place; the panel stays up so the next click is one away.
                         onClick { ExampleLoader.load(model, eventBus, example) }
-                        div("tdz-wiz-ex-title") { +example.title }
-                        div("tdz-wiz-ex-tag") { +example.tagline }
+                        div(EX_TITLE_CLASS) { +example.title }
+                        div(EX_TAG_CLASS) { +example.tagline }
                     }
                 }
             }
@@ -218,7 +238,7 @@ object ExamplesWizard {
                 zIndex = ZLayer.EXAMPLES_WIZARD
                 fontFamily = t.fontFamily
             }
-            rule("#$ID .tdz-wiz-panel") {
+            rule("#$ID .$PANEL_CLASS") {
                 position = Position.absolute
                 top = 16.px
                 right = 16.px
@@ -234,20 +254,20 @@ object ExamplesWizard {
                 animation(enter, 280.ms, cubicBezier(0.2, 0.8, 0.3, 1.0), fillMode = FillMode.both)
                 animation(glow, 1.3.s, Timing.easeInOut, delay = 280.ms, iterationCount = IterationCount("3"))
             }
-            rule("#$ID .tdz-wiz-top") {
+            rule("#$ID .$TOP_CLASS") {
                 display = Display.flex
                 alignItems = Align.center
                 justifyContent = JustifyContent.spaceBetween
                 marginBottom = 4.px
             }
-            rule("#$ID .tdz-wiz-title") {
+            rule("#$ID .$TITLE_CLASS") {
                 fontSize = 12.px
                 fontWeight = FontWeight.w700
                 letterSpacing = 0.06.em
                 textTransform = TextTransform.uppercase
                 color = t.link
             }
-            rule("#$ID .tdz-wiz-close") {
+            rule("#$ID .$CLOSE_CLASS") {
                 cursor = Cursor.pointer
                 backgroundColor = Color.transparent
                 color = t.menuFg
@@ -257,44 +277,44 @@ object ExamplesWizard {
                 padding = Padding(0.px, 4.px)
                 opacity = 0.6
             }
-            rule("#$ID .tdz-wiz-close:hover") { opacity = 1.0 }
-            rule("#$ID .tdz-wiz-progress") {
+            rule("#$ID .$CLOSE_CLASS:hover") { opacity = 1.0 }
+            rule("#$ID .$PROGRESS_CLASS") {
                 fontSize = 12.px
                 opacity = 0.6
                 marginBottom = 4.px
             }
-            rule("#$ID .tdz-wiz-step-title") {
+            rule("#$ID .$STEP_TITLE_CLASS") {
                 fontSize = 19.px
                 fontWeight = FontWeight.w600
                 marginTop = 6.px
             }
-            rule("#$ID .tdz-wiz-explain") {
+            rule("#$ID .$EXPLAIN_CLASS") {
                 fontSize = 13.5.px
                 lineHeight = LineHeight("1.5")
                 opacity = 0.9
                 marginTop = 6.px
                 marginBottom = 16.px
             }
-            rule("#$ID .tdz-wiz-ex-head") {
+            rule("#$ID .$EX_HEAD_CLASS") {
                 fontSize = 12.px
                 fontWeight = FontWeight.w700
                 letterSpacing = 0.05.em
                 textTransform = TextTransform.uppercase
                 opacity = 0.7
             }
-            rule("#$ID .tdz-wiz-ex-intro") {
+            rule("#$ID .$EX_INTRO_CLASS") {
                 fontSize = 12.5.px
                 opacity = 0.8
                 marginTop = 3.px
                 marginBottom = 10.px
             }
-            rule("#$ID .tdz-wiz-examples") {
+            rule("#$ID .$EXAMPLES_CLASS") {
                 display = Display.flex
                 flexDirection = FlexDirection.column
                 gap = 8.px
             }
             // Each example is a single click that rebuilds the board.
-            rule("#$ID .tdz-wiz-example") {
+            rule("#$ID .$EXAMPLE_CLASS") {
                 cursor = Cursor.pointer
                 textAlign = TextAlign.left
                 width = 100.pct
@@ -310,21 +330,21 @@ object ExamplesWizard {
                 transition += Transition("border-color", 120.ms, Timing.easeOut)
                 transition += Transition("background-color", 120.ms, Timing.easeOut)
             }
-            rule("#$ID .tdz-wiz-example:hover") {
+            rule("#$ID .$EXAMPLE_CLASS:hover") {
                 borderColor = t.link
                 filter(brightness(1.06))
             }
-            rule("#$ID .tdz-wiz-ex-title") {
+            rule("#$ID .$EX_TITLE_CLASS") {
                 fontSize = 14.px
                 fontWeight = FontWeight.w600
                 color = t.link
             }
-            rule("#$ID .tdz-wiz-ex-tag") {
+            rule("#$ID .$EX_TAG_CLASS") {
                 fontSize = 12.5.px
                 opacity = 0.8
                 marginTop = 2.px
             }
-            rule("#$ID .tdz-wiz-footer") {
+            rule("#$ID .$FOOTER_CLASS") {
                 display = Display.flex
                 alignItems = Align.center
                 justifyContent = JustifyContent.spaceBetween
@@ -332,7 +352,7 @@ object ExamplesWizard {
                 marginTop = 16.px
             }
             // A quiet text link — destructive-ish, so it stays understated next to the primary CTA.
-            rule("#$ID .tdz-wiz-reset") {
+            rule("#$ID .$RESET_CLASS") {
                 cursor = Cursor.pointer
                 backgroundColor = Color.transparent
                 color = t.menuFg
@@ -343,8 +363,8 @@ object ExamplesWizard {
                 opacity = 0.6
                 textDecoration = TextDecoration(setOf(TextDecorationLine.underline))
             }
-            rule("#$ID .tdz-wiz-reset:hover") { opacity = 1.0 }
-            rule("#$ID .tdz-wiz-next") {
+            rule("#$ID .$RESET_CLASS:hover") { opacity = 1.0 }
+            rule("#$ID .$NEXT_CLASS") {
                 marginLeft = LinearDimension("auto")   // stay right-aligned even when Reset is absent
                 cursor = Cursor.pointer
                 fontSize = 13.px
@@ -356,7 +376,7 @@ object ExamplesWizard {
                 padding = Padding(vertical = 8.px, horizontal = 14.px)
                 fontFamily = t.fontFamily
             }
-            rule("#$ID .tdz-wiz-next:hover") { filter(brightness(1.08)) }
+            rule("#$ID .$NEXT_CLASS:hover") { filter(brightness(1.08)) }
         }
     }
 }

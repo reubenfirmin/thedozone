@@ -30,9 +30,7 @@ data class Boundary(val leftX: Int, val topY: Int, val width: Int, val height: I
             y
         }
 
-        val out = inset(newX, newY)
-
-        return out
+        return inset(newX, newY)
     }
 
     // nudge inside the boundary by 1 pixel if on the edge

@@ -28,6 +28,9 @@ import tdz.view.theme.ThemeManager
 import tdz.view.theme.themes
 import web.mouse.MouseEvent
 
+/** Issue tracker opened by "Report a Bug". */
+private const val BUG_REPORT_URL = "https://github.com/reubenfirmin/thedozone2"
+
 /** Dynamic actions the canvas menu invokes; kept as an interface so sections are unit-testable. */
 interface CanvasMenuActions {
     fun toggleColumn()
@@ -209,7 +212,7 @@ fun canvasMenu(
         override fun openLocalFolderSync() { Router.navigate(settingsPages.folder.path()) }
         override fun downloadPng() {
             val name = model.currentCanvas().name
-            PngExporter().export("app-container", "${name.normalized()}.png") {
+            PngExporter().export(Zones.CANVAS.elementId, "${name.normalized()}.png") {
                 // structural=false: just restoring images stripped for the capture — no sync push.
                 eventBus.fire(RefreshCanvas(name, structural = false))
             }
@@ -224,8 +227,8 @@ fun canvasMenu(
                 else window.alert("No backup of this board available yet.")
             }
         }
-        override fun openDoc(path: String) { zoned.framework.routing.Router.navigate(path) }
-        override fun reportBug() { window.open("https://github.com/reubenfirmin/thedozone2", "_blank", "noopener") }
+        override fun openDoc(path: String) { Router.navigate(path) }
+        override fun reportBug() { window.open(BUG_REPORT_URL, "_blank", "noopener") }
         override fun installApp() { PwaInstall.prompt() }
     }
     canvasSections(mode, actions, tdz.sync.local.HandleStore.supported(), LocalBackup.autoTimestamp(),

@@ -67,7 +67,7 @@ internal object MarkdownReader {
                 // note that these are order dependent
                 columnStyleLine.matches(trimmed) -> {}   // column-level style header — not a card
                 consumeCodeBlock(trimmed, line, state) -> {}
-                consumeDiagram(trimmed, state) -> {}
+                consumeDiagram(trimmed, line, state) -> {}
                 // before separator/empty-line: a blank line both ends the quote and the card
                 consumeBlockquote(trimmed, line, state) -> {}
                 consumeMetadataLine(trimmed, state) -> {}

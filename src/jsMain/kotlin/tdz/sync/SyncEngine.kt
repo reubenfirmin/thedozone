@@ -133,7 +133,7 @@ class SyncEngine(
                     }
                     // EQUAL with a real divergence (different content but neither clock dominates) is treated
                     // as concurrent so nothing is silently dropped: identical content merges to a no-op,
-                    // divergent content merges (or hits the deterministic overlap tiebreak + backup).
+                    // divergent content merges (or hits the deterministic overlap tiebreak).
                     Causal.CONCURRENT, Causal.EQUAL -> {
                         val merge = ColumnMerge.mergeColumn(local = content, base = knownBase, remote = remoteContent)
                         val join = pointwiseMax(knownVv, remoteVv)
@@ -142,9 +142,8 @@ class SyncEngine(
                             val meta = storage.upload(path, merge.merged, ifMatchRev = null)
                             return SyncEntry(meta.rev, localUpdatedAt, base = merge.merged, vv = join) to null
                         }
-                        LocalBackup.snapshot()
                         // deterministic, symmetric overlap winner: keep the lexicographically-greater body so
-                        // both devices converge on the same choice. Back up the loser (snapshot above).
+                        // both devices converge on the same choice.
                         val localWins = content >= remoteContent
                         val winnerContent = if (localWins) content else remoteContent
                         writeLocal(path, winnerContent)
@@ -261,7 +260,7 @@ class SyncEngine(
                             }
                             // EQUAL with a real divergence (different content but neither clock dominates) is treated
                             // as concurrent so nothing is silently dropped: identical content merges to a no-op,
-                            // divergent content merges (or hits the deterministic overlap tiebreak + backup).
+                            // divergent content merges (or hits the deterministic overlap tiebreak).
                             Causal.CONCURRENT, Causal.EQUAL -> {
                                 val merge = ColumnMerge.mergeColumn(local = localContent, base = known?.base, remote = remoteContent)
                                 val join = pointwiseMax(localVv, remoteVv)
@@ -271,7 +270,6 @@ class SyncEngine(
                                     changed += m.path
                                     keptLocal += m.path   // push merged up so the remote converges
                                 } else {
-                                    LocalBackup.snapshot()
                                     // deterministic symmetric winner: keep lexicographically-greater body.
                                     val winner = if (localContent >= remoteContent) localContent else remoteContent
                                     writeLocal(m.path, winner)

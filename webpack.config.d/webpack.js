@@ -4,7 +4,6 @@ if (config.devServer) {
     config.devServer.client = {
         overlay: false
     };
-    // config.devtool = 'eval-cheap-source-map';
 } else {
     config.devtool = undefined;
 }

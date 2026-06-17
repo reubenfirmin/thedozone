@@ -7,6 +7,7 @@ import tdz.model.Split
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
+import kotlin.test.assertTrue
 
 class CanvasDocTest {
 
@@ -33,6 +34,14 @@ class CanvasDocTest {
         assertEquals(null, back.parentName)
         assertEquals(listOf(ColumnId(0), ColumnId(1)), back.columns)
         assertEquals(listOf(ColumnLayoutSpec(ColumnId(0), Split.HORIZONTAL, listOf(ColumnId(1)))), back.layouts)
+    }
+
+    @Test
+    fun encodeOmitsRedundantCanvasName() {
+        // The layout entry no longer carries the canvas name (it comes from the enclosing doc):
+        // 3 fields (columnId|split|contains), not the legacy 4.
+        assertTrue(doc.encode().contains("\"0|VERTICAL|1,2\""),
+            "expected 3-field layout entry in: ${doc.encode()}")
     }
 
     @Test

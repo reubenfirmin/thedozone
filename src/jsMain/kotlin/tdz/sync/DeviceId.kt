@@ -8,12 +8,8 @@ import kotlin.js.Date
  * column's version vector. Persisted in localStorage; if cleared, the profile simply becomes a new
  * device (a new vector component) — harmless. Not a secret, not synced.
  *
- * Caching note: this is a singleton object, so `cached` survives across tests within one Karma run.
- * Tests clear localStorage in @BeforeTest, which means `cached` could hold a value while localStorage
- * is empty. To handle this, `get()` checks whether localStorage still matches `cached` on every call.
- * If they diverge (localStorage was cleared), it re-writes `cached` back to localStorage so the
- * in-memory id and the stored id stay in sync. This makes both `stableAcrossCalls` and
- * `persistsInLocalStorage` pass deterministically regardless of test execution order.
+ * `get()` re-asserts the cached id into localStorage whenever the two diverge (e.g. localStorage was
+ * cleared out from under us), keeping the in-memory and stored ids consistent.
  */
 object DeviceId {
     private const val KEY = "tdz.sync.deviceId"

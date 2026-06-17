@@ -1,17 +1,20 @@
 /*
  * The Do Zone service worker — offline app shell.
  *
+ * The SW manages ONLY this app's own origin (its shell). It NEVER intercepts cross-origin requests
+ * (Dropbox, Google Drive, GIS, fonts, images, …) — those go straight to the browser, so the SW can
+ * never sit in the path of normal third-party traffic.
+ *
  * Strategy:
- *   - navigations            -> network-first, fall back to cached index.html (deploys stay live)
- *   - same-origin GET assets -> network-first, fall back to cache when offline. main.bundle.js has a
- *                               STABLE filename, so stale-while-revalidate served the OLD bundle for a
- *                               load after every deploy; network-first means a redeploy is live
- *                               immediately and the cache is only an offline fallback.
- *   - cross-origin GET       -> best-effort cache-first; failures pass through to the network
+ *   - cross-origin           -> not intercepted; the browser handles it
+ *   - navigations            -> network-first, fall back to cached index.html (offline)
+ *   - same-origin GET assets -> network-first, fall back to cache (offline). main.bundle.js has a
+ *                               STABLE filename, so network-first means a redeploy is live immediately
+ *                               and the cache is only the offline fallback.
  *
  * Bump CACHE_VERSION when the shell list or strategy changes; activate() drops older caches.
  */
-const CACHE_VERSION = 'tdz-shell-v2';
+const CACHE_VERSION = 'tdz-shell-v3';
 
 // Same-origin shell assets to pre-cache on install. The leading "/" and "/index.html" both resolve
 // to the app HTML; keeping both lets the navigation fallback hit the cache either way.
@@ -51,6 +54,11 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
 
+  // HARD RULE: the SW only ever manages this app's own origin. Every cross-origin request — Dropbox,
+  // Google Drive, GIS, fonts, images, anything — is left entirely to the browser. The SW must never
+  // sit in the path of normal third-party traffic.
+  if (new URL(req.url).origin !== self.location.origin) return;
+
   // Navigations: network-first so a redeploy is served immediately; offline -> cached shell.
   if (req.mode === 'navigate') {
     event.respondWith(
@@ -60,43 +68,21 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_VERSION).then((c) => c.put('/index.html', copy)).catch(() => {});
           return res;
         })
-        .catch(() => caches.match(req).then((hit) => hit || caches.match('/index.html')))
+        .catch(() => caches.match('/index.html'))
     );
     return;
   }
 
-  const url = new URL(req.url);
-
-  if (url.origin === self.location.origin) {
-    // Same-origin assets: network-first so a redeploy (stable-filename bundle) is live at once;
-    // cache is refreshed on every success and used only as the offline fallback.
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          if (res && res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE_VERSION).then((c) => c.put(req, copy)).catch(() => {});
-          }
-          return res;
-        })
-        .catch(() => caches.open(CACHE_VERSION).then((c) => c.match(req)))
-    );
-    return;
-  }
-
-  // Cross-origin (Google Fonts, GIS): best-effort cache-first, never block the app on them.
+  // Same-origin assets: network-first (a redeploy is live at once); cache only as the offline fallback.
   event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) return cached;
-      return fetch(req)
-        .then((res) => {
-          if (res && (res.ok || res.type === 'opaque')) {
-            const copy = res.clone();
-            caches.open(CACHE_VERSION).then((c) => c.put(req, copy)).catch(() => {});
-          }
-          return res;
-        })
-        .catch(() => cached);
-    })
+    fetch(req)
+      .then((res) => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE_VERSION).then((c) => c.put(req, copy)).catch(() => {});
+        }
+        return res;
+      })
+      .catch(() => caches.open(CACHE_VERSION).then((c) => c.match(req)))
   );
 });

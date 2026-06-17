@@ -40,7 +40,7 @@ import zoned.framework.libs.loadNomnoml
  */
 object CardRenderer {
 
-    /** Sane ceiling on list nesting depth; parsing never exceeds 2, so beyond this is malformed. */
+    /** Hard ceiling on list nesting; a malformed or cyclic group is truncated past this depth. */
     private const val MAX_LIST_DEPTH = 32
 
     /**
@@ -356,22 +356,21 @@ object CardRenderer {
     private fun FlowContent.renderSegment(canvasName: CanvasName, segment: CardSegment, card: Card, eventBus: EventBus<Event>) {
         when (segment) {
             is ListGroup -> renderSegment(canvasName, segment, card, eventBus)
-            is CardListItem -> throw Exception("Didn't expect ungrouped list item")
+            is CardListItem -> console.warn("[render] unexpected ungrouped list item — skipping")
             is CardHeading -> renderSegment(segment)
             is CardText -> renderSegment(canvasName, segment, card, eventBus)
             is Callout -> renderSegment(canvasName, segment, card, eventBus)
             is CardCodeBlock -> renderRichText(segment)
             is Blockquote -> renderRichText(segment)
             is CardDiagram -> renderSegment(segment, card)
-            else -> throw Exception("No handler for $segment")
+            else -> console.warn("[render] no segment handler for $segment — skipping")
         }
     }
 
     fun FlowContent.renderSegment(canvasName: CanvasName, segment: ListGroup, card: Card, eventBus: EventBus<Event>, depth: Int = 0) {
-        // Hard recursion guard: normal parsing (toGroup) never nests deeper than 2, so any depth past
-        // this is a malformed or cyclic group. Truncate and warn instead of recursing forever — an
-        // unbounded list render once froze the tab for 22s and stack-overflowed, aborting the WHOLE
-        // board render (the board went blank). A bad card must degrade to a truncated card, never a crash.
+        // Hard recursion guard: a malformed or cyclic group must not recurse forever — that would
+        // abort the WHOLE board render, not just this card. Truncate and warn instead; a bad card
+        // degrades to a truncated card, never a crash.
         if (depth > MAX_LIST_DEPTH) {
             console.warn("[render] list nesting exceeded $MAX_LIST_DEPTH on card '${DomIds.card(card.ref)}' — " +
                 "truncating (the group is malformed/cyclic).")
@@ -430,13 +429,6 @@ object CardRenderer {
                             +(if (ascii) "${index + 1}." else "${index + 1}")
                         } else if (segment.type == ListMemberType.BULLET) {
                             +(if (ascii) "[ ]" else "\u2610")
-                        } else if (segment.type == ListMemberType.ARROW) {
-                            +(if (ascii) ">" else when (segment.weight) {
-                                1 -> "\u25B7"
-                                2 -> "\u25B6"
-                                3 -> "\u279C"
-                                else -> "\u261B"
-                            })
                         }
                     }
                 }
@@ -632,13 +624,20 @@ object CardRenderer {
         }
     }
 
+    /** Default map viewport height (px) when the link doesn't specify one. */
+    private const val MAP_DEFAULT_HEIGHT = 200
+    /** Highest zoom level the OSM tile layer serves. */
+    private const val MAP_MAX_ZOOM = 19
+    /** Default map zoom when the link doesn't specify one. */
+    private const val MAP_DEFAULT_ZOOM = 12
+
     private fun FlowContent.renderRichText(link: MapLink) {
         val mapRef = Ref<HTMLDivElement>()
         div {
             ref(mapRef)
             css {
                 width = 100.pct
-                height = (link.height ?: 200).px
+                height = (link.height ?: MAP_DEFAULT_HEIGHT).px
             }
             onMount {
                 // Leaflet (and its CSS) are code-split: fetched on the first card with a map.
@@ -646,15 +645,15 @@ object CardRenderer {
                     if (!mapRef.element.isConnected) return@then   // card re-rendered while loading
                     val map = leaflet.map(mapRef.element)
                     leaflet.tileLayer(
-                        "https://{s}.tile.osm.org/{z}/{x}/{y}.png",
+                        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
                         object : TileLayerOptions {
                             override var attribution: String? =
                                 "&copy; <a href=\"https://osm.org/copyright\">OpenStreetMap</a> contributors"
-                            override var maxZoom: Int? = 19
+                            override var maxZoom: Int? = MAP_MAX_ZOOM
                             override var minZoom: Int? = null
                         },
                     ).addTo(map)
-                    map.setView(arrayOf(link.lat, link.long), link.zoom ?: 12)
+                    map.setView(arrayOf(link.lat, link.long), link.zoom ?: MAP_DEFAULT_ZOOM)
                     map.invalidateSize()
                 }.catch {
                     // Map failed to initialize (e.g. chunk/tile/network issue); leave the container

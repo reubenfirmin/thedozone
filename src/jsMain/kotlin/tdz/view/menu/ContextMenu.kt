@@ -32,7 +32,6 @@ import tdz.view.theme.ThemeManager
 /**
  * Single active floating context menu. Renders typesafe [MenuSection]s into one body-level
  * container positioned at the cursor, dismissed on mouse-leave / outside mousedown / Escape.
- * Frontend-only zoned-kotlinjs (no htmx, no server).
  *
  * Rendering model: items are CHILDREN of the menu div (built on the `FlowContent` receiver);
  * element events use the DSL handlers (live listeners via `onTagEvent`); styling is typed
@@ -49,6 +48,9 @@ object ContextMenu {
 
     /** Transparent hit-area (px) around the menu so a small mouse-out doesn't dismiss it. */
     private const val MENU_BUFFER = 20
+
+    /** Flyout offset (px) so its top aligns with the parent row's top padding. */
+    private const val SUBMENU_TOP_OFFSET = -9
 
 
     private var menuEl: HTMLElement? = null
@@ -195,14 +197,14 @@ object ContextMenu {
             }
             classes = setOf(ITEM_CLASS, SUBMENU_PARENT_CLASS)
             +item.label
-            span { css { paddingLeft = 12.px }; +"▸" }   // ▸
+            span { css { paddingLeft = 12.px }; +"▸" }
             div {
                 ref(subRef)
                 classes = setOf(SUBMENU_CLASS)   // hidden until parent :hover (see ensureStyles)
                 css {
                     position = Position.absolute
                     left = 100.pct
-                    top = (-9).px                // align the flyout top with the row's top padding
+                    top = SUBMENU_TOP_OFFSET.px  // align the flyout top with the row's top padding
                     minWidth = 160.px
                     padding = Padding(vertical = 8.px, horizontal = 0.px)
                     backgroundColor = ThemeManager.current.menuBg
@@ -228,13 +230,13 @@ object ContextMenu {
      *  edge, and shift up if it overruns the bottom. */
     private fun positionSubmenu(sub: HTMLElement) {
         sub.style.left = "100%"; sub.style.right = "auto"
-        sub.style.top = "-9px"; sub.style.bottom = "auto"
+        sub.style.top = "${SUBMENU_TOP_OFFSET}px"; sub.style.bottom = "auto"
         if (sub.getBoundingClientRect().right > window.innerWidth) {
             sub.style.left = "auto"; sub.style.right = "100%"
         }
         val r = sub.getBoundingClientRect()
         if (r.bottom > window.innerHeight) {
-            sub.style.top = "${(-9 - (r.bottom - window.innerHeight)).toInt()}px"
+            sub.style.top = "${(SUBMENU_TOP_OFFSET - (r.bottom - window.innerHeight)).toInt()}px"
         }
     }
 

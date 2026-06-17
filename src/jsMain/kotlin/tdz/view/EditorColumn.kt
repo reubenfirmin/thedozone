@@ -34,6 +34,9 @@ import zoned.framework.libs.loadAceLanguageTools
 import tdz.view.theme.ThemeManager
 import kotlin.js.RegExp
 
+/** Ace editor font size (px). */
+private const val EDITOR_FONT_SIZE = 16
+
 /**
  * Editor mode for a column using Ace editor.
  *
@@ -106,7 +109,7 @@ class EditorColumn(
                     // Configure editor
                     val theme = ThemeManager.current
                     editor.setTheme(theme.editorTheme)
-                    editor.setFontSize(16)
+                    editor.setFontSize(EDITOR_FONT_SIZE)
                     // Reading-oriented themes get a plain editor (no gutter/line-numbers, no print
                     // margin, no active-line highlight); code themes keep the full code-editor chrome.
                     // The face stays monospace either way — Ace mis-positions the cursor/selection/

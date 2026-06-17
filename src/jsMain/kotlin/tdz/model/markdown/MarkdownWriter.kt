@@ -5,7 +5,8 @@ import tdz.model.card.*
 
 internal object MarkdownWriter {
 
-    /** Mirror of CardRenderer's nesting ceiling; parsing never exceeds 2, so beyond this is malformed. */
+    /** Mirror of CardRenderer's recursion ceiling: a malformed or cyclic group must not loop
+     *  unboundedly on save (which would freeze the tab and lose the write). */
     private const val MAX_WRITE_LIST_DEPTH = 32
 
     /** Ordinal state for numbered lists — created per [generate] call, never shared across calls. */
@@ -97,10 +98,6 @@ internal object MarkdownWriter {
             }
 
             "${numbering.count}."
-        }
-        ListMemberType.ARROW -> {
-            numbering.count = 1
-            "-"
         }
     }
 

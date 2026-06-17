@@ -8,8 +8,4 @@ data class CardCodeBlock(val text: String): CardSegment, RichText {
         }
         return "`$text`"
     }
-
-    fun code() = text
-
-    fun className() = "microlight"
 }

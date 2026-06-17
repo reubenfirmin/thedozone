@@ -310,12 +310,12 @@ class SyncController(
         SyncLog.resetCounters()
         SyncLog.log("reconcile started")
         scope.launch {
-            // try/finally, not just runCatching: if ANYTHING here escapes (snapshot, fail() itself),
+            // try/finally, not just runCatching: if ANYTHING here escapes (e.g. fail() itself),
             // a stuck reconciling=true would silently freeze every future reconcile this session.
             try {
             SyncStateStore.set(SyncState.Reconciling, eventBus)
             runCatching {
-                LocalBackup.snapshot()   // recoverable safety net before any pull can overwrite/delete local
+                tdz.model.localstorage.flushPendingWrites()   // buffered edits must be on disk before the pull reads local
                 // Local deletions must STICK: anything still tracked in state but gone locally was
                 // deleted here, and the pull below would otherwise RE-IMPORT it. This covers THREE
                 // cases — a column dropped from its canvas, AND (for a deleted board) both its
@@ -529,7 +529,7 @@ class SyncController(
         val t0 = Date.now()
         SyncLog.resetCounters()
         SyncLog.log("initial sync started")
-        LocalBackup.snapshot()   // recoverable safety net before any pull can overwrite/delete local
+        tdz.model.localstorage.flushPendingWrites()   // buffered edits must be on disk before the sync reads local
         try {
             runCatching {
                 // Seed local column vectors BEFORE pulling: otherwise an unseeded local column would be
@@ -674,8 +674,7 @@ class SyncController(
      * files as pending/newest the reconcile pushes the restored content UP, instead of the next
      * pull "correcting" the rollback with the remote's newer-but-unwanted content. Columns the
      * rollback removed (created after the backup) are DELETED on the remote before that reconcile
-     * — the rollback is authoritative; they must not re-import. The pre-restore state is
-     * snapshotted into the pre-sync ring first, so a mis-restore is itself recoverable.
+     * — the rollback is authoritative; they must not re-import.
      * Returns false when no periodic backup exists or it doesn't contain this board.
      */
     fun restoreAutoBackup(): Boolean {
@@ -683,7 +682,6 @@ class SyncController(
         val manifestKey = CanvasStorageKeys.manifest(name)
         val backupCanvas = LocalBackup.autoValue(manifestKey)?.let { CanvasDoc.decode(it) }
             ?: return false   // the board didn't exist when the backup was taken
-        LocalBackup.snapshot()
         // Exact keys, from BOTH manifests: backup columns are replayed, columns that only exist
         // now are removed (rollback), and key shapes never rely on name-prefix matching (canvas
         // names may contain each other).

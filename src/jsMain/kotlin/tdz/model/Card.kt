@@ -29,8 +29,6 @@ data class Card(val segments: List<CardSegment>, val metadata: CardMetadata, val
             }
         })
 
-    fun headingOnly() = segments.filterNot { it is CardHeading }.isEmpty()
-
     /** A "title" card: its only content is a single level-1 heading (e.g. `# Tracking`). */
     fun isH1Only() = segments.size == 1 && (segments[0] as? CardHeading)?.level == 1
 

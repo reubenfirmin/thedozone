@@ -17,8 +17,6 @@ repositories {
     maven("https://jitpack.io")
 }
 
-val webDir = file("src/main/web")
-
 kotlin {
     jvmToolchain(21)
 
@@ -63,8 +61,6 @@ kotlin {
         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     }
 
-    sourceSets["jsMain"].resources.srcDir(webDir)
-
     sourceSets["jsTest"].dependencies {
         implementation(kotlin("test-js"))
         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
@@ -83,10 +79,3 @@ tasks.register("build-production") {
     // `build` already assembles `jsBrowserDistribution` (via `assemble`) and runs the test gate (via `check`).
     dependsOn("build")
 }
-
-//
-//tasks.withType<org.jetbrains.kotlin.gradle.dsl.KotlinCompile<*>> {
-//    kotlinOptions {
-//        freeCompilerArgs += "-XXLanguage:+JsAllowInvalidCharsIdentifiersEscaping"
-//    }
-//}

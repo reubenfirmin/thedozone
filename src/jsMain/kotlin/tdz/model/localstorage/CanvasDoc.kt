@@ -43,7 +43,7 @@ data class CanvasDoc (
             parentId = parentName?.normalized(),
             columns = columns.joinToString(","),
             layouts = layouts.joinToString("||") {
-                ColumnLayoutSpecDoc(name, it.columnId, it.split, it.contains).encode()
+                ColumnLayoutSpecDoc(it.columnId, it.split, it.contains).encode()
             },
         )
     )
@@ -54,7 +54,7 @@ data class CanvasDoc (
         internal fun fromWire(wire: CanvasWire) = CanvasDoc(
             CanvasName(wire.name),
             wire.parentId?.let { CanvasName(it) },
-            wire.columns.split(",").map { ColumnId(it.toInt()) },
+            wire.columns.split(",").filter { it.isNotBlank() }.map { ColumnId(it.toInt()) },
             wire.layouts.split("||")
                 .mapNotNull { ColumnLayoutSpecDoc.decode(it) }
                 .map { ColumnLayoutSpec(it.columnId, it.split, it.contains) },
@@ -63,7 +63,6 @@ data class CanvasDoc (
 }
 
 data class ColumnLayoutSpecDoc(
-    val canvasName: CanvasName,
     val columnId: ColumnId,
     val split: Split,
     val contains: List<ColumnId>
@@ -71,22 +70,29 @@ data class ColumnLayoutSpecDoc(
 
     /** Pipe-delimited, not JSON — historical format kept for storage compatibility. */
     fun encode(): String {
-        return "${canvasName.normalized()}|$columnId|${split.name}|${contains.joinToString(",")}"
+        return "$columnId|${split.name}|${contains.joinToString(",")}"
     }
 
     companion object {
         fun decode(raw: String): ColumnLayoutSpecDoc? {
             val parts = raw.split("|")
-            if (parts.size < 4) {
+            // A legacy entry led with a redundant canvasName (the canvas name comes from the
+            // enclosing doc); tolerate it. 4 fields = legacy (drop the name), 3 = current.
+            val fields = if (parts.size >= 4) parts.drop(1) else parts
+            if (fields.size < 3) {
                 console.error("Could not parse: $raw")
                 return null
             }
-            return ColumnLayoutSpecDoc(
-                CanvasName(parts[0]),
-                ColumnId(parts[1].toInt()),
-                Split.valueOf(parts[2]),
-                (parts[3]).split(",").map { ColumnId(it.toInt()) }
-            )
+            return runCatching {
+                ColumnLayoutSpecDoc(
+                    ColumnId(fields[0].toInt()),
+                    Split.valueOf(fields[1]),
+                    fields[2].split(",").filter { it.isNotBlank() }.map { ColumnId(it.toInt()) }
+                )
+            }.getOrElse {
+                console.error("Could not parse: $raw")
+                null
+            }
         }
     }
 }

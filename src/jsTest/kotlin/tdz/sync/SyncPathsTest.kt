@@ -163,6 +163,43 @@ class SyncPathsTest {
         assertEquals(canvas.normalized(), parsed?.normalized())
     }
 
+    // ---- Root/home canvas (empty name): must NOT produce "//" (Dropbox path/malformed_path) ----
+
+    @Test
+    fun rootCanvasColumnPathEmptyRootHasNoDoubleSlash() {
+        val p = SyncPaths.columnPath("", CanvasName(""), ColumnId(0))
+        assertTrue(!p.contains("//"), "root column path must be a valid Dropbox path, got: $p")
+        assertEquals("/col-0.md", p)
+    }
+
+    @Test
+    fun rootCanvasColumnPathWithRootHasNoDoubleSlash() {
+        val p = SyncPaths.columnPath("notes", CanvasName(""), ColumnId(0))
+        assertTrue(!p.contains("//"), "root column path must be a valid Dropbox path, got: $p")
+        assertEquals("/notes/col-0.md", p)
+    }
+
+    @Test
+    fun rootCanvasManifestPathHasNoDoubleSlash() {
+        assertEquals("/_canvas.json", SyncPaths.manifestPath("", CanvasName("")))
+        assertEquals("/notes/_canvas.json", SyncPaths.manifestPath("notes", CanvasName("")))
+    }
+
+    @Test
+    fun rootCanvasColumnRoundTrips() {
+        val path = SyncPaths.columnPath("notes", CanvasName(""), ColumnId(2))
+        val parsed = SyncPaths.parseColumn(path, "notes")
+        assertEquals("", parsed?.first?.normalized(), "root-level column parses back to the root canvas")
+        assertEquals(ColumnId(2), parsed?.second)
+        assertEquals("", SyncPaths.parseColumn(SyncPaths.columnPath("", CanvasName(""), ColumnId(3)), "")?.first?.normalized())
+    }
+
+    @Test
+    fun rootCanvasManifestRoundTrips() {
+        assertEquals("", SyncPaths.parseManifest(SyncPaths.manifestPath("", CanvasName("")), "")?.normalized())
+        assertEquals("", SyncPaths.parseManifest(SyncPaths.manifestPath("notes", CanvasName("")), "notes")?.normalized())
+    }
+
     @Test
     fun nestedAndTopLevelBoardsDontCollide() {
         // Nested "a/x" and top-level "x" must map to DIFFERENT folders AND parse back to DIFFERENT canvases

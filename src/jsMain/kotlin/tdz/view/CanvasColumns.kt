@@ -53,6 +53,11 @@ class CanvasColumns(val canvas: Canvas,
     companion object {
         /** At/below this viewport width the board collapses to its first column only (see [render]). */
         const val MOBILE_BREAKPOINT = 768
+
+        /** Dark text for contrast on a light band (also the fallback when a color is unparseable). */
+        private const val CONTRAST_DARK = "#1d1b20"
+        /** Light text for contrast on a dark band. */
+        private const val CONTRAST_LIGHT = "#ffffff"
     }
 
     private val boundaries = mutableMapOf<ColumnId, Boundary>()
@@ -61,7 +66,7 @@ class CanvasColumns(val canvas: Canvas,
     private var focusedColumn: ColumnId = canvas.columns.firstOrNull { !canvas.layoutMap.containsKey(it) } ?: canvas.columns.firstOrNull() ?: ColumnId(0)
 
     init {
-        // Load persisted modes from localStorage
+        // Load persisted modes from localStorage.
         canvas.columns.forEach { columnId ->
             val persistedMode = loadModeFromStorage(columnId)
             if (persistedMode != null) {
@@ -166,7 +171,7 @@ class CanvasColumns(val canvas: Canvas,
         }
     }
 
-    // resolve a particular column layout, adding dom elements to it
+    // Resolve a particular column layout, adding DOM elements to it.
     private fun FlowContent.renderLayoutTree(root: Boolean, parentIndex: ColumnId, parentBoundary: Boundary, regenerateColumns: List<ColumnId>, ancestors: Set<ColumnId>) {
 
         // Cycle guard: a corrupt manifest can reference a layout that's already an ancestor (0→1→0…).
@@ -284,7 +289,7 @@ class CanvasColumns(val canvas: Canvas,
         return columnContainer
     }
 
-    // Set up event handlers after the column's DOM element is inserted
+    // Set up event handlers after the column's DOM element is inserted.
     /**
      * ONE delegated click listener per column toggles task checkboxes — task rows carry no
      * per-row closures. The clicked row resolves to its model segment positionally: its ordinal
@@ -389,9 +394,9 @@ class CanvasColumns(val canvas: Canvas,
                 h.take(2).toIntOrNull(16), h.drop(2).take(2).toIntOrNull(16), h.drop(4).take(2).toIntOrNull(16),
             )
         }
-        if (r == null || g == null || b == null) return "#1d1b20"   // unparseable → assume light band
+        if (r == null || g == null || b == null) return CONTRAST_DARK   // unparseable → assume light band
         val luma = 0.299 * r + 0.587 * g + 0.114 * b
-        return if (luma < 140) "#ffffff" else "#1d1b20"
+        return if (luma < 140) CONTRAST_LIGHT else CONTRAST_DARK
     }
 
     /**
@@ -420,7 +425,7 @@ class CanvasColumns(val canvas: Canvas,
     }
 
     private fun reRenderColumn(columnId: ColumnId) {
-        // Clean up old column
+        // Clean up the old column.
         columnContainers[columnId]?.beforeRemoval()
 
         val columnContainer = setupColumnContainer(columnId)

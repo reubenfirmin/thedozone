@@ -10,12 +10,9 @@ import tdz.model.Model
 import tdz.sync.SyncController
 import tdz.sync.SyncState
 import tdz.sync.SyncStateStore
-import tdz.view.ZLayer
 import tdz.view.modalButton
-import tdz.view.theme.ThemeManager
 import web.html.HTMLElement
 import zoned.framework.dom.Ref
-import zoned.framework.dom.onClick
 import zoned.framework.dom.onMount
 import zoned.framework.dom.ref
 import zoned.framework.interop.addToBody
@@ -66,60 +63,39 @@ class LocalFolderModal(
         val r = Ref<HTMLElement>()
         val statusRef = Ref<HTMLElement>()
         addToBody {
-            div {   // scrim
-                ref(r)
-                css {
-                    position = Position.fixed
-                    top = 0.px; left = 0.px; right = 0.px; bottom = 0.px
-                    zIndex = ZLayer.MODAL
-                    display = Display.flex
-                    alignItems = Align.center
-                    justifyContent = JustifyContent.center
-                    backgroundColor = SyncColors.modalOverlay
+            syncModalChrome(r, onBackdropClick = { (onDismiss ?: { hide() })() }) {
+                div { css { fontSize = 18.px; marginBottom = 12.px }; +"Local Folder Sync" }
+
+                div {
+                    css { marginTop = 8.px; marginBottom = 8.px; fontSize = 13.px }
+                    +(if (connected || needsReconnect)
+                        "Folder: ${cfg.localFolderName ?: "(folder)"}"
+                      else "Sync this device's canvases to a folder on your disk.")
                 }
-                onClick { e -> if (e.target == r.element) (onDismiss ?: { hide() })() }
-                div {   // dialog
-                    css {
-                        minWidth = 360.px
-                        padding = Padding(20.px)
-                        backgroundColor = ThemeManager.current.menuBg
-                        color = ThemeManager.current.menuFg
-                        border = Border(1.px, BorderStyle.solid, ThemeManager.current.menuBorder)
-                        borderRadius = 6.px
-                    }
-                    div { css { fontSize = 18.px; marginBottom = 12.px }; +"Local Folder Sync" }
+                div { ref(statusRef); css { marginBottom = 12.px; fontSize = 12.px }
+                    +stateText(state) }
 
-                    div {
-                        css { marginTop = 8.px; marginBottom = 8.px; fontSize = 13.px }
-                        +(if (connected || needsReconnect)
-                            "Folder: ${cfg.localFolderName ?: "(folder)"}"
-                          else "Sync this device's canvases to a folder on your disk.")
-                    }
-                    div { ref(statusRef); css { marginBottom = 12.px; fontSize = 12.px }
-                        +stateText(state) }
-
-                    div {
-                        css { display = Display.flex; flexDirection = FlexDirection.row }
-                        when {
-                            needsReconnect -> {
-                                button("Reconnect", primary = true) { controller.reconnectLocalFolder() }
-                                button("Disconnect") { controller.disconnect() }
-                            }
-                            connected -> {
-                                button("Sync now", primary = true) { controller.syncNow() }
-                                button("Disconnect") { controller.disconnect() }
-                            }
-                            else -> button("Choose folder…", primary = true) { controller.connectLocalFolder() }
+                div {
+                    css { display = Display.flex; flexDirection = FlexDirection.row }
+                    when {
+                        needsReconnect -> {
+                            button("Reconnect", primary = true) { controller.reconnectLocalFolder() }
+                            button("Disconnect") { controller.disconnect() }
                         }
-                    }
-
-                    onMount {
-                        rootEl = r.element
-                        val s = statusRef.element
-                        with(eventBus) {
-                            s.on<SyncStatusChanged> { s.textContent = stateText(it.state) }
-                            s.on<SyncConflict> { s.textContent = "Conflict on ${it.path}: ${it.winner.name.lowercase()} kept" }
+                        connected -> {
+                            button("Sync now", primary = true) { controller.syncNow() }
+                            button("Disconnect") { controller.disconnect() }
                         }
+                        else -> button("Choose folder…", primary = true) { controller.connectLocalFolder() }
+                    }
+                }
+
+                onMount {
+                    rootEl = r.element
+                    val s = statusRef.element
+                    with(eventBus) {
+                        s.on<SyncStatusChanged> { s.textContent = stateText(it.state) }
+                        s.on<SyncConflict> { s.textContent = "Conflict on ${it.path}: ${it.winner.name.lowercase()} kept" }
                     }
                 }
             }
@@ -137,7 +113,7 @@ class LocalFolderModal(
         is SyncState.Error -> "Error: ${state.message}"
     }
 
-    // --- button helper (kotlinx.html receiver), copied from SyncModal's style ---
+    // --- button helper (kotlinx.html receiver): thin wrapper over the shared modalButton ---
     private fun kotlinx.html.FlowContent.button(
         text: String, primary: Boolean = false, enabled: Boolean = true, onPress: () -> Unit,
     ) = modalButton(text, primary, enabled, onPress = onPress)
