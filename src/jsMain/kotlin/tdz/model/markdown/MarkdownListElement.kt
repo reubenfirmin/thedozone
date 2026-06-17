@@ -9,7 +9,7 @@ internal const val DONE_MARKER = "/"
 
 internal object MarkdownListElement {
 
-    private val numbered = "[\\t ]*[0-9]*\\.(.*)".toRegex()
+    private val numbered = "[\\t ]*[0-9]+\\.(.*)".toRegex()
     private val bulleted = "[\\t ]*([*|+])+(.*)".toRegex()
     private val arrowed = "[\\t ]*(-+)+(.*)".toRegex()
 

@@ -14,7 +14,6 @@ import tdz.controller.events.SwitchToCanvas
 import tdz.model.CanvasName
 import tdz.model.Model
 import tdz.rootCanvas
-import tdz.sync.LocalBackup
 import tdz.view.theme.ThemeManager
 import tdz.view.theme.themedStyleSheet
 import web.cssom.ClassName
@@ -73,6 +72,29 @@ fun cycleIndex(current: Int, count: Int, delta: Int): Int =
 object Omnibox {
     private const val ID = "tdz-omnibox"
 
+    // Component-private CSS classes — each appears in BOTH the markup builders and an ensureStyles()
+    // selector, so a literal would silently desync on rename. (Classes used in only one place —
+    // tdz-omni-child / tdz-omni-allboards / tdz-omni-board — stay inline.)
+    private const val BOX_CLASS = "tdz-omnibox-box"
+    private const val LABEL_CLASS = "tdz-omnibox-label"
+    private const val BODY_CLASS = "tdz-omni-body"
+    private const val SECTION_CLASS = "tdz-omni-section"
+    private const val ALLHEADER_CLASS = "tdz-omni-allheader"
+    private const val EMPTYBTN_CLASS = "tdz-omni-emptybtn"
+    private const val ROW_CLASS = "tdz-omni-row"
+    private const val ROW_LABEL_CLASS = "tdz-omni-row-label"
+    private const val ROW_HINT_CLASS = "tdz-omni-row-hint"
+    private const val BOARD_MAIN_CLASS = "tdz-omni-board-main"
+    private const val BOARD_LINE_CLASS = "tdz-omni-board-line"
+    private const val CURRENT_CLASS = "tdz-omni-current"
+    private const val EMPTY_CLASS = "tdz-omni-empty"
+    private const val SUB_CLASS = "tdz-omni-sub"
+    private const val DEL_CLASS = "tdz-omni-del"
+    private const val ACTIVE_CLASS = "tdz-omni-active"
+
+    // The armed "Delete?" / danger state for a non-empty board's delete button.
+    private const val ARMED_DELETE_COLOR = "#ff5555"
+
     private enum class Mode { CHILDREN, ALL }
 
     fun hide() { document.getElementById(ElementId(ID))?.remove() }
@@ -97,7 +119,7 @@ object Omnibox {
 
         fun go(name: CanvasName) { hide(); eventBus.fire(SwitchToCanvas(name)) }
         fun applyHighlight() {
-            visible.forEachIndexed { i, r -> r.ref.element.classList.toggle(ClassName("tdz-omni-active"), i == highlight) }
+            visible.forEachIndexed { i, r -> r.ref.element.classList.toggle(ClassName(ACTIVE_CLASS), i == highlight) }
         }
         fun refilter() {
             val q = field.element.value
@@ -130,10 +152,9 @@ object Omnibox {
         // Forward declaration so the view builders (which switch/refresh the view) can call it.
         lateinit var renderBody: () -> Unit
 
-        // Backup first (recoverable), delete locally, then either re-home (if the current board went)
-        // or rebuild the all-boards view. Sync propagates the deletion on its own.
+        // Delete locally, then either re-home (if the current board went) or rebuild the all-boards
+        // view. Sync propagates the deletion on its own.
         fun deleteBoard(name: CanvasName) {
-            LocalBackup.snapshot()
             val wasCurrent = current.normalized() == name.normalized()
             model.deleteCanvas(name)
             if (wasCurrent) go(rootCanvas) else { renderBody(); field.element.focus() }
@@ -141,7 +162,6 @@ object Omnibox {
         fun deleteAllEmpty() {
             val empty = model.allCanvasNames().filter { model.isCanvasEmpty(it) }
             if (empty.isEmpty()) return                       // nothing to do; no dialog
-            LocalBackup.snapshot()
             val deletedCurrent = empty.any { it.normalized() == current.normalized() }
             empty.forEach { model.deleteCanvas(it) }          // empties: nothing to lose, no confirm
             if (deletedCurrent) go(rootCanvas) else { renderBody(); field.element.focus() }
@@ -150,10 +170,10 @@ object Omnibox {
         fun TagConsumer<HTMLElement>.pinnedRow(label: String, hint: String?, cls: String, onActivate: () -> Unit) {
             val r = Ref<HTMLElement>()
             rows += Row(r, null, onActivate)
-            div("tdz-omni-row $cls") {
+            div("$ROW_CLASS $cls") {
                 ref(r)
-                span("tdz-omni-row-label") { +label }
-                if (hint != null) span("tdz-omni-row-hint") { +hint }
+                span(ROW_LABEL_CLASS) { +label }
+                if (hint != null) span(ROW_HINT_CLASS) { +hint }
                 onClick { onActivate() }
             }
         }
@@ -165,13 +185,13 @@ object Omnibox {
             }
             val children = childBoardNames(model, current)
             if (children.isNotEmpty()) {
-                div("tdz-omni-section") { +"Child boards" }
+                div(SECTION_CLASS) { +"Child boards" }
                 children.forEach { child ->
                     val r = Ref<HTMLElement>()
                     rows += Row(r, child.leaf().lowercase()) { go(child) }
-                    div("tdz-omni-row tdz-omni-child") {
+                    div("$ROW_CLASS tdz-omni-child") {
                         ref(r)
-                        span("tdz-omni-row-label") { +child.leaf() }
+                        span(ROW_LABEL_CLASS) { +child.leaf() }
                         onClick { go(child) }
                     }
                 }
@@ -184,9 +204,9 @@ object Omnibox {
         fun TagConsumer<HTMLElement>.allBoardsView() {
             pinnedRow("‹ Boards", null, "") { mode = Mode.CHILDREN; renderBody(); field.element.focus() }
             val names = model.allCanvasNames().sortedBy { it.display().lowercase() }
-            div("tdz-omni-allheader") {
-                span("tdz-omni-section") { +"All boards (${names.size})" }
-                button(classes = "tdz-omni-emptybtn") {
+            div(ALLHEADER_CLASS) {
+                span(SECTION_CLASS) { +"All boards (${names.size})" }
+                button(classes = EMPTYBTN_CLASS) {
                     +"Delete all empty"
                     onClick { deleteAllEmpty() }
                 }
@@ -198,27 +218,27 @@ object Omnibox {
                 val delRef = Ref<HTMLElement>()
                 var armed = false
                 rows += Row(r, name.display().lowercase().ifEmpty { "home" }) { go(name) }
-                div("tdz-omni-row tdz-omni-board" + if (name.normalized() == currentNorm) " tdz-omni-current" else "") {
+                div("$ROW_CLASS tdz-omni-board" + if (name.normalized() == currentNorm) " $CURRENT_CLASS" else "") {
                     ref(r)
-                    div("tdz-omni-board-main") {
-                        div("tdz-omni-board-line") {
-                            span("tdz-omni-row-label") { +omniboxLabel(name) }
-                            if (empty) span("tdz-omni-empty") { +"(empty)" }
+                    div(BOARD_MAIN_CLASS) {
+                        div(BOARD_LINE_CLASS) {
+                            span(ROW_LABEL_CLASS) { +omniboxLabel(name) }
+                            if (empty) span(EMPTY_CLASS) { +"(empty)" }
                         }
                         if (!name.isRoot() && !name.parentName().isRoot()) {
-                            span("tdz-omni-sub") { +"in: ${name.parentName().display()}" }
+                            span(SUB_CLASS) { +"in: ${name.parentName().display()}" }
                         }
                         onClick { go(name) }
                     }
                     // Empty boards delete on the first ✕ (nothing to lose); non-empty boards require a
                     // second click (✕ → "Delete?") — an inline confirm, no native dialog.
-                    button(classes = "tdz-omni-del") {
+                    button(classes = DEL_CLASS) {
                         ref(delRef)
                         +"✕"
                         onClick {
                             when {
                                 empty -> deleteBoard(name)
-                                !armed -> { armed = true; delRef.element.let { it.textContent = "Delete?"; it.style.color = "#ff5555"; it.style.opacity = "1" } }
+                                !armed -> { armed = true; delRef.element.let { it.textContent = "Delete?"; it.style.color = ARMED_DELETE_COLOR; it.style.opacity = "1" } }
                                 else -> deleteBoard(name)
                             }
                         }
@@ -244,8 +264,8 @@ object Omnibox {
                 id = ID
                 ref(scrim)
                 onClick { e -> if (e.target === scrim.element) hide() }
-                div("tdz-omnibox-box") {
-                    div("tdz-omnibox-label") { +"Go to board" }
+                div(BOX_CLASS) {
+                    div(LABEL_CLASS) { +"Go to board" }
                     input(type = InputType.text) {
                         ref(field)
                         attributes["placeholder"] = "Type a path like /work/today, or filter boards below"
@@ -268,7 +288,7 @@ object Omnibox {
                             }
                         }
                     }
-                    div("tdz-omni-body") { ref(body) }
+                    div(BODY_CLASS) { ref(body) }
                 }
                 onMount {
                     field.element.addEventListener(EventType("input"), { refilter() })
@@ -293,7 +313,7 @@ object Omnibox {
                 put("padding-top", "12vh")
                 fontFamily = t.fontFamily
             }
-            rule("#$ID .tdz-omnibox-box") {
+            rule("#$ID .$BOX_CLASS") {
                 width = 520.px
                 maxWidth = 92.pct
                 maxHeight = 70.pct
@@ -306,7 +326,7 @@ object Omnibox {
                 padding = Padding(16.px)
                 boxSizing = BoxSizing.borderBox
             }
-            rule("#$ID .tdz-omnibox-label") {
+            rule("#$ID .$LABEL_CLASS") {
                 fontSize = 11.px
                 textTransform = TextTransform.uppercase
                 letterSpacing = 0.06.em
@@ -329,23 +349,23 @@ object Omnibox {
                 outline = Outline.none
             }
             // The swappable list area scrolls; the box/input above stay fixed.
-            rule("#$ID .tdz-omni-body") {
+            rule("#$ID .$BODY_CLASS") {
                 overflowY = Overflow.auto
                 marginTop = 4.px
             }
-            rule("#$ID .tdz-omni-section") {
+            rule("#$ID .$SECTION_CLASS") {
                 fontSize = 10.px
                 textTransform = TextTransform.uppercase
                 letterSpacing = 0.06.em
                 opacity = 0.5
                 margin = Margin(12.px, 0.px, 4.px, 0.px)
             }
-            rule("#$ID .tdz-omni-allheader") {
+            rule("#$ID .$ALLHEADER_CLASS") {
                 display = Display.flex
                 alignItems = Align.center
                 justifyContent = JustifyContent.spaceBetween
             }
-            rule("#$ID .tdz-omni-emptybtn") {
+            rule("#$ID .$EMPTYBTN_CLASS") {
                 padding = Padding(4.px, 10.px)
                 cursor = Cursor.pointer
                 fontSize = 11.px
@@ -354,7 +374,7 @@ object Omnibox {
                 border = Border(1.px, BorderStyle.solid, t.menuBorder)
                 borderRadius = 4.px
             }
-            rule("#$ID .tdz-omni-row") {
+            rule("#$ID .$ROW_CLASS") {
                 display = Display.flex
                 alignItems = Align.center
                 justifyContent = JustifyContent.spaceBetween
@@ -362,19 +382,19 @@ object Omnibox {
                 borderRadius = 6.px
                 cursor = Cursor.pointer
             }
-            rule("#$ID .tdz-omni-board-main") {
+            rule("#$ID .$BOARD_MAIN_CLASS") {
                 display = Display.flex
                 flexDirection = FlexDirection.column
                 flexGrow = 1.0
             }
-            rule("#$ID .tdz-omni-board-line") {
+            rule("#$ID .$BOARD_LINE_CLASS") {
                 display = Display.flex
                 alignItems = Align.center
             }
-            rule("#$ID .tdz-omni-current .tdz-omni-row-label") { fontWeight = FontWeight.w700 }
-            rule("#$ID .tdz-omni-empty") { opacity = 0.6; marginLeft = 8.px; fontSize = 11.px }
-            rule("#$ID .tdz-omni-sub") { opacity = 0.5; fontSize = 11.px; marginTop = 1.px }
-            rule("#$ID .tdz-omni-del") {
+            rule("#$ID .$CURRENT_CLASS .$ROW_LABEL_CLASS") { fontWeight = FontWeight.w700 }
+            rule("#$ID .$EMPTY_CLASS") { opacity = 0.6; marginLeft = 8.px; fontSize = 11.px }
+            rule("#$ID .$SUB_CLASS") { opacity = 0.5; fontSize = 11.px; marginTop = 1.px }
+            rule("#$ID .$DEL_CLASS") {
                 backgroundColor = Color.transparent
                 color = t.menuFg
                 borderStyle = BorderStyle.none
@@ -382,8 +402,8 @@ object Omnibox {
                 opacity = 0.6
                 fontSize = 12.px
             }
-            rule("#$ID .tdz-omni-row .tdz-omni-row-hint") { fontSize = 11.px; opacity = 0.5 }
-            rule("#$ID .tdz-omni-row.tdz-omni-active") { backgroundColor = t.menuHover }
+            rule("#$ID .$ROW_CLASS .$ROW_HINT_CLASS") { fontSize = 11.px; opacity = 0.5 }
+            rule("#$ID .$ROW_CLASS.$ACTIVE_CLASS") { backgroundColor = t.menuHover }
         }
     }
 }

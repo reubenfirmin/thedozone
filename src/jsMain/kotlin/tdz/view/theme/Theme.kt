@@ -695,6 +695,9 @@ val themes = listOf(blueRoomTheme, dosTheme, rainbowGapsTheme, smoothDarkTheme, 
 
 /** Holds the active theme. Switching applies on the next render (callers trigger a re-render). */
 object ThemeManager {
+    /** Selector for the `<meta name="theme-color">` tag the OS window chrome reads. */
+    private const val THEME_COLOR_META_SELECTOR = "meta[name=theme-color]"
+
     var current: Theme = rainbowGapsTheme
         private set
 
@@ -703,6 +706,6 @@ object ThemeManager {
         // Keep the installed-PWA titlebar (and mobile address bar) in sync with the active theme —
         // the <meta name="theme-color"> in index.html is what the OS window chrome reads. setAttribute
         // (not a cast to HTMLMetaElement) keeps this typed; a no-op if the meta is somehow absent.
-        document.querySelector("meta[name=theme-color]")?.setAttribute("content", theme.appBg.toString())
+        document.querySelector(THEME_COLOR_META_SELECTOR)?.setAttribute("content", theme.appBg.toString())
     }
 }

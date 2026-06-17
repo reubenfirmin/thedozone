@@ -15,3 +15,16 @@ Recently, I decided a full rewrite was necessary; it's still using kotlin.js, bu
 ## Working in the codebase
 
 I welcome pull requests, bug reports, or feature ideas. Main.kt is the entrypoint, and the code should be discoverable from there.
+
+## Building locally
+
+Prerequisites: JDK 21, plus Chrome/Chromium for the headless tests.
+
+The app builds on the [Zoned](https://github.com/reubenfirmin/zoned) framework, consumed as a local `1.0-SNAPSHOT`. Publish it to your Maven local first (see Zoned's README), then:
+
+    ./gradlew build                    # compile and run the test suite
+    ./gradlew jsBrowserDevelopmentRun  # serve at http://localhost:3000
+
+## License
+
+Released under the [MIT License](LICENSE).

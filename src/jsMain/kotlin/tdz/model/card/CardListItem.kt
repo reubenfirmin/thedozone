@@ -1,7 +1,7 @@
 package tdz.model.card
 
 /**
- * A list item, either bulleted, arrowed or numeric
+ * A list item, either bulleted or numbered
  * @param level 0 indexed
  */
 data class CardListItem(override val text: List<RichText>,
@@ -12,8 +12,7 @@ data class CardListItem(override val text: List<RichText>,
 
 enum class ListMemberType {
     BULLET,
-    NUMBERED,
-    ARROW
+    NUMBERED
 }
 
 data class ListGroup(
@@ -78,14 +77,6 @@ fun List<CardListItem>.toGroup(): ListGroup {
             else -> error("Unexpected item level ${cluster.first().level} below base level $baseLevel")
         }
     }.flatten()
-
-        /*
-    if (baseType == ListMemberType.NUMBERED) {
-        val mergedMembers = members.filterIsInstance<CardListItem>()
-        val subgroups = members.filterIsInstance<ListGroup>()
-        return ListGroup(mergedMembers + subgroups, baseType, baseLevel)
-    }
-    */
 
     return ListGroup(members, baseType, baseLevel)
 }

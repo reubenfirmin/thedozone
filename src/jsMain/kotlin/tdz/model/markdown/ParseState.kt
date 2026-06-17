@@ -8,7 +8,6 @@ import tdz.model.card.*
 data class ParseState(val column: ColumnId,
                       val cards: MutableList<Card> = mutableListOf(),
                       private val segmentsBuffer: MutableList<CardSegment> = mutableListOf(),
-                      var prevNewline: Boolean = false,
 ) {
 
     private var inCodeBlock = false

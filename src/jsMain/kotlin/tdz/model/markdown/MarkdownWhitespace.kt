@@ -21,7 +21,7 @@ object MarkdownWhitespace {
     }
 
     fun consumeSeparator(trimmed: String, state: ParseState): Boolean {
-        return if (trimmed.startsWith("==") || (trimmed.isEmpty() && state.prevNewline)) {
+        return if (trimmed.startsWith("==")) {
             state.createCardFromSegments()
             true
         } else {
@@ -32,10 +32,8 @@ object MarkdownWhitespace {
     fun consumeEmptyLine(trimmed: String, state: ParseState): Boolean {
         return if (trimmed.isEmpty()) {
             state.createCardFromSegments()
-//            state.prevNewline = true
             true
         } else {
-//            state.prevNewline = false
             false
         }
     }

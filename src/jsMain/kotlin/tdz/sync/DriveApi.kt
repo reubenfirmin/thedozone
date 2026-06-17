@@ -16,7 +16,7 @@ class NeedsInteractiveAuthException(message: String) : Exception(message)
  * Low-level Google Identity Services (GIS) interop. The global `google.accounts.oauth2` is provided by
  * the `<script src="https://accounts.google.com/gsi/client">` tag in index.html (loaded async). All
  * dynamic access to GIS is confined here; [DriveAuth] adds the caching/policy on top. The GIS token
- * model is used (no redirect URI), which never yields a refresh token — see the design doc.
+ * model is used (no redirect URI), which never yields a refresh token (tokens are re-minted on demand).
  */
 object DriveApi {
 

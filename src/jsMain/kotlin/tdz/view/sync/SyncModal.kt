@@ -18,7 +18,6 @@ import tdz.sync.SyncController
 import tdz.sync.SyncProvider
 import tdz.sync.SyncState
 import tdz.sync.SyncStateStore
-import tdz.view.ZLayer
 import tdz.view.modalButton
 import tdz.view.theme.ThemeManager
 import web.dom.ElementId
@@ -93,131 +92,110 @@ class SyncModal(
         val r = Ref<HTMLElement>()
         val statusRef = Ref<HTMLElement>()
         addToBody {
-            div {   // scrim
-                ref(r)
-                css {
-                    position = Position.fixed
-                    top = 0.px; left = 0.px; right = 0.px; bottom = 0.px
-                    zIndex = ZLayer.MODAL
-                    display = Display.flex
-                    alignItems = Align.center
-                    justifyContent = JustifyContent.center
-                    backgroundColor = SyncColors.modalOverlay
-                }
-                onClick { e -> if (e.target == r.element) (onDismiss ?: { hide() })() }
-                div {   // dialog
-                    css {
-                        minWidth = 360.px
-                        padding = Padding(20.px)
-                        backgroundColor = ThemeManager.current.menuBg
-                        color = ThemeManager.current.menuFg
-                        border = Border(1.px, BorderStyle.solid, ThemeManager.current.menuBorder)
-                        borderRadius = 6.px
-                    }
-                    div { css { fontSize = 18.px; marginBottom = 12.px }; +"Cloud Sync" }
+            syncModalChrome(r, onBackdropClick = { (onDismiss ?: { hide() })() }) {
+                div { css { fontSize = 18.px; marginBottom = 12.px }; +"Cloud Sync" }
 
-                    // Provider chooser: only before connecting (provider is fixed for the life of a sync).
-                    if (!shownConnected) {
-                        providerChooser(connecting)
-                        if (selectedProvider == SyncProvider.GOOGLE_DRIVE) {
-                            div {
-                                css {
-                                    marginTop = (-2).px; marginBottom = 10.px
-                                    fontSize = 12.px; lineHeight = LineHeight("1.4")
-                                    opacity = 0.85; maxWidth = 340.px
-                                }
-                                +("Heads up: Google signs you out periodically, so Drive needs an " +
-                                  "occasional Reconnect. Dropbox or a local folder + Syncthing stay " +
-                                  "connected without that.")
-                            }
-                        }
-                    }
-
-                    // Folder: editable before connect or while changing it; read-only otherwise.
-                    if (!shownConnected || editingFolder) {
-                        field(folderHint(), ROOT_ID, pendingFolder ?: cfg.rootFolder)
-                    } else {
-                        div {
-                            css { marginBottom = 8.px; fontSize = 13.px }
-                            +"Folder: ${folderLabel(cfg.rootFolder)}"
-                        }
-                    }
-
-                    div {
-                        css { marginTop = 8.px; marginBottom = 8.px }
-                        +(if (shownConnected)
-                            "Connected to ${cfg.provider.displayName}: ${cfg.accountEmail ?: cfg.provider.displayName}"
-                          else "Not connected")
-                    }
-                    div { ref(statusRef); css { marginBottom = 12.px; fontSize = 12.px }
-                        +stateText(SyncStateStore.current) }
-
-                    // Google's GIS token model has no refresh token, so its session lapses periodically.
-                    // That's expected — frame it as a calm reconnect, not an error, and point at the
-                    // providers that DON'T need this dance.
-                    if (SyncStateStore.current == SyncState.NeedsReconnect &&
-                        cfg.provider == SyncProvider.GOOGLE_DRIVE) {
+                // Provider chooser: only before connecting (provider is fixed for the life of a sync).
+                if (!shownConnected) {
+                    providerChooser(connecting)
+                    if (selectedProvider == SyncProvider.GOOGLE_DRIVE) {
                         div {
                             css {
-                                marginBottom = 12.px; fontSize = 12.px; lineHeight = LineHeight("1.4")
+                                marginTop = (-2).px; marginBottom = 10.px
+                                fontSize = 12.px; lineHeight = LineHeight("1.4")
                                 opacity = 0.85; maxWidth = 340.px
                             }
-                            +("Google signs you out periodically — that's expected, not an error. Just " +
-                              "click Reconnect to resume. Dropbox or a local folder + Syncthing stay " +
-                              "connected without these periodic reconnects.")
+                            +("Heads up: Google signs you out periodically, so Drive needs an " +
+                              "occasional Reconnect. Dropbox or a local folder + Syncthing stay " +
+                              "connected without that.")
                         }
                     }
+                }
 
+                // Folder: editable before connect or while changing it; read-only otherwise.
+                if (!shownConnected || editingFolder) {
+                    field(folderHint(), ROOT_ID, pendingFolder ?: cfg.rootFolder)
+                } else {
                     div {
-                        css { display = Display.flex; flexDirection = FlexDirection.row }
-                        when {
-                            !shownConnected -> button(
-                                if (connecting) "Connecting…" else "Connect",
-                                primary = true, enabled = !connecting,
-                            ) {
-                                controller.setProvider(selectedProvider)
-                                controller.setRootFolder(inputVal(ROOT_ID))
-                                controller.connect()
-                            }
+                        css { marginBottom = 8.px; fontSize = 13.px }
+                        +"Folder: ${folderLabel(cfg.rootFolder)}"
+                    }
+                }
 
-                            editingFolder -> {
-                                button("Use folder", primary = true) {
-                                    controller.changeRootFolder(inputVal(ROOT_ID))
-                                    editingFolder = false; render()
-                                }
-                                button("Cancel") { editingFolder = false; render() }
-                            }
+                div {
+                    css { marginTop = 8.px; marginBottom = 8.px }
+                    +(if (shownConnected)
+                        "Connected to ${cfg.provider.displayName}: ${cfg.accountEmail ?: cfg.provider.displayName}"
+                      else "Not connected")
+                }
+                div { ref(statusRef); css { marginBottom = 12.px; fontSize = 12.px }
+                    +stateText(SyncStateStore.current) }
 
-                            else -> {
-                                // Reconnect is the primary action whenever auth lapsed: an expected Google
-                                // session timeout (NeedsReconnect) or a genuine Error (e.g. a revoked
-                                // Dropbox refresh token). The user gesture drives the consent popup.
-                                val needsAuth = needsAuth()
-                                if (needsAuth) {
-                                    // reconnect(), NOT connect(): a fresh connect wipes the sync
-                                    // bookkeeping, and with it the version vectors of edits made
-                                    // while auth was lapsed — the first pull would revert them.
-                                    button("Reconnect", primary = true) { controller.reconnect() }
-                                }
-                                button("Sync now", primary = !needsAuth) {
-                                    controller.syncNow()
-                                }
-                                button("Change folder") { editingFolder = true; render() }
-                                button("Disconnect") { controller.disconnect() }
+                // Google's GIS token model has no refresh token, so its session lapses periodically.
+                // That's expected — frame it as a calm reconnect, not an error, and point at the
+                // providers that DON'T need this dance.
+                if (SyncStateStore.current == SyncState.NeedsReconnect &&
+                    cfg.provider == SyncProvider.GOOGLE_DRIVE) {
+                    div {
+                        css {
+                            marginBottom = 12.px; fontSize = 12.px; lineHeight = LineHeight("1.4")
+                            opacity = 0.85; maxWidth = 340.px
+                        }
+                        +("Google signs you out periodically — that's expected, not an error. Just " +
+                          "click Reconnect to resume. Dropbox or a local folder + Syncthing stay " +
+                          "connected without these periodic reconnects.")
+                    }
+                }
+
+                div {
+                    css { display = Display.flex; flexDirection = FlexDirection.row }
+                    when {
+                        !shownConnected -> button(
+                            if (connecting) "Connecting…" else "Connect",
+                            primary = true, enabled = !connecting,
+                        ) {
+                            controller.setProvider(selectedProvider)
+                            controller.setRootFolder(inputVal(ROOT_ID))
+                            controller.connect()
+                        }
+
+                        editingFolder -> {
+                            button("Use folder", primary = true) {
+                                controller.changeRootFolder(inputVal(ROOT_ID))
+                                editingFolder = false; render()
                             }
+                            button("Cancel") { editingFolder = false; render() }
+                        }
+
+                        else -> {
+                            // Reconnect is the primary action whenever auth lapsed: an expected Google
+                            // session timeout (NeedsReconnect) or a genuine Error (e.g. a revoked
+                            // Dropbox refresh token). The user gesture drives the consent popup.
+                            val needsAuth = needsAuth()
+                            if (needsAuth) {
+                                // reconnect(), NOT connect(): a fresh connect wipes the sync
+                                // bookkeeping, and with it the version vectors of edits made
+                                // while auth was lapsed — the first pull would revert them.
+                                button("Reconnect", primary = true) { controller.reconnect() }
+                            }
+                            button("Sync now", primary = !needsAuth) {
+                                controller.syncNow()
+                            }
+                            button("Change folder") { editingFolder = true; render() }
+                            button("Disconnect") { controller.disconnect() }
                         }
                     }
+                }
 
-                    // Board restore lives in the canvas context menu (Backup & Restore), not here:
-                    // the rolling backup is not a property of cloud sync.
+                // Board restore lives in the canvas context menu (Backup & Restore), not here:
+                // the rolling backup is not a property of cloud sync.
 
-                    onMount {
-                        rootEl = r.element
-                        val s = statusRef.element
-                        with(eventBus) {
-                            s.on<SyncStatusChanged> { s.textContent = stateText(it.state) }
-                            s.on<SyncConflict> { s.textContent = "Conflict on ${it.path}: ${it.winner} kept" }
-                        }
+                onMount {
+                    rootEl = r.element
+                    val s = statusRef.element
+                    with(eventBus) {
+                        s.on<SyncStatusChanged> { s.textContent = stateText(it.state) }
+                        s.on<SyncConflict> { s.textContent = "Conflict on ${it.path}: ${it.winner} kept" }
                     }
                 }
             }

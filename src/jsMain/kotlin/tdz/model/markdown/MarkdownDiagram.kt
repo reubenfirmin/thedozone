@@ -2,7 +2,7 @@ package tdz.model.markdown
 
 internal object MarkdownDiagram {
 
-    fun consumeDiagram(trimmed: String, state: ParseState): Boolean {
+    fun consumeDiagram(trimmed: String, line: String, state: ParseState): Boolean {
         return if (trimmed == "---") {
             if (state.inDiagram()) {
                 state.finishDiagram()
@@ -12,7 +12,8 @@ internal object MarkdownDiagram {
             true
         } else {
             if (state.inDiagram()) {
-                state.appendToDiagram(trimmed)
+                // append the untrimmed line to preserve indentation (mirrors consumeCodeBlock)
+                state.appendToDiagram(line)
                 true
             } else {
                 false
