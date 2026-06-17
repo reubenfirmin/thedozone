@@ -231,8 +231,7 @@ class SyncController(
                 saveState(state().with(manifestPath,
                     (cur ?: SyncEntry(rev = null, localUpdatedAt = now)).copy(rev = null)))
             }
-            if (winner == Winner.LOCAL) eventBus.fire(SyncConflict(path, "local"))
-            if (winner == Winner.REMOTE) eventBus.fire(SyncConflict(path, "remote"))
+            winner?.let { eventBus.fire(SyncConflict(path, it)) }
             SyncStateStore.set(SyncState.Synced, eventBus)
         }
     }
@@ -605,7 +604,7 @@ class SyncController(
     }
 
     private fun fireConflict(path: String, winner: Winner) =
-        eventBus.fire(SyncConflict(path, if (winner == Winner.LOCAL) "local" else "remote"))
+        eventBus.fire(SyncConflict(path, winner))
 
     /**
      * Enumerate local canvases by scanning the NEWCANVAS namespace in localStorage. Done here (rather

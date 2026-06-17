@@ -7,6 +7,7 @@ import tdz.model.CanvasName
 import tdz.model.Card
 import tdz.model.CardMetadata
 import tdz.model.card.CardDiagram
+import tdz.model.ref
 import kotlinx.html.div
 import web.dom.document
 import web.html.HTMLCanvasElement
@@ -15,6 +16,7 @@ import tdz.pollUntil
 import kotlin.js.Promise
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 
 /**
  * Regression: nomnoml diagrams rendered blank. The renderer looked the canvas up via
@@ -59,5 +61,26 @@ class CardDiagramRenderTest {
         return pollUntil("nomnoml chunk to load and paint the diagram") {
             (document.querySelector("canvas") as? HTMLCanvasElement)?.let { canvasHasInk(it) } == true
         }
+    }
+
+    /**
+     * Regression: the drag system finds cards by the [DomIds.CARD_SELECTOR] prefix (`[id^='card-']`),
+     * so NOTHING inside a card may carry a `card-` id. The diagram's <canvas> once did, so grabbing a
+     * diagram card resolved the drag to the canvas (not the card) and the drag silently died.
+     */
+    @Test
+    fun diagramCanvasIsNotMistakenForACard() {
+        val card = Card(listOf(CardDiagram("[A] -> [B]")), CardMetadata(ColumnId(0)), 0)
+        addToBody {
+            div {
+                with(CardRenderer) {
+                    render(CanvasName("test"), listOf(card), EventBus<Event>())
+                }
+            }
+        }
+        val cardEl = document.querySelector("#${DomIds.card(card.ref)}")
+            ?: error("card element not rendered")
+        assertEquals(0, cardEl.querySelectorAll(DomIds.CARD_SELECTOR).length,
+            "no descendant of a card may match the card selector (it hijacks drag resolution)")
     }
 }

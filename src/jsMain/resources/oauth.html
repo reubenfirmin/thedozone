@@ -3,20 +3,9 @@
 <head><meta charset="utf-8"><title>Connecting to Dropbox…</title></head>
 <body>
 <p>Connecting to Dropbox… you can close this window.</p>
-<script>
-  (function () {
-    var params = new URLSearchParams(window.location.search);
-    var code = params.get("code");
-    var state = params.get("state");
-    var error = params.get("error");
-    if (window.opener) {
-      window.opener.postMessage(
-        { source: "tdz-dropbox-oauth", code: code, state: state, error: error },
-        window.location.origin
-      );
-    }
-    window.close();
-  })();
-</script>
+<!-- Script is external (oauth.js), not inline, so the enforcing CSP can keep script-src 'self'
+     with no 'unsafe-inline'. An inline script here is blocked on beta/prod and the popup silently
+     fails to post the code back. -->
+<script src="/oauth.js"></script>
 </body>
 </html>

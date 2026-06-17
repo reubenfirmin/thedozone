@@ -23,12 +23,26 @@ val SyncState.locked: Boolean
  * Map a thrown sync failure to the state the UI should show. A failed silent Google token mint
  * ([NeedsInteractiveAuthException]) is an EXPECTED, periodic event — the GIS token model has no
  * refresh token, so the Google session lapses and must be re-granted by a user gesture — so it
- * surfaces as the calm [NeedsReconnect], NOT an [Error]. Everything else (including genuine Dropbox
- * auth failures, which throw a plain exception) is a real [Error].
+ * surfaces as the calm [NeedsReconnect], NOT an [Error]. A request that never reached the server
+ * (offline, an extension/proxy/DNS block, a dropped connection) is a transient reachability problem,
+ * not a real fault, so it surfaces as the calm [Offline] (the next reconcile retries). Everything
+ * else (including genuine Dropbox auth failures, which throw a plain exception) is a real [Error].
  */
-fun syncFailureState(t: Throwable): SyncState =
-    if (t is NeedsInteractiveAuthException) SyncState.NeedsReconnect
-    else SyncState.Error(t.message ?: "sync error")
+fun syncFailureState(t: Throwable): SyncState = when {
+    t is NeedsInteractiveAuthException -> SyncState.NeedsReconnect
+    isUnreachable(t) -> SyncState.Offline
+    else -> SyncState.Error(t.message ?: "sync error")
+}
+
+/**
+ * A `fetch` that never reached the server throws a browser-specific TypeError: "Failed to fetch"
+ * (Chrome), "NetworkError when attempting to fetch resource" (Firefox), "Load failed" (Safari).
+ * Match those wordings to tell a reachability blip apart from a genuine API/auth error.
+ */
+private fun isUnreachable(t: Throwable): Boolean {
+    val m = (t.message ?: "").lowercase()
+    return "failed to fetch" in m || "networkerror" in m || "network error" in m || "load failed" in m
+}
 
 /** Holds the current [SyncState]; [SyncController] is the only writer. */
 object SyncStateStore {

@@ -26,6 +26,8 @@ class CanvasView(bus: EventBus<Event>, private val model: Model) : ZoneView<Canv
     var columns: CanvasColumns? = null
         private set
 
+    // The base View declares this param generically; we rename it to `canvas` because that's what it
+    // is here. Behaviour is identical — silence the cosmetic rename warning.
     @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
     override fun TagConsumer<HTMLElement>.render(canvas: Canvas) {
         val cols = CanvasColumns(canvas, bus, model) { id -> model.cards(canvas.name, id) }

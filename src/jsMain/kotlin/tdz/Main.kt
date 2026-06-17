@@ -63,6 +63,15 @@ object helpPages : Routes<Index>(tdzIndex, "/help") {
     }.title { "Release Notes" }
 }
 
+/** The privacy policy: a clean top-level `/privacy` (linked externally, e.g. the Dropbox app
+ *  listing), rendered into the overlay like the help docs. */
+object legalPages : Routes<Index>(tdzIndex, "/privacy") {
+
+    val privacy = fragment(Zones.OVERLAY, canvasPages.home, mode = RenderMode.PARTIAL) {
+        "" to { _ -> helpPage(HelpTopic.PRIVACY) }
+    }.title { "Privacy" }
+}
+
 /** Settings open body-level modals (their own scrims), so these stay plain routes. */
 object settingsPages : Routes<Index>(tdzIndex, "/settings") {
 
@@ -97,7 +106,7 @@ fun main() {
     tdz.sync.SyncBootstrap.init(tdzModel, eventBus)
     // Passing the collections IS their registration — an unmounted collection contributes no
     // routes, and any typed Route.path() link to it fails loudly naming the missing mount.
-    Router.start(canvasPages, helpPages, settingsPages)
+    Router.start(canvasPages, helpPages, settingsPages, legalPages)
 }
 
 const val ACE_TAB_SIZE = 2

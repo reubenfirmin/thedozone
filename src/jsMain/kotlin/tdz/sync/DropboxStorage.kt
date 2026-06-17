@@ -21,9 +21,11 @@ class DropboxStorage(refreshToken: String) : RemoteStorage {
     // Use path_display (original case), NOT path_lower — SyncPaths preserves canvas-name case so
     // pulled paths must round-trip to the same model key. (path_lower would break that.)
     private fun entryToFile(e: dynamic): RemoteFile = RemoteFile(
-        path = e.path_display as String,
-        rev = e.rev as String,
-        serverModified = toMillis(e.server_modified as String),
+        // Validate the untyped SDK response rather than blind-casting: a missing/renamed field
+        // should fail loudly here, not surface a null-as-String corruption deep in sync.
+        path = e.path_display as? String ?: error("Dropbox entry missing path_display"),
+        rev = e.rev as? String ?: error("Dropbox entry missing rev"),
+        serverModified = toMillis(e.server_modified as? String ?: error("Dropbox entry missing server_modified")),
     )
 
     override suspend fun list(folder: String): RemoteListing {

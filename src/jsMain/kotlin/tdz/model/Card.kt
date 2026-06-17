@@ -44,8 +44,6 @@ data class Card(val segments: List<CardSegment>, val metadata: CardMetadata, val
 
     fun done() = steps().let { it.isNotEmpty() && it.all { task -> task.done } }
 
-    fun tagId() = "card_${metadata.columnId}_$index"
-
     /**
      * Only applies if the only thing is a link
      */

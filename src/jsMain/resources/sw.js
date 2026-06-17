@@ -3,14 +3,15 @@
  *
  * Strategy:
  *   - navigations            -> network-first, fall back to cached index.html (deploys stay live)
- *   - same-origin GET assets -> stale-while-revalidate (serve cache, refresh in background, so a
- *                               redeployed main.bundle.js is picked up on the next load even though
- *                               its filename is stable)
+ *   - same-origin GET assets -> network-first, fall back to cache when offline. main.bundle.js has a
+ *                               STABLE filename, so stale-while-revalidate served the OLD bundle for a
+ *                               load after every deploy; network-first means a redeploy is live
+ *                               immediately and the cache is only an offline fallback.
  *   - cross-origin GET       -> best-effort cache-first; failures pass through to the network
  *
  * Bump CACHE_VERSION when the shell list or strategy changes; activate() drops older caches.
  */
-const CACHE_VERSION = 'tdz-shell-v1';
+const CACHE_VERSION = 'tdz-shell-v2';
 
 // Same-origin shell assets to pre-cache on install. The leading "/" and "/index.html" both resolve
 // to the app HTML; keeping both lets the navigation fallback hit the cache either way.
@@ -67,19 +68,18 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
 
   if (url.origin === self.location.origin) {
-    // Same-origin static: stale-while-revalidate.
+    // Same-origin assets: network-first so a redeploy (stable-filename bundle) is live at once;
+    // cache is refreshed on every success and used only as the offline fallback.
     event.respondWith(
-      caches.open(CACHE_VERSION).then((cache) =>
-        cache.match(req).then((cached) => {
-          const network = fetch(req)
-            .then((res) => {
-              if (res && res.ok) cache.put(req, res.clone());
-              return res;
-            })
-            .catch(() => cached);
-          return cached || network;
+      fetch(req)
+        .then((res) => {
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE_VERSION).then((c) => c.put(req, copy)).catch(() => {});
+          }
+          return res;
         })
-      )
+        .catch(() => caches.open(CACHE_VERSION).then((c) => c.match(req)))
     );
     return;
   }

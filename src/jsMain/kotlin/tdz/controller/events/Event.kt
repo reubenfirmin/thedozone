@@ -95,5 +95,5 @@ data class RefreshCanvas(val canvasName: CanvasName, val structural: Boolean = t
 /** Broadcasts the current sync lifecycle state to badge / overlay / modal. */
 data class SyncStatusChanged(val state: tdz.sync.SyncState) : Event
 
-/** A conflict was resolved last-write-wins; [winner] is "local" or "remote". */
-data class SyncConflict(val path: String, val winner: String) : Event
+/** A conflict was resolved last-write-wins; [winner] is the side that was kept. */
+data class SyncConflict(val path: String, val winner: tdz.sync.Winner) : Event

@@ -2,6 +2,7 @@ package tdz.sync
 
 import kotlinx.browser.window
 import tdz.canvasPages
+import tdz.settingsPages
 import tdz.controller.events.Event
 import zoned.framework.events.EventBus
 import tdz.model.Model
@@ -48,8 +49,9 @@ object SyncBootstrap {
     }
 
     private fun openSyncSettings() {
-        if (window.location.pathname != "/settings/sync") {
-            Router.navigate("/settings/sync")
+        val path = settingsPages.sync.path()
+        if (window.location.pathname != path) {
+            Router.navigate(path)
         }
     }
 

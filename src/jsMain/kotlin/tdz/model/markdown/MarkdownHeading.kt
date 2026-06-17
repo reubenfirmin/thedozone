@@ -4,6 +4,10 @@ import tdz.model.card.CardHeading
 
 internal object MarkdownHeading {
 
+    // Anchored: a heading is a line STARTING with # — a mid-word # (PR#42) is plain text.
+    // Compiled once; cardHeading() runs on every parsed line.
+    private val headingRegex = "([#]+)(.*)".toRegex()
+
     fun consumeHeading(trimmed: String, state: ParseState): Boolean {
         val heading = cardHeading(trimmed)
         return if (heading != null) {
@@ -15,9 +19,7 @@ internal object MarkdownHeading {
     }
 
     private fun cardHeading(line: String): CardHeading? {
-        // Anchored: a heading is a line STARTING with # — a mid-word # (PR#42) is plain text.
-        val regex = "([#]+)(.*)".toRegex()
-        val result = regex.matchEntire(line)
+        val result = headingRegex.matchEntire(line)
         if (result != null) {
             return CardHeading(result.groupValues[2], result.groupValues[1].length)
         }
