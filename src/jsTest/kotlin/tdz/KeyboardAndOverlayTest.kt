@@ -57,7 +57,7 @@ class KeyboardAndOverlayTest {
 
     @Test
     fun helpShortcutOpensTheOverlayAndEscapeClosesIt() {
-        Router.mount(canvasPages, helpPages, settingsPages)
+        Router.mount(canvasPages, helpPages, settingsPages, legalPages)
         val bus = EventBus<Event>()
         val index = Index(Model(rootCanvas), bus)
         index.index(Model(rootCanvas).currentCanvas())
@@ -74,7 +74,7 @@ class KeyboardAndOverlayTest {
 
     @Test
     fun scrimClickClosesButPanelClickDoesNot() {
-        Router.mount(canvasPages, helpPages, settingsPages)
+        Router.mount(canvasPages, helpPages, settingsPages, legalPages)
         val bus = EventBus<Event>()
         val index = Index(Model(rootCanvas), bus)
         index.index(Model(rootCanvas).currentCanvas())

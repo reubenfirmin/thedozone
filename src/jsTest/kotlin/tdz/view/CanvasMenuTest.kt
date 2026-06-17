@@ -2,6 +2,7 @@ package tdz.view
 
 import tdz.canvasPages
 import tdz.helpPages
+import tdz.legalPages
 import tdz.model.Split
 import tdz.settingsPages
 import tdz.view.menu.MenuItem
@@ -20,7 +21,7 @@ class CanvasMenuTest {
     // The menu's doc links are typed route references (helpPages.x.path()), which fail loudly for
     // unmounted collections by design — so mount them exactly as main() does. Idempotent.
     @BeforeTest
-    fun mountRoutes() = Router.mount(canvasPages, helpPages, settingsPages)
+    fun mountRoutes() = Router.mount(canvasPages, helpPages, settingsPages, legalPages)
 
     private class RecordingActions : CanvasMenuActions {
         var clearedDone = false

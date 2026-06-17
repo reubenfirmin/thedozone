@@ -41,4 +41,14 @@ class SyncStateTest {
         val state = syncFailureState(Exception())
         assertEquals(SyncState.Error("sync error"), state)
     }
+
+    @Test
+    fun unreachableRemoteIsOfflineNotError() {
+        // A fetch blocked/never-reaching the server (offline, extension/proxy block, DNS, dropped
+        // connection) throws a browser-specific TypeError. It's a calm, auto-recovering condition —
+        // not a hard Error. Cover the three major browsers' wordings.
+        assertEquals(SyncState.Offline, syncFailureState(Exception("Dropbox upload failed: Failed to fetch")))
+        assertEquals(SyncState.Offline, syncFailureState(Exception("NetworkError when attempting to fetch resource.")))
+        assertEquals(SyncState.Offline, syncFailureState(Exception("Load failed")))
+    }
 }

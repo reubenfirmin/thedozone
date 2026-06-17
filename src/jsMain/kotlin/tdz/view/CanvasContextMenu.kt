@@ -8,6 +8,7 @@ import tdz.controller.events.AddColumn
 import tdz.controller.events.ClearDone
 import tdz.controller.events.DeleteColumn
 import tdz.helpPages
+import tdz.legalPages
 import tdz.settingsPages
 import zoned.framework.routing.Router
 import tdz.controller.events.Event
@@ -153,6 +154,7 @@ fun canvasSections(
                         onSelect = { actions.openDoc(helpPages.shortcuts.path()) }),
                     MenuItem(label = "Card Formatting", shortcut = "F2",
                         onSelect = { actions.openDoc(helpPages.formatting.path()) }),
+                    MenuItem(label = "Privacy", onSelect = { actions.openDoc(legalPages.privacy.path()) }),
                     MenuItem(label = "Report a Bug", onSelect = actions::reportBug),
                 ),
             ),

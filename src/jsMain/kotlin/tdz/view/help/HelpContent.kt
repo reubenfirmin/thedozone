@@ -170,10 +170,31 @@ object HelpContent {
         Jun 10, 2026 — Latest
         Faster, smoother, and better looking.
     """.trimIndent()
+
+    val PRIVACY = """
+        # Privacy Policy
+
+        The Do Zone runs entirely in your browser. There is no server of ours that stores your boards — we never see your data, and we don't want to.
+
+        ## Where your data lives
+        Your boards are saved locally in your browser, on your device. If you turn on sync, they are written directly to the cloud you choose — your Google Drive, your Dropbox, or a local folder — straight from your browser to that provider. They never pass through us, because there is no server of ours in the middle.
+
+        ## What we collect
+        Nothing. There is no account, no analytics on what you write, and no tracking of your content.
+
+        ## Services you choose to use
+        Cloud sync uses an access token your browser stores locally and sends only to your provider, never to us. Other features reach external hosts directly from your browser when you use them: map cards load tiles from OpenStreetMap, and image cards or wallpapers load from whatever image URL you add. Those requests go straight to those hosts under their own privacy policies — never through us.
+
+        ## Your control
+        Clearing your browser storage removes the local copy. Disconnecting sync stops further writes; deleting the app's folder in your cloud removes the synced copy.
+
+        Questions? rf@4rc.io
+    """.trimIndent()
 }
 
 enum class HelpTopic(val title: String, val markdown: String) {
     SHORTCUTS("Keyboard Shortcuts", HelpContent.SHORTCUTS),
     FORMATTING("Card Formatting", HelpContent.FORMATTING),
     RELEASE_NOTES("Release Notes", HelpContent.RELEASE_NOTES),
+    PRIVACY("Privacy", HelpContent.PRIVACY),
 }

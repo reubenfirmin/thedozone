@@ -21,6 +21,7 @@ import tdz.model.Split
 import tdz.model.Model
 import tdz.model.markdown.MarkdownService
 import tdz.helpPages
+import tdz.legalPages
 import tdz.settingsPages
 import tdz.sync.SyncBootstrap
 import tdz.view.CanvasColumns
@@ -250,11 +251,12 @@ class Index(val model: Model, val eventBus: EventBus<Event>) {
                 Router.navigate(helpPages.formatting.path())
                 handled = true
             }
-            // Escape closes an open overlay route (help/settings) by navigating back to the canvas.
+            // Escape closes an open overlay route (help/settings/privacy) by returning to the canvas.
             else if (keyEvent.key == "Escape") {
                 val p = kotlinx.browser.window.location.pathname
                 fun isUnder(base: String) = p == base || p.startsWith("$base/")
-                if (isUnder(helpPages.root.path()) || isUnder(settingsPages.root.path())) {
+                if (isUnder(helpPages.root.path()) || isUnder(settingsPages.root.path()) ||
+                    isUnder(legalPages.privacy.path())) {
                     Router.navigate(currentCanvasUrl())
                     handled = true
                 }
