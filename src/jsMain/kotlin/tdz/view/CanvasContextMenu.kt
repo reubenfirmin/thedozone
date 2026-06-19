@@ -1,12 +1,11 @@
 package tdz.view
 
-import tdz.controller.Downloader
-import tdz.controller.PngExporter
-import tdz.controller.Uploader
-import tdz.controller.io.ImportMode
 import tdz.controller.events.AddColumn
 import tdz.controller.events.ClearDone
 import tdz.controller.events.DeleteColumn
+import tdz.controller.events.ExportCanvas
+import tdz.controller.events.ImportCanvasAsNew
+import tdz.controller.events.ImportCardsHere
 import tdz.helpPages
 import tdz.legalPages
 import tdz.settingsPages
@@ -18,8 +17,10 @@ import tdz.controller.events.SplitColumn
 import kotlinx.browser.window
 import tdz.model.Model
 import tdz.model.Split
+import tdz.model.ThemeName
 import tdz.sync.LocalBackup
 import tdz.sync.SyncBootstrap
+import tdz.sync.local.HandleStore
 import tdz.view.menu.MenuItem
 import tdz.view.menu.MenuSection
 import tdz.view.menu.splitIcon
@@ -178,8 +179,6 @@ fun canvasMenu(
     columns: CanvasColumns,
     model: Model,
     eventBus: EventBus<Event>,
-    downloader: Downloader,
-    uploader: Uploader,
 ): (MouseEvent) -> List<MenuSection> = { event ->
     // DOM hit-test (not the geometric boundaries) so right-clicking anywhere over a column targets it,
     // including empty columns made short by a content-heavy sibling in the same stacked split.
@@ -190,7 +189,7 @@ fun canvasMenu(
         override fun columnProperties() {
             columnId?.let { ColumnPropertiesModal(model, eventBus).show(model.currentCanvas().name, it) }
         }
-        override fun download() { downloader.download(model.currentCanvas()) }
+        override fun download() { eventBus.fire(ExportCanvas(model.currentCanvas().name)) }
         override fun splitEven(split: Split) {
             columnId?.let { eventBus.fire(SplitColumn(model.currentCanvas().name, split, it)) }
         }
@@ -203,7 +202,7 @@ fun canvasMenu(
         override fun revertColumn() { columnId?.let { columns.revertMode(it) } }
         override fun setTheme(theme: Theme) {
             ThemeManager.use(theme)
-            model.setTheme(theme.name)   // remember across reloads (localStorage via the model)
+            model.setTheme(ThemeName(theme.name))   // remember across reloads (localStorage via the model)
             // structural=false: a theme switch is purely local UI — it must not push to sync.
             eventBus.fire(RefreshCanvas(model.currentCanvas().name, structural = false))
         }
@@ -217,8 +216,8 @@ fun canvasMenu(
                 eventBus.fire(RefreshCanvas(name, structural = false))
             }
         }
-        override fun uploadNewCanvas() { uploader.upload(ImportMode.NEW_CANVAS) }
-        override fun uploadCardsHere() { uploader.upload(ImportMode.HERE) }
+        override fun uploadNewCanvas() { eventBus.fire(ImportCanvasAsNew) }
+        override fun uploadCardsHere() { eventBus.fire(ImportCardsHere) }
         override fun restoreBoardBackup() {
             val ts = LocalBackup.autoTimestamp() ?: return
             if (window.confirm("Restore this board from the ${backupTimeLabel(ts)} backup? " +
@@ -231,6 +230,6 @@ fun canvasMenu(
         override fun reportBug() { window.open(BUG_REPORT_URL, "_blank", "noopener") }
         override fun installApp() { PwaInstall.prompt() }
     }
-    canvasSections(mode, actions, tdz.sync.local.HandleStore.supported(), LocalBackup.autoTimestamp(),
+    canvasSections(mode, actions, HandleStore.supported(), LocalBackup.autoTimestamp(),
         PwaInstall.isAvailable())
 }

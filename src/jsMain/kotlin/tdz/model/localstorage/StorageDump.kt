@@ -12,6 +12,7 @@ import zoned.framework.Debugger
 object StorageDump {
 
     private const val UNMANAGED = "UNMANAGED?"
+    private const val AUTH_SECRET = "auth-secret"
     private val COLUMN = Namespace.COLUMN.toString()
     private val COLUMN_MODE = Namespace.COLUMN_MODE.toString()
     private val NEWCANVAS = Namespace.NEWCANVAS.toString()
@@ -43,7 +44,7 @@ object StorageDump {
     private fun category(key: String): String = when {
         key.startsWith("tdz.backup.") -> "backup"
         key == "tdz.sync.deviceId" -> "deviceId"
-        key == "tdz.sync.driveToken" || key == "tdz_dropbox_code_verifier" -> "auth-secret"
+        key == "tdz.sync.driveToken" || key == "tdz_dropbox_code_verifier" -> AUTH_SECRET
         key.startsWith(COLUMN_MODE) -> "column-mode"
         key.startsWith(COLUMN) -> "column"
         key.startsWith(NEWCANVAS) -> "canvas"
@@ -65,6 +66,8 @@ object StorageDump {
             "canvas   '${d.name.normalized()}'  cols=${d.columns.map { it.value }}  layout=[$layout]"
         }.getOrElse { "canvas   (undecodable) $key  ${preview(value)}" }
         key.startsWith("tdz.backup") -> "backup   $key  (${value.length} chars)"
+        // NEVER print an auth secret's value, even in a debug dump — only its length.
+        category(key) == AUTH_SECRET -> "$AUTH_SECRET  $key  (redacted, ${value.length} chars)"
         category(key) == UNMANAGED -> "UNMANAGED?  $key  ⟪${preview(value)}⟫"
         else -> "$key  ${preview(value)}"
     }

@@ -1,6 +1,5 @@
-package tdz.controller
+package tdz.controller.io
 
-import tdz.controller.io.TdzDocument
 import tdz.model.*
 import web.blob.Blob
 import web.blob.BlobPropertyBag

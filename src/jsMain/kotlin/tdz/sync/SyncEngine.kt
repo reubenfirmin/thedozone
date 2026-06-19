@@ -3,6 +3,7 @@ package tdz.sync
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlin.js.Date
 import tdz.model.CanvasName
 import tdz.model.ColumnId
 import tdz.model.localstorage.CanvasDoc
@@ -10,10 +11,6 @@ import tdz.model.localstorage.SyncEntry
 import tdz.model.localstorage.SyncStateDoc
 
 enum class Winner { LOCAL, REMOTE }
-
-/** Last-write-wins by timestamp; ties favour remote (already-persisted) to avoid churn. */
-fun resolveConflict(localUpdatedAt: Double, remoteServerModified: Double): Winner =
-    if (localUpdatedAt > remoteServerModified) Winner.LOCAL else Winner.REMOTE
 
 /**
  * Outcome of a [SyncEngine.pull]: the new state plus which local paths changed (for re-render).
@@ -29,6 +26,19 @@ data class PullResult(
 
 /** One file to push: its remote [path], [content], and the local edit time. */
 data class PushItem(val path: String, val content: String, val localUpdatedAt: Double)
+
+/**
+ * The local facts the deletion policy needs, supplied by the controller/adapter. The engine asks
+ * "does this board still exist locally?" and "is this column still live in its board?" — and owns the
+ * decision of what that means for the remote (tombstone vs drop). The engine never reads the model.
+ */
+interface LocalFacts {
+    /** True when the board [canvas] still has a manifest locally (false = the whole board was deleted). */
+    fun canvasExists(canvas: CanvasName): Boolean
+
+    /** True when [col] is still a live column of [canvas] locally (false = the column was deleted). */
+    fun columnLive(canvas: CanvasName, col: ColumnId): Boolean
+}
 
 /**
  * Stateless sync logic over a [RemoteStorage]. Decoupled from `Model` via the read/write/delete
@@ -138,33 +148,29 @@ class SyncEngine(
                     // as concurrent so nothing is silently dropped: identical content merges to a no-op,
                     // divergent content merges (or hits the deterministic overlap tiebreak).
                     Causal.CONCURRENT, Causal.EQUAL -> {
-                        val merge = ColumnMerge.mergeColumn(local = content, base = knownBase, remote = remoteContent)
-                        val join = pointwiseMax(knownVv, remoteVv)
-                        if (!merge.hadConflict) {
-                            writeLocal(path, merge.merged)
-                            val meta = storage.upload(path, merge.merged, ifMatchRev = null)
-                            return SyncEntry(meta.rev, localUpdatedAt, base = merge.merged, vv = join) to null
-                        }
-                        // deterministic, symmetric overlap winner: keep the lexicographically-greater body so
-                        // both devices converge on the same choice.
-                        val localWins = content >= remoteContent
-                        val winnerContent = if (localWins) content else remoteContent
-                        writeLocal(path, winnerContent)
-                        val meta = storage.upload(path, winnerContent, ifMatchRev = null)
-                        return SyncEntry(meta.rev, localUpdatedAt, base = winnerContent, vv = join) to
-                            (if (localWins) Winner.LOCAL else Winner.REMOTE)
+                        val r = resolveColumnConcurrent(content, knownBase, remoteContent, knownVv, remoteVv)
+                        writeLocal(path, r.body)
+                        val meta = storage.upload(path, r.body, ifMatchRev = null)
+                        return SyncEntry(meta.rev, localUpdatedAt, base = r.body, vv = r.vv) to r.winner
                     }
                 }
             }
             // Manifests: resolve a push-time rev race by the SAME causal svv rules as the pull side,
             // not raw timestamp LWW. LWW here could silently drop a concurrent local structural edit
             // (e.g. "I cleared my board") whenever the remote's serverModified happened to be later.
+            // NOTE: this svv ladder deliberately does NOT share a skeleton with the pull-side ladder
+            // (see pull()): the pull folds tombstones (applyTombstones / learnRemoteTombstones / the
+            // sameStructure fast-path) to reconcile deletions across devices, whereas this push-time
+            // rev-race path only merges layouts. The branches are genuinely divergent; unifying them
+            // would smuggle tombstone handling into the push and risk correctness.
             val localSvv = knownVv
             val remoteSvv = ManifestVv.readSvv(remoteContent)
             val join = pointwiseMax(localSvv, remoteSvv)
             when (causalWithHistory(knownRev != null || knownBase != null, localSvv, remoteSvv)) {
                 Causal.REMOTE_DOMINATES -> {                     // remote layout newer -> adopt, nothing lost
                     writeLocal(path, remoteContent)
+                    // Adopt the REMOTE clock as this manifest's localUpdatedAt: we took the remote's
+                    // layout, so its server-modified time is the truthful "last write" for any later LWW.
                     SyncEntry(remoteMeta.rev, remoteMeta.serverModified, base = baseFor(path, remoteContent), vv = remoteSvv) to null
                 }
                 Causal.LOCAL_DOMINATES -> {                      // local layout newer -> force-upload local
@@ -185,12 +191,6 @@ class SyncEngine(
      *  that exist remotely but not locally (and must be deleted). Empty when the folder doesn't exist. */
     suspend fun remotePaths(root: String): Set<String> = storage.list(root).files.map { it.path }.toSet()
 
-    /** Delete a remote file and drop its bookkeeping. */
-    suspend fun deleteRemote(path: String, state: SyncStateDoc): SyncStateDoc {
-        storage.delete(path)
-        return state.without(path)
-    }
-
     /** Delete many remote files concurrently; drop their bookkeeping. */
     suspend fun deleteRemoteBatch(paths: List<String>, state: SyncStateDoc): SyncStateDoc = coroutineScope {
         paths.map { async { storage.delete(it) } }.awaitAll()
@@ -204,6 +204,90 @@ class SyncEngine(
     suspend fun deleteRemoteFiles(paths: List<String>): Unit = coroutineScope {
         paths.map { async { storage.delete(it) } }.awaitAll()
         Unit
+    }
+
+    /**
+     * DELETION POLICY (reconcile side). Anything still tracked in [state] but gone locally (per
+     * [facts]) was deleted here; the pull that follows would otherwise RE-IMPORT it. Classify and
+     * propagate the deletions to the remote BEFORE the pull, returning the updated [state]:
+     *  - a column dropped from a SURVIVING board is TOMBSTONED (its content vv kept) so the deletion
+     *    travels in that board's manifest `deleted` set and the board's manifest is bumped pending
+     *    (svv advanced) so the deletion wins causally; a concurrent stale re-add can't resurrect it.
+     *  - a whole-board deletion (its manifest is gone too) just DROPS its columns + manifest — there's
+     *    no surviving manifest to carry tombstones.
+     * Scope each key back to its board via [SyncPaths] (never a name-prefix match). A path is only in
+     * [state] if we synced it, so a now-missing one is a real local deletion to propagate.
+     */
+    suspend fun propagateLocalDeletions(root: String, state: SyncStateDoc, facts: LocalFacts): SyncStateDoc {
+        val orphans = state.entries.filter { (p, e) ->
+            if (e.tombstone) return@filter false   // already a tombstone — nothing more to do
+            val col = SyncPaths.parseColumn(p, root)
+            when {
+                col != null -> !facts.columnLive(col.first, col.second)
+                SyncPaths.isManifest(p) -> SyncPaths.parseManifest(p, root)?.let { !facts.canvasExists(it) } ?: false
+                else -> false
+            }
+        }.keys.toList()
+        if (orphans.isEmpty()) return state
+        // A column whose board still exists is tombstoned; a column whose board is gone is dropped.
+        val tombstones = orphans.filter {
+            SyncPaths.parseColumn(it, root)?.let { c -> facts.canvasExists(c.first) } == true
+        }
+        val drops = orphans.filterNot { it in tombstones.toSet() }
+        SyncLog.log("propagating ${tombstones.size} column tombstone(s) + ${drops.size} drop(s) to the remote")
+        var s = state
+        if (tombstones.isNotEmpty()) {
+            val t = Date.now(); val self = DeviceId.get()
+            tombstones.forEach { p ->
+                s = s.with(p, SyncEntry(rev = null, localUpdatedAt = t, vv = s.entries[p]?.vv ?: emptyMap(), tombstone = true))
+            }
+            // Bump each affected board's manifest pending so the two-way push re-uploads it WITH the
+            // new tombstones (svv bumped so the deletion wins causally).
+            tombstones.mapNotNull { SyncPaths.parseColumn(it, root)?.first }.distinct().forEach { cn ->
+                val mp = SyncPaths.manifestPath(root, cn)
+                val prev = s.entries[mp]
+                s = s.with(mp, (prev ?: SyncEntry(rev = null, localUpdatedAt = t))
+                    .copy(rev = null, localUpdatedAt = t, vv = bump(prev?.vv ?: emptyMap(), self)))
+            }
+            deleteRemoteFiles(tombstones)
+        }
+        if (drops.isNotEmpty()) s = deleteRemoteBatch(drops, s)
+        return s
+    }
+
+    /**
+     * DELETION POLICY (structural-push side). Orphan columns of [canvas] (tracked under it, no longer
+     * live per [facts], not already tombstoned) are DELETIONS. Tombstone them (keeping each content vv
+     * at death) so the manifest carries the `deleted` set, push [manifestContent] under [manifestPath],
+     * then delete the orphaned remote files (KEEPING the tombstone entries). Returns the updated state.
+     * Scope by parsing each key back to its board (never a prefix match, which would also sweep nested
+     * boards' columns). [manifestContent] is recomputed from the post-tombstone state by the caller's
+     * producer so the manifest reflects the deletions.
+     */
+    suspend fun pushStructure(
+        root: String,
+        canvas: CanvasName,
+        manifestPath: String,
+        state: SyncStateDoc,
+        facts: LocalFacts,
+        manifestContent: (SyncStateDoc) -> String?,
+    ): SyncStateDoc {
+        var s = state
+        val orphans = s.entries.filter { (key, e) ->
+            !e.tombstone && SyncPaths.parseColumn(key, root)
+                ?.let { it.first.normalized() == canvas.normalized() && !facts.columnLive(it.first, it.second) } == true
+        }.keys.toList()
+        val now = Date.now()
+        orphans.forEach { p ->
+            s = s.with(p, SyncEntry(rev = null, localUpdatedAt = now, vv = s.entries[p]?.vv ?: emptyMap(), tombstone = true))
+        }
+        // Canvas vanished between the structural event and here: discard the in-memory tombstones (the
+        // reconcile's deletion sweep handles a whole-board deletion) and leave the persisted state as-is.
+        val manifest = manifestContent(s) ?: return state
+        s = push(manifestPath, manifest, now, s).first
+        // Delete the remote files but KEEP the tombstone entries (deleteRemoteBatch would drop them).
+        if (orphans.isNotEmpty()) deleteRemoteFiles(orphans)
+        return s
     }
 
     /**
@@ -290,21 +374,11 @@ class SyncEngine(
                             // as concurrent so nothing is silently dropped: identical content merges to a no-op,
                             // divergent content merges (or hits the deterministic overlap tiebreak).
                             Causal.CONCURRENT, Causal.EQUAL -> {
-                                val merge = ColumnMerge.mergeColumn(local = localContent, base = known?.base, remote = remoteContent)
-                                val join = pointwiseMax(localVv, remoteVv)
-                                if (!merge.hadConflict) {
-                                    writeLocal(m.path, merge.merged)
-                                    next = next.with(m.path, SyncEntry(m.rev, known?.localUpdatedAt ?: m.serverModified, base = merge.merged, vv = join))
-                                    changed += m.path
-                                    keptLocal += m.path   // push merged up so the remote converges
-                                } else {
-                                    // deterministic symmetric winner: keep lexicographically-greater body.
-                                    val winner = if (localContent >= remoteContent) localContent else remoteContent
-                                    writeLocal(m.path, winner)
-                                    next = next.with(m.path, SyncEntry(m.rev, known?.localUpdatedAt ?: m.serverModified, base = winner, vv = join))
-                                    changed += m.path
-                                    keptLocal += m.path
-                                }
+                                val r = resolveColumnConcurrent(localContent, known?.base, remoteContent, localVv, remoteVv)
+                                writeLocal(m.path, r.body)
+                                next = next.with(m.path, SyncEntry(m.rev, known?.localUpdatedAt ?: m.serverModified, base = r.body, vv = r.vv))
+                                changed += m.path
+                                keptLocal += m.path   // push merged/winner up so the remote converges
                             }
                         }
                         }
@@ -397,6 +471,28 @@ class SyncEngine(
      */
     private fun causalWithHistory(hasHistory: Boolean, local: VersionVector, remote: VersionVector): Causal =
         if (hasHistory) compareVv(local, remote) else Causal.CONCURRENT
+
+    /** The resolved body of a concurrent/equal divergence: the bytes both sides should converge on,
+     *  the joined vector, and the [Winner] of an overlap tiebreak (null = a clean 3-way merge). */
+    private class ColumnResolution(val body: String, val vv: VersionVector, val winner: Winner?)
+
+    /**
+     * The CONCURRENT/EQUAL column decision table, shared by the push and the pull side so it can never
+     * drift between them: a clean 3-way [ColumnMerge] when there's no same-region overlap, else the
+     * deterministic, symmetric overlap winner (keep the lexicographically-greater body so both devices
+     * converge on the same choice). The caller applies the side-specific effects (writeLocal/upload vs
+     * keep-and-push) to the returned body.
+     */
+    private fun resolveColumnConcurrent(
+        local: String, base: String?, remote: String, localVv: VersionVector, remoteVv: VersionVector,
+    ): ColumnResolution {
+        val merge = ColumnMerge.mergeColumn(local = local, base = base, remote = remote)
+        val join = pointwiseMax(localVv, remoteVv)
+        if (!merge.hadConflict) return ColumnResolution(merge.merged, join, winner = null)
+        val localWins = local >= remote
+        return ColumnResolution(if (localWins) local else remote, join,
+            winner = if (localWins) Winner.LOCAL else Winner.REMOTE)
+    }
 
     /** True when [v] carries an edit the deletion-clock [t] never saw (a component where v > t) —
      *  i.e. the column was edited concurrently with (or after) the delete, so the delete must NOT win. */

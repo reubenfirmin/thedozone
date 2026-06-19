@@ -3,13 +3,9 @@ package tdz.controller.io
 import tdz.model.Canvas
 import tdz.model.CanvasName
 import tdz.model.Card
-import tdz.model.CardMetadata
 import tdz.model.ColumnId
 import tdz.model.ColumnLayoutSpec
 import tdz.model.Split
-import tdz.model.card.CanvasLink
-import tdz.model.card.CardText
-import tdz.model.card.RichText
 
 /** Where to put the cards from an uploaded [TdzDocument]. */
 enum class ImportMode {
@@ -60,7 +56,7 @@ class CanvasImporter(private val store: CanvasStore) {
         // A blank target — exactly one EMPTY content column — ADOPTS the uploaded file's column
         // layout, so uploading a multi-column board into a fresh board restores its columns instead
         // of cramming every card into the single column. An in-use board just merges the cards.
-        val content = currentCanvas.columns.filterNot { currentCanvas.layoutMap.containsKey(it) }
+        val content = currentCanvas.leafColumns()
         if (content.size == 1 && store.cards(currentCanvas.name, content.first()).isEmpty()) {
             store.addCanvas(boardFrom(currentCanvas.name, currentCanvas.parent, doc))
         }
@@ -92,7 +88,7 @@ class CanvasImporter(private val store: CanvasStore) {
     private fun saveCardsInto(canvasName: CanvasName, cards: List<Card>): List<ColumnId> {
         val canvas = store.getCanvas(canvasName)
             ?: error("Import target canvas '${canvasName.normalized()}' not found")
-        val leaves = canvas.columns.filterNot { canvas.layoutMap.containsKey(it) }.toSet()
+        val leaves = canvas.leafColumns().toSet()
         val changed = mutableListOf<ColumnId>()
         for ((columnId, group) in cards.groupBy { it.metadata.columnId }) {
             val target = if (columnId in leaves) columnId else canvas.firstNonLayout()
@@ -106,19 +102,13 @@ class CanvasImporter(private val store: CanvasStore) {
         return changed.distinct()
     }
 
-    private fun addLinkCard(currentCanvas: Canvas, target: CanvasName): ColumnId {
-        val column = currentCanvas.firstNonLayout()
-        val existing = store.cards(currentCanvas.name, column)
-        val link = Card(
-            // Imported boards are created top-level, so the link must be ABSOLUTE — a relative
-            // target would resolve under whatever board the link is viewed from (wrong board).
-            listOf(CardText(listOf<RichText>(CanvasLink("/" + target.normalized(), target.display())))),
-            CardMetadata(column),
-            existing.size,
-        )
-        store.saveCards(currentCanvas.name, column, existing + link)
-        return column
-    }
+    private fun addLinkCard(currentCanvas: Canvas, target: CanvasName): ColumnId =
+        // Imported boards are created top-level, so the link must be ABSOLUTE — a relative target
+        // would resolve under whatever board the link is viewed from (wrong board).
+        // currentCanvas is the board being viewed, so it is always present in the store.
+        requireNotNull(store.appendLinkCard(currentCanvas.name, "/" + target.normalized(), target.display())) {
+            "active canvas ${currentCanvas.name} absent from store while importing"
+        }
 
     /** Strip path-breaking characters and append '_' until the name is free. */
     private fun uniqueName(fileName: String): CanvasName {

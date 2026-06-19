@@ -23,7 +23,8 @@ data class Card(val segments: List<CardSegment>, val metadata: CardMetadata, val
     fun withoutDoneItems(): Card =
         copy(segments = segments.mapNotNull { segment ->
             when (segment) {
-                is CardListItem -> segment.takeUnless { it.done }   // defensive: a bare list item
+                // defensive: a bare list item outside a ListGroup — drop it if done, else keep it.
+                is CardListItem -> segment.takeUnless { it.done }
                 is ListGroup -> segment.withoutDoneItems()
                 else -> segment
             }
@@ -32,15 +33,9 @@ data class Card(val segments: List<CardSegment>, val metadata: CardMetadata, val
     /** A "title" card: its only content is a single level-1 heading (e.g. `# Tracking`). */
     fun isH1Only() = segments.size == 1 && (segments[0] as? CardHeading)?.level == 1
 
-    fun infoOnly() = segments.filterNot { it is CardText || it is CardHeading || it is Callout }.isEmpty()
-
     fun isCanvasLink() = link()?.isCanvasLink() ?: false
 
     fun isImageLink() = link()?.isImage() ?: false
-
-    private fun steps() = segments.filterIsInstance<CardListItem>()
-
-    fun done() = steps().let { it.isNotEmpty() && it.all { task -> task.done } }
 
     /**
      * Only applies if the only thing is a link

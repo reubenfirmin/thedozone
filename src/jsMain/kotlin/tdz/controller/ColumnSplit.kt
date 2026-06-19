@@ -80,7 +80,7 @@ object ColumnSplit {
     fun deleteColumn(canvas: Canvas, columnId: ColumnId): Pair<Canvas, ColumnId> {
         // The "always one column" invariant is STRUCTURAL: count content columns (not layout
         // containers). Synced/merged manifests can carry extra ids that broke a size-based check.
-        val contentColumns = canvas.columns.filterNot { canvas.layoutMap.containsKey(it) }
+        val contentColumns = canvas.leafColumns()
         if (columnId in contentColumns && contentColumns.size <= 1) return canvas to columnId
         val containedBy = canvas.layouts.firstOrNull { it.contains.contains(columnId) }
             ?: run {

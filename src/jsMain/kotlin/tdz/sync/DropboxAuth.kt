@@ -67,13 +67,17 @@ object DropboxAuth {
         auth.setCodeVerifier(verifier)
 
         val tokenResult = auth.getAccessTokenFromCode(redirectUri(), code).await()
-        val refreshToken = tokenResult.result.refresh_token as String
+        // Validate the untyped SDK response instead of blind-casting: an unexpected shape (no refresh
+        // token) fails loudly here at the interop boundary, not as a null-as-String corruption later.
+        val refreshToken = tokenResult.result.refresh_token as? String
+            ?: error("Dropbox token exchange returned no refresh_token")
 
         // Best-effort display email: needs account_info.read, which we don't require. If it's not
         // granted (or the call fails), connect still succeeds with a generic label.
         val email = runCatching {
             val client = DropboxSdk(json("clientId" to DropboxApp.KEY, "refreshToken" to refreshToken))
-            client.usersGetCurrentAccount().await().result.email as String
+            client.usersGetCurrentAccount().await().result.email as? String
+                ?: error("Dropbox account response missing email")
         }.getOrDefault("Dropbox account")
 
         return DropboxCredentials(refreshToken, email)

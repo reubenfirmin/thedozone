@@ -15,7 +15,7 @@ import zoned.framework.interop.webkitTextStroke
  * The themed CSS for cards — headings, card chrome, canvas-link chips, and task rows — injected once
  * per theme via [themedStyleSheet] (re-injected only on a theme change). Split out of [CardRenderer]
  * so that file stays focused on building DOM; these are pure, theme-keyed stylesheet emitters with no
- * dependency on the render functions. Flip-card styles stay in [CardRenderer] (coupled to its flip
+ * dependency on the render functions. Flip-card styles live in [FlipCard] (coupled to its flip
  * animation constants).
  */
 object CardStyles {

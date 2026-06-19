@@ -22,7 +22,7 @@ import tdz.model.Model
 import tdz.model.Direction.*
 import tdz.model.Split.HORIZONTAL
 import tdz.model.Split.VERTICAL
-import tdz.tdzDragDrop
+import tdz.controller.DragDrop
 import tdz.view.Boundary.Companion.calculateBoundary
 import tdz.view.theme.ThemeManager
 import web.dom.document
@@ -46,6 +46,9 @@ import zoned.framework.interop.styleSheet
 class CanvasColumns(val canvas: Canvas,
                     val eventBus: EventBus<Event>,
                     val model: Model,
+                    /** Threaded in explicitly (App -> Index -> CanvasView -> here) so the view no longer
+                     *  reaches a global for it. Null in unit tests that don't exercise drag wiring. */
+                    private val dragDrop: DragDrop? = null,
                     /** Viewport-width seam (overridable in tests): true => render only the first column. */
                     val isMobile: () -> Boolean = { window.innerWidth <= MOBILE_BREAKPOINT },
                     val cards: (columnId: ColumnId) -> List<Card>) {
@@ -53,20 +56,23 @@ class CanvasColumns(val canvas: Canvas,
     companion object {
         /** At/below this viewport width the board collapses to its first column only (see [render]). */
         const val MOBILE_BREAKPOINT = 768
-
-        /** Dark text for contrast on a light band (also the fallback when a color is unparseable). */
-        private const val CONTRAST_DARK = "#1d1b20"
-        /** Light text for contrast on a dark band. */
-        private const val CONTRAST_LIGHT = "#ffffff"
     }
 
     private val boundaries = mutableMapOf<ColumnId, Boundary>()
+
+    /** Directional keyboard focus navigation. Reads the LIVE [boundaries] map (mutated as columns
+     *  render), so it always navigates against the current geometry. */
+    private val focusNavigator = ColumnFocusNavigator(
+        boundaries,
+        isLayout = { canvas.layoutMap.containsKey(it) },
+        rootBoundary = ::rootBoundary,
+    )
     private val columnModes = mutableMapOf<ColumnId, Mode>()
     private val columnContainers = mutableMapOf<ColumnId, ColumnContainer>()
-    private var focusedColumn: ColumnId = canvas.columns.firstOrNull { !canvas.layoutMap.containsKey(it) } ?: canvas.columns.firstOrNull() ?: ColumnId.ROOT
+    private var focusedColumn: ColumnId = canvas.leafColumns().firstOrNull() ?: canvas.columns.firstOrNull() ?: ColumnId.ROOT
 
     init {
-        // Load persisted modes from localStorage.
+        // Load persisted modes from localStorage (see DOCUMENTED EXCEPTION on [loadModeFromStorage]).
         canvas.columns.forEach { columnId ->
             val persistedMode = loadModeFromStorage(columnId)
             if (persistedMode != null) {
@@ -90,6 +96,17 @@ class CanvasColumns(val canvas: Canvas,
         editorCache.clear()
     }
 
+    // DOCUMENTED EXCEPTION — column MODE and STYLE are deliberately VIEW-OWNED persisted UI state,
+    // not a model fact, so CanvasColumns reads/writes them on the model directly rather than routing
+    // through the Controller (the pattern for genuine content mutations). Two reasons this is the
+    // right seam, not a leak:
+    //   1. They are per-device presentation, NOT canvas content: which columns sit open in the
+    //      editor and a column's local wallpaper/accent never sync and never affect the markdown —
+    //      ColumnsChanged (the sync signal) must NOT fire for them.
+    //   2. A toggle MUST re-render its column synchronously in place (re-adopting the parked Ace
+    //      editor, keeping focus). Routing it as an event -> Controller persist -> RefreshColumns
+    //      command would add round-trip render-timing complexity for no behavioral gain, and would
+    //      need a Controller wired into the standalone CanvasColumns the mode tests construct.
     private fun loadModeFromStorage(columnId: ColumnId): Mode? =
         model.getColumnMode(canvas.name, columnId)
 
@@ -106,7 +123,7 @@ class CanvasColumns(val canvas: Canvas,
     private fun paletteBg(columnId: ColumnId): Color {
         val t = ThemeManager.current
         if (t.columnPalette.isEmpty()) return t.panelBg
-        val leaves = canvas.columns.filter { !canvas.layoutMap.containsKey(it) }
+        val leaves = canvas.leafColumns()
         val idx = leaves.indexOf(columnId).coerceAtLeast(0)
         return t.columnPalette[idx % t.columnPalette.size]
     }
@@ -117,7 +134,7 @@ class CanvasColumns(val canvas: Canvas,
         // the inline scrollbar-width:none (columnCss); WebKit needs this pseudo-element rule,
         // which inline styles cannot express. Idempotent: keyed stylesheet, replaced per render.
         styleSheet("tdz-column-scrollbar") {
-            rule("[id^=\"column-\"]::-webkit-scrollbar") { display = Display.none }
+            rule("${DomIds.COLUMN_SELECTOR}::-webkit-scrollbar") { display = Display.none }
         }
         // Mobile: show ONLY the first leaf column, full viewport. The layout tree and every other
         // column are skipped entirely (not in the DOM, no editors built), so they're unreachable.
@@ -251,37 +268,11 @@ class CanvasColumns(val canvas: Canvas,
         return null
     }
 
-    fun findColumnSurrounding(x: Int, y: Int, recurse: Boolean = false): ColumnId {
-        val candidates = boundaries.filter { entry ->
-            val columnId = entry.key
-            val boundary = entry.value
-            !canvas.layoutMap.containsKey(columnId) && boundary.surrounds(x, y)
-        }.toList()
-
-        if (candidates.size > 1) {
-            val best = candidates.filter {
-                val inset = it.second.inset(x, y)
-                inset.first >= x && inset.second >= y
-            }
-            if (best.size > 1 || best.isEmpty()) {
-                // A probe on a shared edge can disqualify EVERY candidate (each loses on x or y);
-                // fall back to the candidates rather than maxBy-ing an empty list.
-                val max = best.ifEmpty { candidates }.maxBy { it.second.leftX + it.second.topY }
-                return max.first
-            }
-            return best.first().first
-        } else if (candidates.isEmpty()) {
-            rootBoundary().let {
-                if (it.surrounds(x, y) || recurse) {
-                    throw Exception("Couldn't find boundary containing $x $y - recursion $recurse")
-                }
-
-                val (newX, newY) = it.wrap(x, y)
-                return findColumnSurrounding(newX, newY, true)
-            }
-        }
-        return candidates.first().first
-    }
+    /** The leaf column surrounding ([x], [y]), falling back to the focused column when none lies
+     *  there. Thin delegation to [ColumnFocusNavigator]; retained on CanvasColumns as the
+     *  navigation entry point (and the focus test's hook). */
+    fun findColumnSurrounding(x: Int, y: Int): ColumnId =
+        focusNavigator.findColumnSurrounding(x, y) ?: focusedColumn
 
     private fun setupColumnContainer(columnId: ColumnId): ColumnContainer {
         val colCards = cards(columnId)
@@ -324,7 +315,7 @@ class CanvasColumns(val canvas: Canvas,
 
     private fun setupColumnHandlers(columnId: ColumnId, columnContainer: ColumnContainer) {
         wireTaskToggleDelegate(columnId)
-        columnContainer.setupDragDrop(tdzDragDrop)
+        dragDrop?.let { columnContainer.setupDragDrop(it) }
         columnContainer.setupFocusHandler {
             focus(columnId)
         }
@@ -354,6 +345,7 @@ class CanvasColumns(val canvas: Canvas,
     /** Paint a column's per-column overrides (wallpaper image + background color) over the theme defaults. */
     private fun applyColumnStyle(columnId: ColumnId) {
         val el = getHtmlElement(DomIds.column(columnId)) ?: return
+        // View-owned persisted UI state — see the DOCUMENTED EXCEPTION on [loadModeFromStorage].
         val style = model.getColumnStyle(canvas.name, columnId)
         val color = style.color?.takeIf { it.startsWith("#") }
         if (ThemeManager.current.titleInStrip) {
@@ -390,21 +382,6 @@ class CanvasColumns(val canvas: Canvas,
                 }
             }
         }
-    }
-
-    /** Black or white, whichever reads better on [hex] (`#rgb`/`#rrggbb`), by perceived luminance. */
-    private fun contrastingText(hex: String): String {
-        val h = hex.removePrefix("#")
-        val (r, g, b) = when (h.length) {
-            3 -> Triple(h[0].digitToIntOrNull(16), h[1].digitToIntOrNull(16), h[2].digitToIntOrNull(16))
-                .let { (rr, gg, bb) -> Triple(rr?.times(17), gg?.times(17), bb?.times(17)) }
-            else -> Triple(
-                h.take(2).toIntOrNull(16), h.drop(2).take(2).toIntOrNull(16), h.drop(4).take(2).toIntOrNull(16),
-            )
-        }
-        if (r == null || g == null || b == null) return CONTRAST_DARK   // unparseable → assume light band
-        val luma = 0.299 * r + 0.587 * g + 0.114 * b
-        return if (luma < 140) CONTRAST_LIGHT else CONTRAST_DARK
     }
 
     /**
@@ -520,50 +497,6 @@ class CanvasColumns(val canvas: Canvas,
     }
 
     fun navigateFocus(direction: Direction) {
-        val newFocused = when (direction) {
-            Direction.RIGHT -> columnRight(focusedColumn)
-            Direction.LEFT -> columnLeft(focusedColumn)
-            Direction.UP -> columnUp(focusedColumn)
-            Direction.DOWN -> columnDown(focusedColumn)
-        }
-        focus(newFocused)
-    }
-
-    // Directional probes aim at the MIDPOINT of the facing edge (not its corner): in a mixed
-    // layout a corner probe can land beside a neighbour that only overlaps this column's middle.
-    private fun columnRight(currColumnId: ColumnId): ColumnId {
-        val boundary = boundaries[currColumnId] ?: return currColumnId
-        return try {
-            findColumnSurrounding(boundary.leftX + boundary.width + 1, boundary.topY + boundary.height / 2)
-        } catch (e: Exception) {
-            currColumnId
-        }
-    }
-
-    private fun columnLeft(currColumnId: ColumnId): ColumnId {
-        val boundary = boundaries[currColumnId] ?: return currColumnId
-        return try {
-            findColumnSurrounding(boundary.leftX - 1, boundary.topY + boundary.height / 2)
-        } catch (e: Exception) {
-            currColumnId
-        }
-    }
-
-    private fun columnUp(currColumnId: ColumnId): ColumnId {
-        val boundary = boundaries[currColumnId] ?: return currColumnId
-        return try {
-            findColumnSurrounding(boundary.leftX + boundary.width / 2, boundary.topY - 1)
-        } catch (e: Exception) {
-            currColumnId
-        }
-    }
-
-    private fun columnDown(currColumnId: ColumnId): ColumnId {
-        val boundary = boundaries[currColumnId] ?: return currColumnId
-        return try {
-            findColumnSurrounding(boundary.leftX + boundary.width / 2, boundary.topY + boundary.height + 1)
-        } catch (e: Exception) {
-            currColumnId
-        }
+        focus(focusNavigator.navigate(direction, focusedColumn))
     }
 }

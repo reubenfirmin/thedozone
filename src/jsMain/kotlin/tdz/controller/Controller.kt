@@ -8,6 +8,12 @@ import tdz.controller.events.ColumnEdited
 import tdz.controller.events.ColumnsChanged
 import tdz.controller.events.DeleteColumn
 import tdz.controller.events.Event
+import tdz.controller.events.ExportCanvas
+import tdz.controller.events.ImportCanvasAsNew
+import tdz.controller.events.ImportCardsHere
+import tdz.controller.io.Downloader
+import tdz.controller.io.ImportMode
+import tdz.controller.io.Uploader
 import zoned.framework.events.EventBus
 import tdz.controller.events.RefreshCanvas
 import tdz.controller.events.RefreshCard
@@ -21,6 +27,13 @@ import tdz.model.Model
 import tdz.model.markdown.MarkdownService
 
 class Controller(private val eventBus: EventBus<Event>, private val model: Model) {
+
+    // The view never touches file I/O directly; it fires ExportCanvas / ImportCanvasAsNew /
+    // ImportCardsHere and the Controller owns these model<->file collaborators (PNG capture is a
+    // view concern, kept there). ImportMode is a controller.io detail — the intent events carry no
+    // payload, and this is the only place that maps intent -> mode.
+    private val downloader = Downloader(model)
+    private val uploader = Uploader(model, eventBus)
 
     /**
      * Open a board by path: dispatch to [CanvasHierarchy] to build any missing chain (the hierarchy
@@ -64,17 +77,20 @@ class Controller(private val eventBus: EventBus<Event>, private val model: Model
             }
         }
 
+        eventBus.on<ExportCanvas> { event ->
+            model.getCanvas(event.canvasName)?.let { downloader.download(it) }
+        }
+
+        eventBus.on<ImportCanvasAsNew> { uploader.upload(ImportMode.NEW_CANVAS) }
+        eventBus.on<ImportCardsHere> { uploader.upload(ImportMode.HERE) }
+
         eventBus.on<CardsReordered> { event ->
+            // Persist the model fact and stamp the columns for sync. Re-rendering is the producer's
+            // call (DragDrop fires RefreshColumns only when the drop left the DOM stale), so this
+            // handler never rebuilds — a single-card drop already matches the live DOM.
             model.saveCards(event.canvasName, event.toColumnId, event.toCards)
             event.fromCards?.let { model.saveCards(event.canvasName, event.fromColumnId, it) }
-            val changed = setOf(event.fromColumnId, event.toColumnId)
-            eventBus.fire(ColumnsChanged(event.canvasName, changed))
-            // Re-render so the positional card ids reflect the new order — except when the drop
-            // already left the DOM in the persisted order with renumbered ids (single-card drags):
-            // rebuilding then would only re-create, element by element, what the browser is showing.
-            if (!event.domAlreadyOrdered) {
-                eventBus.fire(RefreshColumns(event.canvasName, changed))
-            }
+            eventBus.fire(ColumnsChanged(event.canvasName, setOf(event.fromColumnId, event.toColumnId)))
         }
 
         eventBus.on<CardsSentToCanvas> { event ->
@@ -95,13 +111,13 @@ class Controller(private val eventBus: EventBus<Event>, private val model: Model
         }
 
         eventBus.on<SplitColumn> { event ->
-            applyLayout(model, eventBus, event.canvasName) { canvas ->
+            applyLayout(event.canvasName) { canvas ->
                 ColumnSplit.splitColumn(canvas, event.columnId, event.split)
             }
         }
 
         eventBus.on<AddColumn> { event ->
-            applyLayout(model, eventBus, event.canvasName) { canvas ->
+            applyLayout(event.canvasName) { canvas ->
                 ColumnSplit.addColumn(canvas, event.columnId, event.split)
             }
         }
@@ -121,7 +137,7 @@ class Controller(private val eventBus: EventBus<Event>, private val model: Model
                 // removing it. Emptying (not deleting the file) also avoids the sync re-import: a
                 // null file gets pulled back from the remote; an empty file is a model fact that
                 // converges. This guard does not trust ColumnSplit's own count — it checks the result.
-                val contentAfter = updated.columns.filterNot { updated.layoutMap.containsKey(it) }
+                val contentAfter = updated.leafColumns()
                 if (updated != canvas && contentAfter.isNotEmpty()) {
                     model.deleteColumn(event.canvasName, event.columnId)   // discard the column's cards
                     model.addCanvas(updated)        // persist rearranged layout (overwrites)
@@ -137,10 +153,8 @@ class Controller(private val eventBus: EventBus<Event>, private val model: Model
 
     /** Apply a layout transform to a canvas, persist it (overwrites), and re-render. */
     private fun applyLayout(
-        model: Model,
-        eventBus: EventBus<Event>,
-        canvasName: tdz.model.CanvasName,
-        transform: (tdz.model.Canvas) -> tdz.model.Canvas,
+        canvasName: CanvasName,
+        transform: (Canvas) -> Canvas,
     ) {
         // Loud guards: a layout action that quietly does nothing (no canvas, a throwing transform,
         // or a no-op result) is exactly the "click the icon, nothing happens, no error" failure —

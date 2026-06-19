@@ -17,17 +17,6 @@ import kotlin.test.assertFalse
 
 class SyncEngineTest {
 
-    // --- conflict resolution (pure) ---
-
-    @Test fun localNewerWins() =
-        assertEquals(Winner.LOCAL, resolveConflict(localUpdatedAt = 200.0, remoteServerModified = 100.0))
-
-    @Test fun remoteNewerWins() =
-        assertEquals(Winner.REMOTE, resolveConflict(localUpdatedAt = 100.0, remoteServerModified = 200.0))
-
-    @Test fun tieFavoursRemote() =
-        assertEquals(Winner.REMOTE, resolveConflict(localUpdatedAt = 100.0, remoteServerModified = 100.0))
-
     // --- fake storage (rev-aware: honors optimistic ifMatchRev) ---
 
     private class FakeStorage(
@@ -162,19 +151,7 @@ class SyncEngineTest {
         assertEquals("new", storage.files.getValue("/n/_/col-1.md").second)
     }
 
-    // --- deleteRemote ---
-
-    @Test
-    fun deleteRemoteRemovesFileAndEntry() = runTest {
-        val remote = RemoteFile("/n/_/col-0.md", "r1", serverModified = 1.0)
-        val storage = FakeStorage(listOf(remote to "x"))
-        val state = SyncStateDoc.EMPTY.with("/n/_/col-0.md", SyncEntry("r1", 1.0))
-
-        val next = engine(storage, mutableMapOf()).deleteRemote("/n/_/col-0.md", state)
-
-        assertFalse(next.entries.containsKey("/n/_/col-0.md"))
-        assertTrue(storage.deleted.contains("/n/_/col-0.md"))
-    }
+    // --- deleteRemoteBatch ---
 
     @Test
     fun deleteRemoteBatchRemovesAllAndEntries() = runTest {

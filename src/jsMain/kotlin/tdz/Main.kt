@@ -18,27 +18,42 @@ import zoned.framework.routing.Router
 import zoned.framework.routing.Routes
 
 val rootCanvas = CanvasName("")
-val tdzModel = Model(rootCanvas)
-val eventBus = EventBus<Event>()
-val tdzController = Controller(eventBus, tdzModel)
-val tdzDragDrop = DragDrop(tdzModel, eventBus)
-val tdzIndex = Index(tdzModel, eventBus)
+
+/**
+ * The single composition root: constructs and holds the app's collaborators (Model, EventBus,
+ * Controller, DragDrop, Index) and wires them together explicitly, instead of scattering them as
+ * free-floating top-level singletons read ambiently across the codebase. Built once on first
+ * access (route registration / [main]); the route objects and [main] reach their collaborators
+ * through here.
+ */
+object App {
+    val model = Model(rootCanvas)
+    val eventBus = EventBus<Event>()
+    val controller = Controller(eventBus, model)
+    val dragDrop = DragDrop(model, eventBus)
+    val index = Index(model, eventBus, dragDrop)
+}
+
+// Compatibility accessor for the route/keyboard tests, which still reach for the model by name.
+// It forwards to [App] — the wiring itself no longer flows through it. (DragDrop is now threaded
+// explicitly App -> Index -> CanvasView -> CanvasColumns, so no global forwarder is needed.)
+val tdzModel: Model get() = App.model
 
 /** The canvas itself: the board at "/" or any nested board path. */
-object canvasPages : Routes<Index>(tdzIndex, "/") {
+object canvasPages : Routes<Index>(App.index, "/") {
 
     val home = route(mode = RenderMode.PARTIAL) { "/" to {
         // "/" IS the root board — dispatch through the controller (same as the board route) so root
         // becomes current. Without this, navigating to "/" (e.g. after deleting the current board)
         // would leave `currentCanvas` pointing at the now-deleted board.
-        index(tdzController.openCanvasPath(rootCanvas))
+        index(App.controller.openCanvasPath(rootCanvas))
     } }.title { "The Do Zone" }
 
     val board = route(mode = RenderMode.PARTIAL) { "/{canvas...}" to { params ->
         val name = CanvasName(params.segments("canvas").joinToString("/"))
         // Any path is valid: the controller builds the missing chain (idempotent) and makes it
         // current; the view renders. The route only maps URL -> action -> render.
-        index(tdzController.openCanvasPath(name))
+        index(App.controller.openCanvasPath(name))
     } }.title { params ->
         CanvasName(params.segments("canvas").joinToString("/")).leaf()
             .ifEmpty { null }?.let { "$it — The Do Zone" } ?: "The Do Zone"
@@ -46,7 +61,7 @@ object canvasPages : Routes<Index>(tdzIndex, "/") {
 }
 
 /** Help topics render into the overlay zone; on a cold deep-link the canvas route runs first. */
-object helpPages : Routes<Index>(tdzIndex, "/help") {
+object helpPages : Routes<Index>(App.index, "/help") {
 
     val root = route(mode = RenderMode.PARTIAL) { "" to { Router.navigate(shortcuts.path()) } }
 
@@ -65,7 +80,7 @@ object helpPages : Routes<Index>(tdzIndex, "/help") {
 
 /** The privacy policy: a clean top-level `/privacy` (linked externally, e.g. the Dropbox app
  *  listing), rendered into the overlay like the help docs. */
-object legalPages : Routes<Index>(tdzIndex, "/privacy") {
+object legalPages : Routes<Index>(App.index, "/privacy") {
 
     val privacy = fragment(Zones.OVERLAY, canvasPages.home, mode = RenderMode.PARTIAL) {
         "" to { _ -> helpPage(HelpTopic.PRIVACY) }
@@ -73,7 +88,7 @@ object legalPages : Routes<Index>(tdzIndex, "/privacy") {
 }
 
 /** Settings open body-level modals (their own scrims), so these stay plain routes. */
-object settingsPages : Routes<Index>(tdzIndex, "/settings") {
+object settingsPages : Routes<Index>(App.index, "/settings") {
 
     val root = route(mode = RenderMode.PARTIAL) { "" to { Router.navigate(sync.path()) } }
 
@@ -87,7 +102,7 @@ object settingsPages : Routes<Index>(tdzIndex, "/settings") {
 fun main() {
     // Apply the saved theme (or the default — Rainbow Gaps) before the first render so its
     // colors/font and the theme-color meta apply immediately.
-    val initialTheme = tdzModel.getTheme()?.let { saved ->
+    val initialTheme = App.model.getTheme()?.value?.let { saved ->
         themes.firstOrNull { it.name == saved }
             ?: longFormTheme.takeIf { saved == "Immaterial" }   // theme renamed; honor old saves
     } ?: ThemeManager.current
@@ -98,12 +113,12 @@ fun main() {
         .removePrefix("?").split("&").any { it == "debug" || it.startsWith("debug=") }
     if (debugEnabled) zoned.framework.Debugger.debugOn()
     tdz.sync.SyncLog.enabled = debugEnabled
-    tdzModel.purgeOrphans().let { (purged, orphanContent) ->
+    App.model.purgeOrphans().let { (purged, orphanContent) ->
         zoned.framework.Debugger.debug("[storage] purged $purged orphaned mode/legacy key(s); " +
             "${orphanContent.size} orphaned content column(s) left for review: $orphanContent")
     }
     tdz.model.localstorage.StorageDump.dump()   // debug-gated; prints only with ?debug
-    tdz.sync.SyncBootstrap.init(tdzModel, eventBus)
+    tdz.sync.SyncBootstrap.init(App.model, App.eventBus)
     // Passing the collections IS their registration — an unmounted collection contributes no
     // routes, and any typed Route.path() link to it fails loudly naming the missing mount.
     Router.start(canvasPages, helpPages, settingsPages, legalPages)

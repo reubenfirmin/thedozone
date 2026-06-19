@@ -4,7 +4,7 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.promise
-import tdz.controller.Uploader
+import tdz.controller.io.Uploader
 import tdz.controller.events.ColumnsChanged
 import tdz.controller.events.Event
 import tdz.controller.io.ImportMode

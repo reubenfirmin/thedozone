@@ -17,6 +17,14 @@ object DomIds {
     private const val CANVAS_LINK = "canvas-link-"
     private const val EDITOR = "editor-"
 
+    /** Marks a section-header card (a leading h1-only card) so drag-and-drop carries the cards beneath
+     *  it as a group. Set by [tdz.view.CardRenderer], read by the drag controller. */
+    const val DATA_H1_ONLY = "data-h1only"
+
+    /** Carries a canvas-link drop zone's absolute target board (full path) so the drag controller can
+     *  route a wormhole drop to the same board the click navigates to. Set by [tdz.view.CardRenderer]. */
+    const val DATA_CANVAS_NAME = "data-canvas-name"
+
     /** CSS attribute selector matching card elements (Sortable's draggable filter, parked-card sweeps). */
     const val CARD_SELECTOR = "[id^='$CARD']"
 

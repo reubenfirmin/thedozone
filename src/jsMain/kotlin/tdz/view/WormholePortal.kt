@@ -89,7 +89,7 @@ object WormholePortal {
             height = size.px
         }
         // Name the destination on the portal (the chip itself is hidden under the dragged card).
-        val target = linkEl.getAttribute("data-canvas-name")?.let { CanvasName(it) }
+        val target = linkEl.getAttribute(DomIds.DATA_CANVAS_NAME)?.let { CanvasName(it) }
         portal.querySelector(".$WH_LABEL")?.textContent = target?.let { "→ ${omniboxLabel(it)}" } ?: ""
         portal.classList.remove(ClassName(WH_FLASH))
         portal.classList.add(ClassName(WH_ON))

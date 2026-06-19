@@ -26,7 +26,12 @@ internal object MarkdownWriter {
             }
             var lastSegment: CardListItem? = null
             for (segment in card.segments) {
+                // Exhaustive over the sealed CardSegment: the SAVE path must serialize every
+                // subtype, so a new one is a compile error here rather than silent data loss.
                 output.append(when(segment) {
+                    // Defensive branch required by exhaustiveness: the parser groups list items into a
+                    // ListGroup, so a bare CardListItem at top level isn't normally produced — but it's a
+                    // sealed subtype and must serialize to something rather than be dropped.
                     is CardListItem -> {
                         val result = listItemLine(segment, lastSegment, numbering)
                         lastSegment = segment
@@ -40,10 +45,9 @@ internal object MarkdownWriter {
                     is Blockquote -> segment.toMarkdown()
                     is CardText -> renderRichText(segment.text)
                     is Callout -> "${"  ".repeat(segment.level)}${"-".repeat(segment.weight)} ${renderRichText(segment.text)}"
-                    is CardDiagram -> "---\n${segment.text}\n---"
+                    is CardDiagram -> segment.toMarkdown()
                     // A flip card's face boundary — round-trips back to the `//` that produced it.
                     is CardSideBreak -> "//"
-                    else -> throw Exception("Not supported: $segment")
                 })
                 output.append("\n")
             }

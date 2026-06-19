@@ -46,9 +46,13 @@ object DriveApi {
                     "callback" to { resp: dynamic ->
                         // Success is signalled by the presence of an access token — not the absence of
                         // an `error` field (which may be undefined in several non-success shapes too).
-                        val accessToken = resp.access_token
-                        if (accessToken != null && accessToken != undefined) {
-                            resolve(TokenResponse(accessToken as String, (resp.expires_in as Number).toInt()))
+                        val accessToken = resp.access_token as? String
+                        if (accessToken != null) {
+                            // Validate the untyped GIS response instead of blind-casting: an unexpected
+                            // shape fails loudly at this interop boundary, not deep in storage.
+                            val expiresIn = (resp.expires_in as? Number)?.toInt()
+                                ?: error("Google token response missing expires_in")
+                            resolve(TokenResponse(accessToken, expiresIn))
                         } else {
                             val err = str(resp.error)
                             // GIS reports a failed silent attempt via these error codes.

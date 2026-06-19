@@ -5,9 +5,7 @@ import kotlinx.css.properties.*
 import kotlinx.html.FlowContent
 import kotlinx.html.InputType
 import kotlinx.html.div
-import kotlinx.html.id
 import kotlinx.html.input
-import kotlin.js.json
 import tdz.controller.events.ColumnEdited
 import tdz.controller.events.Event as TdzEvent
 import zoned.framework.events.EventBus
@@ -16,8 +14,6 @@ import tdz.model.ColumnId
 import tdz.model.ColumnStyle
 import tdz.model.Model
 import tdz.view.theme.ThemeManager
-import web.dom.ElementId
-import web.dom.document
 import web.events.EventType
 import web.events.addEventListener
 import web.html.HTMLElement
@@ -41,6 +37,8 @@ class ColumnPropertiesModal(
 ) {
     private var rootEl: HTMLElement? = null
     private var picker: Picker? = null
+    private var wallpaperInput: Ref<HTMLInputElement>? = null
+    private var colorValueInput: Ref<HTMLInputElement>? = null
     private var canvasName: CanvasName = CanvasName("")
     private var columnId: ColumnId = ColumnId.ROOT
 
@@ -53,12 +51,17 @@ class ColumnPropertiesModal(
     fun hide() {
         picker?.destroy(); picker = null
         rootEl?.remove(); rootEl = null
+        wallpaperInput = null; colorValueInput = null
     }
 
     private fun render() {
         hide()
         val style = model.getColumnStyle(canvasName, columnId)
         val r = Ref<HTMLElement>()
+        val wallpaperRef = Ref<HTMLInputElement>().also { wallpaperInput = it }
+        val colorValueRef = Ref<HTMLInputElement>().also { colorValueInput = it }
+        val swatchRef = Ref<HTMLElement>()
+        val themeBtnRef = Ref<HTMLElement>()
         addToBody {
             div {   // scrim
                 ref(r)
@@ -78,7 +81,7 @@ class ColumnPropertiesModal(
                         color = ThemeManager.current.menuFg
                         border = Border(1.px, BorderStyle.solid, ThemeManager.current.menuBorder)
                         borderRadius = 8.px
-                        boxShadow = BoxShadows().apply { this += BoxShadow(Color("rgba(0,0,0,0.35)"), 0.px, 12.px, 36.px) }
+                        boxShadow = BoxShadows().apply { this += BoxShadow(ThemeManager.current.shadow, 0.px, 12.px, 36.px) }
                     }
                     div {
                         css { fontSize = 20.px; fontWeight = FontWeight.w600; marginBottom = 18.px
@@ -86,15 +89,15 @@ class ColumnPropertiesModal(
                         +"Column properties"
                     }
 
-                    field("Wallpaper image URL", WALLPAPER_ID, style.wallpaper ?: "")
+                    field("Wallpaper image URL", wallpaperRef, style.wallpaper ?: "")
 
                     sectionLabel("Background color")
-                    input(type = InputType.hidden) { id = COLOR_VALUE_ID; attributes["value"] = style.color ?: "" }
+                    input(type = InputType.hidden) { ref(colorValueRef); attributes["value"] = style.color ?: "" }
                     div {
                         css { display = Display.flex; alignItems = Align.center; marginBottom = 4.px }
                         // Clickable swatch — opens the colour-picker POPUP (not inline).
                         div {
-                            id = COLOR_SWATCH_ID
+                            ref(swatchRef)
                             attributes["title"] = "Click to pick a color"
                             css {
                                 width = 56.px; height = 34.px; marginRight = 12.px
@@ -104,7 +107,7 @@ class ColumnPropertiesModal(
                         }
                         // "No override" toggle — the theme / Metro palette colour shows through.
                         div {
-                            id = THEME_BTN_ID
+                            ref(themeBtnRef)
                             css {
                                 padding = Padding(vertical = 7.px, horizontal = 12.px)
                                 fontSize = 12.px; borderRadius = 6.px; cursor = Cursor.pointer; userSelect = UserSelect.none
@@ -127,38 +130,37 @@ class ColumnPropertiesModal(
 
                     onMount {
                         rootEl = r.element
-                        val swatch = document.getElementById(ElementId(COLOR_SWATCH_ID)) as? HTMLElement
-                        val hidden = document.getElementById(ElementId(COLOR_VALUE_ID)) as? HTMLInputElement
-                        val themeBtn = document.getElementById(ElementId(THEME_BTN_ID)) as? HTMLElement
-                        if (swatch == null) return@onMount
+                        val swatch = swatchRef.element
+                        val hidden = colorValueRef.element
+                        val themeBtn = themeBtnRef.element
 
                         val accent = ThemeManager.current.link.value
                         val faint = ThemeManager.current.menuBorder.value
                         val neutral = ThemeManager.current.appBg.value
                         fun reflect() {
-                            val custom = !(hidden?.value.isNullOrEmpty())
+                            val custom = hidden.value.isNotEmpty()
                             // The swatch shows the chosen colour, or a neutral fill for theme default;
                             // the toggle is highlighted while theme default is in force.
-                            swatch.style.setProperty("background", if (custom) hidden!!.value else neutral)
-                            themeBtn?.style?.setProperty("border-color", if (custom) faint else accent)
-                            themeBtn?.style?.setProperty("color", if (custom) "" else accent)
+                            swatch.style.setProperty("background", if (custom) hidden.value else neutral)
+                            themeBtn.style.setProperty("border-color", if (custom) faint else accent)
+                            themeBtn.style.setProperty("color", if (custom) "" else accent)
                         }
 
                         // Popup picker: clicking the swatch opens it (vanilla-picker attaches to the parent).
-                        picker = Picker(json(
-                            "parent" to swatch,
-                            "popup" to "bottom",
-                            "color" to (style.color ?: "#3cb44b"),
-                            "alpha" to false,
-                            "editor" to true,
-                        )).also { p ->
+                        picker = Picker(pickerOptions {
+                            parent = swatch
+                            popup = "bottom"
+                            color = style.color ?: "#3cb44b"
+                            alpha = false
+                            editor = true
+                        }).also { p ->
                             p.onChange = { color ->
-                                hidden?.value = (color.hex as String).substring(0, 7)   // drop alpha -> #rrggbb
+                                hidden.value = color.hex.substring(0, 7)   // drop alpha -> #rrggbb
                                 reflect()
                             }
                         }
-                        themeBtn?.addEventListener(EventType("click"), {
-                            hidden?.value = ""                       // no override
+                        themeBtn.addEventListener(EventType("click"), {
+                            hidden.value = ""                        // no override
                             reflect()
                         })
                         reflect()
@@ -169,18 +171,15 @@ class ColumnPropertiesModal(
     }
 
     private fun persist() {
-        val wallpaper = inputVal(WALLPAPER_ID).trim().ifBlank { null }
+        val wallpaper = (wallpaperInput?.element?.value ?: "").trim().ifBlank { null }
         // The hidden value holds the chosen colour; "" = Theme default (no override).
-        val color = inputVal(COLOR_VALUE_ID).ifBlank { null }
+        val color = (colorValueInput?.element?.value ?: "").ifBlank { null }
         model.setColumnStyle(canvasName, columnId, ColumnStyle(wallpaper, color))
         // ColumnEdited persists the rewritten file and emits the change events (Controller);
         // refresh=true re-renders the column so the new wallpaper/color is painted.
         val raw = model.getCanvasColumnRaw(canvasName, columnId) ?: ""
         eventBus.fire(ColumnEdited(raw, canvasName, columnId, refresh = true))
     }
-
-    private fun inputVal(id: String): String =
-        (document.getElementById(ElementId(id)) as? HTMLInputElement)?.value ?: ""
 
     private fun FlowContent.sectionLabel(text: String) {
         div {
@@ -192,13 +191,13 @@ class ColumnPropertiesModal(
         }
     }
 
-    private fun FlowContent.field(labelText: String, inputId: String, value: String) {
+    private fun FlowContent.field(labelText: String, inputRef: Ref<HTMLInputElement>, value: String) {
         div {
             css { marginBottom = 16.px; display = Display.flex; flexDirection = FlexDirection.column }
             div { css { fontSize = 11.px; fontWeight = FontWeight.w600; textTransform = TextTransform.uppercase
                 letterSpacing = 0.5.px; opacity = 0.6; marginBottom = 8.px }; +labelText }
             input(type = InputType.text) {
-                id = inputId
+                ref(inputRef)
                 attributes["value"] = value
                 attributes["placeholder"] = "https://…"
                 css {
@@ -215,11 +214,4 @@ class ColumnPropertiesModal(
 
     private fun FlowContent.button(text: String, primary: Boolean = false, onPress: () -> Unit) =
         modalButton(text, primary, onPress = onPress)
-
-    companion object {
-        private const val WALLPAPER_ID = "tdz-col-wallpaper"
-        private const val COLOR_VALUE_ID = "tdz-col-color-value"
-        private const val COLOR_SWATCH_ID = "tdz-col-color-swatch"
-        private const val THEME_BTN_ID = "tdz-col-color-theme"
-    }
 }

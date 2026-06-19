@@ -22,8 +22,6 @@ import tdz.sync.SyncStateStore
 import tdz.sync.locked
 import tdz.view.modalButton
 import tdz.view.theme.ThemeManager
-import web.dom.ElementId
-import web.dom.document
 import web.html.HTMLElement
 import web.html.HTMLInputElement
 import zoned.framework.dom.Ref
@@ -51,6 +49,7 @@ class SyncModal(
     private val onDismiss: (() -> Unit)? = null,
 ) {
     private var rootEl: HTMLElement? = null
+    private var folderInput: Ref<HTMLInputElement>? = null
     private var shownConnected = false
     private var shownNeedsAuth = false
     private var shownChoosing = false
@@ -88,12 +87,12 @@ class SyncModal(
         render()
     }
 
-    fun hide() { rootEl?.remove(); rootEl = null }
+    fun hide() { rootEl?.remove(); rootEl = null; folderInput = null }
 
     private fun render() {
         // A rebuild (provider click, connect/disconnect flip) replaces the folder input; carry the
         // user's in-progress text across, falling back to the stored folder on first paint.
-        val pendingFolder = (document.getElementById(ElementId(ROOT_ID)) as? HTMLInputElement)?.value
+        val pendingFolder = folderInput?.element?.value
         hide()
         val cfg = model.readSyncConfig()
         shownConnected = cfg.cloudConnected
@@ -123,9 +122,9 @@ class SyncModal(
                         helperText("Google signs you out periodically, so Drive needs an occasional " +
                             "Reconnect. Dropbox or a local folder + Syncthing stay connected without that.")
                     }
-                    field(folderHint(), ROOT_ID, pendingFolder ?: cfg.rootFolder)
+                    field(folderHint(), pendingFolder ?: cfg.rootFolder)
                 } else if (editingFolder) {
-                    field(folderHint(), ROOT_ID, pendingFolder ?: cfg.rootFolder)
+                    field(folderHint(), pendingFolder ?: cfg.rootFolder)
                 }
 
                 // Status banner — the most important thing in the dialog, so it leads with a
@@ -166,13 +165,13 @@ class SyncModal(
                             primary = true, enabled = !connecting,
                         ) {
                             controller.setProvider(selectedProvider)
-                            controller.setRootFolder(inputVal(ROOT_ID))
+                            controller.setRootFolder(folderText())
                             controller.connect()
                         }
 
                         editingFolder -> {
                             button("Use folder", primary = true) {
-                                controller.changeRootFolder(inputVal(ROOT_ID))
+                                controller.changeRootFolder(folderText())
                                 editingFolder = false; render()
                             }
                             button("Cancel") { editingFolder = false; render() }
@@ -221,7 +220,7 @@ class SyncModal(
     private fun FlowContent.providerChooser(connecting: Boolean) {
         div {
             css { marginBottom = 10.px; display = Display.flex; flexDirection = FlexDirection.row }
-            SyncProvider.values().filter { it != SyncProvider.LOCAL_FOLDER }.forEach { provider ->
+            SyncProvider.entries.filter { it != SyncProvider.LOCAL_FOLDER }.forEach { provider ->
                 val chosen = provider == selectedProvider
                 div {
                     css {
@@ -343,17 +342,20 @@ class SyncModal(
         is SyncState.Error -> "Error: ${state.message}"
     }
 
-    private fun inputVal(id: String): String =
-        (document.getElementById(ElementId(id)) as? HTMLInputElement)?.value ?: ""
+    /** The current folder-input text, or "" when the input isn't mounted. */
+    private fun folderText(): String = folderInput?.element?.value ?: ""
 
     // --- small DSL helpers (kotlinx.html receiver) ---
 
-    private fun FlowContent.field(labelText: String, inputId: String, value: String) {
+    private fun FlowContent.field(labelText: String, value: String) {
         div {
             css { marginBottom = 12.px; display = Display.flex; flexDirection = FlexDirection.column }
             div { css { fontSize = 12.px; marginBottom = 6.px; opacity = 0.85 }; +labelText }
             input(type = InputType.text) {
-                id = inputId
+                // Production reads the value through [folderInput] (the Ref); the stable id is kept
+                // only so the element stays externally addressable (tests drive it by id).
+                id = ROOT_ID
+                ref(Ref<HTMLInputElement>().also { folderInput = it })
                 attributes["value"] = value
                 css {
                     width = 100.pct; boxSizing = BoxSizing.borderBox

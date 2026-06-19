@@ -176,7 +176,12 @@ object ContextMenu {
                     hide()
                 }
             }
-            +((if (item.active) "✓ " else "") + item.label + (item.shortcut?.let { " [$it]" } ?: ""))
+            // Structured spans rather than glyphs baked into one string: the check mark and the
+            // shortcut are presentation, carried on their own elements with css{} spacing (no padding
+            // smuggled into text).
+            if (item.active) span { css { marginRight = 6.px }; +"✓" }
+            span { +item.label }
+            item.shortcut?.let { span { css { marginLeft = 8.px; opacity = 0.6 }; +"[$it]" } }
         }
     }
 
@@ -217,11 +222,14 @@ object ContextMenu {
                 item.submenu?.forEach { renderItem(it, false) }
             }
             // On hover, re-measure (next frame, once :hover has shown the flyout) and flip/shift it on-screen.
+            // No symmetric removeEventListener (unlike the document-level dismiss listeners in hide()):
+            // this listener is bound to the submenu-parent node, which is a descendant of menuEl and is
+            // discarded wholesale by menuEl.remove() in hide(), so it dies with its element — there is no
+            // outliving target to leak from, as the document listeners would.
             onMount {
                 val parent = parentRef.element
                 val sub = subRef.element
-                val enter: (MouseEvent) -> Unit = { domWindow.requestAnimationFrame { positionSubmenu(sub) } }
-                parent.addEventListener(EventType("mouseenter"), enter)
+                parent.addEventListener(EventType("mouseenter"), { domWindow.requestAnimationFrame { positionSubmenu(sub) } })
             }
         }
     }

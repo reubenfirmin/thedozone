@@ -84,9 +84,10 @@ class DropboxStorage(refreshToken: String) : RemoteStorage {
             throw Exception("Dropbox list failed: ${describe(e)}")
         }
         while (true) {
-            val entries = resp.result.entries as Array<dynamic>
+            // Validate the untyped SDK response rather than blind-casting (see [entryToFile]).
+            val entries = resp.result.entries as? Array<dynamic> ?: error("Dropbox list missing entries")
             entries.forEach { if (it[".tag"] == "file") files += entryToFile(it) }
-            if (resp.result.has_more as Boolean) {
+            if (resp.result.has_more as? Boolean == true) {
                 resp = try {
                     dbx.filesListFolderContinue(json("cursor" to resp.result.cursor)).await()
                 } catch (e: dynamic) {

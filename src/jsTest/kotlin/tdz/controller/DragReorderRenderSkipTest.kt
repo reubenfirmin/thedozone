@@ -96,9 +96,8 @@ class DragReorderRenderSkipTest {
 
         dragDrop.handleDrop(dropEvent(cardC, columnEl), canvas)
 
-        val event = reordered ?: error("CardsReordered should fire")
-        assertTrue(event.domAlreadyOrdered, "single-card drag: the DOM is already correct")
-        assertEquals(0, refreshes, "no rebuild — the browser is already showing the result")
+        reordered ?: error("CardsReordered should fire")
+        assertEquals(0, refreshes, "single-card drag: no rebuild — the browser is already showing the result")
         assertEquals(listOf(" C", " A", " B"), model.cards(canvas, column).map { it.label() },
             "the model persisted the DOM order")
         assertEquals(listOf("card-1-0", "card-1-1", "card-1-2"), domCardIds(columnEl),
@@ -129,9 +128,8 @@ class DragReorderRenderSkipTest {
 
         dragDrop.handleDrop(dropEvent(header, columnEl), canvas)
 
-        val event = reordered ?: error("CardsReordered should fire")
-        assertTrue(!event.domAlreadyOrdered, "group drag: the DOM does NOT match the model (children unmoved)")
-        assertEquals(1, refreshes, "the column must rebuild to reunite the section in the DOM")
+        reordered ?: error("CardsReordered should fire")
+        assertEquals(1, refreshes, "group drag: the column must rebuild to reunite the section in the DOM")
     }
 
     private fun Card.label(): String =

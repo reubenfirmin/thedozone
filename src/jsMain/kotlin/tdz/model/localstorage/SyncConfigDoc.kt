@@ -2,7 +2,17 @@ package tdz.model.localstorage
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
-import tdz.sync.SyncProvider
+
+/**
+ * The remote backends the sync vertical can target. The user picks exactly one at a time. Defined in
+ * the persistence layer because it is a stored config field (the wire format persists [name]); the sync
+ * vertical re-exports it as `tdz.sync.SyncProvider`. So the model never depends on the sync layer.
+ */
+enum class SyncProvider(val displayName: String) {
+    DROPBOX("Dropbox"),
+    GOOGLE_DRIVE("Google Drive"),
+    LOCAL_FOLDER("Local Folder"),
+}
 
 @Serializable
 private data class SyncConfigWire(
@@ -53,7 +63,10 @@ data class SyncConfigDoc(
     )
 
     companion object {
-        fun singletonKey() = "config"
+        /** The single localStorage key under [Namespace.SYNC_CONFIG] (one document, not per-canvas). */
+        const val KEY = "config"
+
+        fun singletonKey() = KEY
 
         val DISABLED = SyncConfigDoc(
             provider = SyncProvider.DROPBOX,

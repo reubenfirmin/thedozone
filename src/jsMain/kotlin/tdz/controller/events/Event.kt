@@ -8,7 +8,7 @@ import tdz.model.ColumnId
 import tdz.model.Direction
 import tdz.model.Split
 
-interface Event
+sealed interface Event
 
 /**
  * A task row was clicked: flip the [ordinal]-th checkable item of [card] (its position in
@@ -26,10 +26,11 @@ data class TaskToggleDone(val canvasName: CanvasName, val card: Card, val ordina
 data class ColumnEdited(val markdown: String, val canvasName: CanvasName, val columnId: ColumnId, val refresh: Boolean = false): Event
 
 /**
- * Drag-drop outcome: [toColumnId] now holds [toCards] in this order (and [fromColumnId] holds
- * [fromCards] when the drag crossed columns). The Controller persists and emits the change events.
- * [domAlreadyOrdered] = the live DOM already matches this order (Sortable arranged it and the ids
- * were renumbered in place), so the Controller persists WITHOUT firing a [RefreshColumns] rebuild.
+ * Drag-drop outcome — a MODEL FACT: [toColumnId] now holds [toCards] in this order (and
+ * [fromColumnId] holds [fromCards] when the drag crossed columns). The Controller persists and
+ * emits [ColumnsChanged]. Re-rendering is the producer's call, not a flag on this event: DragDrop
+ * renumbers the positional ids in place for a single-card drop (the live DOM already matches, so no
+ * rebuild) and fires [RefreshColumns] itself for a group drop (where Sortable left the DOM stale).
  */
 data class CardsReordered(
     val canvasName: CanvasName,
@@ -37,7 +38,6 @@ data class CardsReordered(
     val toCards: List<Card>,
     val fromColumnId: ColumnId,
     val fromCards: List<Card>?,
-    val domAlreadyOrdered: Boolean = false,
 ): Event
 
 /** Cards dropped on a canvas link: move them from [sourceCanvas] into [targetCanvas]. */
@@ -75,6 +75,19 @@ data class DeleteColumn(val canvasName: CanvasName, val columnId: ColumnId): Eve
 /** Remove all completed checklist items from every card on the canvas. */
 data class ClearDone(val canvasName: CanvasName): Event
 
+/** User asked to export [canvasName] as a `.tdz` file (the Controller drives the model→file I/O). */
+data class ExportCanvas(val canvasName: CanvasName): Event
+
+/**
+ * INTENT: user asked to import a `.tdz`/markdown file as a brand-new canvas (linked from the current
+ * one). The Controller maps this to the file→model I/O; the persistence-layer ImportMode stays
+ * private to controller.io and never leaks into the view/events package.
+ */
+object ImportCanvasAsNew : Event
+
+/** INTENT: user asked to import a `.tdz`/markdown file's cards into the current canvas. See [ImportCanvasAsNew]. */
+object ImportCardsHere : Event
+
 /** Move column focus in [direction] (fired from the editor's Alt+arrow keys). */
 data class NavigateColumn(val direction: Direction): Event
 
@@ -82,13 +95,10 @@ data class NavigateColumn(val direction: Direction): Event
 data class ExitEditor(val columnId: ColumnId): Event
 
 /**
- * Re-render the whole current canvas. [structural] = true (default) means the canvas data/layout
- * actually changed and should be pushed to sync; false means a pure UI re-render (theme switch, or
- * restoring images after a PNG capture) that must NOT trigger a sync push.
- */
-/**
  * Re-render [canvasName] (when current) and — if [structural] — push its manifest to sync.
- * [remote] = true marks a canvas sync itself just pulled; subscribers must not push it back.
+ * [structural] = true (default) means the canvas data/layout actually changed; false is a pure UI
+ * re-render (theme switch, or restoring images after a PNG capture) that must NOT trigger a sync
+ * push. [remote] = true marks a canvas sync itself just pulled; subscribers must not push it back.
  */
 data class RefreshCanvas(val canvasName: CanvasName, val structural: Boolean = true, val remote: Boolean = false): Event
 

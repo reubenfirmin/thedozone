@@ -81,9 +81,4 @@ class CardTest {
         assertTrue(listOf(h1("A")).cardsUnderH1(5).isEmpty(), "out-of-range index yields no children")
     }
 
-    @Test
-    fun calloutOnlyCardIsInfoOnly() {
-        val c = card(Callout(listOf(Text("note")), 0, 1))
-        assertTrue(c.infoOnly(), "a callout-only card should classify as info-only")
-    }
 }
