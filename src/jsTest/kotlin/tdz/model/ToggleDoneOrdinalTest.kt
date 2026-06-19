@@ -20,18 +20,18 @@ class ToggleDoneOrdinalTest {
         val canvas = CanvasName(name)
         val model = Model(canvas)
         model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))   // clearDone scans the canvas
-        model.updateColumn(canvas, ColumnId(1), md)
+        model.updateColumn(canvas, model.getCanvas(canvas)!!.firstNonLayout(), md)
         return model to canvas
     }
 
     @Test
     fun togglingOneOfTwoIdenticalItemsFlipsOnlyThatOne() {
         val (model, canvas) = setup("_tdo-dup", "# T\n* 15 mins - ISO\n* 15 mins - ISO\n")
-        val card = model.cards(canvas, ColumnId(1)).first()
+        val card = model.cards(canvas, model.getCanvas(canvas)!!.firstNonLayout()).first()
 
         model.toggleDone(canvas, card, ordinal = 1)
 
-        val items = model.cards(canvas, ColumnId(1)).first().taskItems()
+        val items = model.cards(canvas, model.getCanvas(canvas)!!.firstNonLayout()).first().taskItems()
         assertFalse(items[0].done, "the untouched twin must stay unchecked")
         assertTrue(items[1].done, "the clicked row must toggle")
     }
@@ -39,12 +39,12 @@ class ToggleDoneOrdinalTest {
     @Test
     fun ordinalCountsDepthFirstAcrossNesting() {
         val (model, canvas) = setup("_tdo-nest", "# T\n* same\n  * same\n* same\n")
-        val card = model.cards(canvas, ColumnId(1)).first()
+        val card = model.cards(canvas, model.getCanvas(canvas)!!.firstNonLayout()).first()
 
         model.toggleDone(canvas, card, ordinal = 2)   // the THIRD row in render order
 
         assertEquals(listOf(false, false, true),
-            model.cards(canvas, ColumnId(1)).first().taskItems().map { it.done },
+            model.cards(canvas, model.getCanvas(canvas)!!.firstNonLayout()).first().taskItems().map { it.done },
             "the ordinal indexes taskItems() — depth-first, exactly like the rendered rows")
     }
 
@@ -52,12 +52,12 @@ class ToggleDoneOrdinalTest {
     @Test
     fun clearDoneAfterTogglingOneTwinKeepsTheOther() {
         val (model, canvas) = setup("_tdo-clear", "# T\n* same\n* same\n")
-        val card = model.cards(canvas, ColumnId(1)).first()
+        val card = model.cards(canvas, model.getCanvas(canvas)!!.firstNonLayout()).first()
         model.toggleDone(canvas, card, ordinal = 0)
 
         model.clearDone(canvas)
 
-        val items = model.cards(canvas, ColumnId(1)).first().taskItems()
+        val items = model.cards(canvas, model.getCanvas(canvas)!!.firstNonLayout()).first().taskItems()
         assertEquals(1, items.size, "only the CHECKED twin is cleared")
         assertFalse(items[0].done)
     }

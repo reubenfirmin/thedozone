@@ -34,7 +34,7 @@ import kotlin.test.assertNull
 class TaskClickDelegationTest {
 
     private val canvas = CanvasName("_tcd-test")
-    private val column = ColumnId(1)
+    private var column = ColumnId("1")   // reassigned to the board's opaque leaf after creation
 
     @AfterTest
     fun cleanup() {
@@ -50,6 +50,7 @@ class TaskClickDelegationTest {
         val bus = EventBus<Event>()
         val model = Model(canvas)
         model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))
+        column = model.getCanvas(canvas)!!.firstNonLayout()
         model.updateColumn(canvas, column, "# Tasks\n* parent task\n  * nested child\n\n# Other\n* other card task\n")
         val spec = model.getCanvas(canvas) ?: error("setup")
         val columns = CanvasColumns(spec, bus, model) { id -> model.cards(canvas, id) }
@@ -96,6 +97,7 @@ class TaskClickDelegationTest {
         val model = Model(canvas)
         Controller(bus, model)   // full round-trip: click -> TaskToggleDone -> model mutation
         model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))
+        column = model.getCanvas(canvas)!!.firstNonLayout()
         model.updateColumn(canvas, column, "# Routine\n* 15 mins - ISO\n* 15 mins - ISO\n")
         val spec = model.getCanvas(canvas) ?: error("setup")
         val columns = CanvasColumns(spec, bus, model) { id -> model.cards(canvas, id) }
@@ -119,6 +121,7 @@ class TaskClickDelegationTest {
         val bus = EventBus<Event>()
         val model = Model(canvas)
         model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))
+        column = model.getCanvas(canvas)!!.firstNonLayout()
         model.updateColumn(canvas, column, "# Tasks\n* a task\nplain body text\n")
         val spec = model.getCanvas(canvas) ?: error("setup")
         val columns = CanvasColumns(spec, bus, model) { id -> model.cards(canvas, id) }

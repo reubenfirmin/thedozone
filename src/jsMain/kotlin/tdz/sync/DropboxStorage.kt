@@ -21,6 +21,25 @@ internal fun writeRetryDelayMs(attempt: Int, retryAfterSec: Double?): Long =
     if (retryAfterSec != null && retryAfterSec > 0) (retryAfterSec * 1000).toLong()
     else (250L shl attempt).coerceAtMost(4000L)
 
+/**
+ * True when [errorSummary] carries [tag] as a WHOLE slash-delimited segment. Dropbox encodes error
+ * tags as a slash path terminated by `/.` (e.g. `path_lookup/not_found/.`), so a plain `contains`
+ * would also fire on an unrelated token that merely embeds the tag (`not_found_in_index`) and wrongly
+ * swallow a real failure. Splitting on `/` and `.` isolates the exact tags.
+ */
+internal fun errorSummaryHasTag(errorSummary: String, tag: String): Boolean =
+    errorSummary.split('/', '.').any { it == tag }
+
+/**
+ * A remote delete that can be safely treated as a no-op so it never wedges the whole reconcile:
+ * the file is already gone (`not_found`), or the path can't refer to a real remote file at all
+ * (`malformed_path` — a poisoned `//`-prefixed key left by the old root-canvas path bug). Swallowing
+ * these lets [SyncEngine.deleteRemoteBatch] drop the bookkeeping so the stale key self-heals. Real
+ * failures (write conflicts, auth) are NOT ignorable and must fail the reconcile.
+ */
+internal fun isIgnorableDeleteError(errorSummary: String): Boolean =
+    errorSummaryHasTag(errorSummary, "not_found") || errorSummaryHasTag(errorSummary, "malformed_path")
+
 private const val MAX_WRITE_RETRIES = 6
 
 /**
@@ -115,7 +134,11 @@ class DropboxStorage(refreshToken: String) : RemoteStorage {
         try {
             withWriteRetry { dbx.filesDeleteV2(json("path" to path)).await() }
         } catch (e: dynamic) {
-            if (!isNotFound(e)) throw Exception("Dropbox delete failed: ${describe(e)}")
+            // Swallow deletes that can't refer to a real file (already gone, or a malformed
+            // `//`-prefixed key from the old root-canvas bug): failing here would wedge every
+            // reconcile in Error. The caller drops the bookkeeping, so the stale key self-heals.
+            if (!isIgnorableDeleteError(summaryOf(e))) throw Exception("Dropbox delete failed: ${describe(e)}")
+            else console.warn("[sync] ignoring un-deletable path '$path': ${describe(e)}")
         }
     }
 
@@ -153,7 +176,10 @@ class DropboxStorage(refreshToken: String) : RemoteStorage {
 
     private fun isConflict(e: dynamic): Boolean = summaryOf(e).contains("conflict")
 
-    private fun isNotFound(e: dynamic): Boolean = summaryOf(e).contains("not_found")
+    // Whole-segment match (see [errorSummaryHasTag]): a loose substring here would misread an
+    // unrelated error as "folder missing" and make list() return empty — which pull() reads as
+    // mass remote-deletion and wipes local columns.
+    private fun isNotFound(e: dynamic): Boolean = errorSummaryHasTag(summaryOf(e), "not_found")
 
     private fun describe(e: dynamic): String = summaryOf(e).ifEmpty { e.toString() }
 }

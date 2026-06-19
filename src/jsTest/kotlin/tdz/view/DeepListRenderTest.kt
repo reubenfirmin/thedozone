@@ -40,7 +40,7 @@ class DeepListRenderTest {
         // render before the overflow — so assert the COUNT is bounded.
         var group = ListGroup(listOf(item("leaf", 0)), ListMemberType.BULLET, 0)
         repeat(5000) { group = ListGroup(listOf(item("leaf", 0), group), ListMemberType.BULLET, 0) }
-        val card = Card(listOf(group), CardMetadata(ColumnId(1)), index = 0)
+        val card = Card(listOf(group), CardMetadata(ColumnId("1")), index = 0)
 
         val bus = EventBus<Event>()
         addToBody {

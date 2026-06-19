@@ -73,7 +73,7 @@ class SyncReconnectTest {
         val t = Setup("_sr-block")
         val canvas = CanvasName("_sr-block")
         t.model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))
-        t.model.updateColumn(canvas, ColumnId(1), "# T\n* a\n")
+        t.model.updateColumn(canvas, ColumnId("1"), "# T\n* a\n")
         val c = t.controller()
         c.start()
         delay(30)   // let the startup reconcile settle
@@ -81,12 +81,12 @@ class SyncReconnectTest {
         try {
             SyncStateStore.set(SyncState.NeedsReconnect, t.bus)
 
-            t.bus.fire(ColumnsChanged(canvas, setOf(ColumnId(1))))
+            t.bus.fire(ColumnsChanged(canvas, setOf(ColumnId("1"))))
             delay(60)
 
             assertTrue(t.storage.uploads.isEmpty(),
                 "NO network push while auth is lapsed — with Drive each attempt pops the auth dialog")
-            val path = SyncPaths.columnPath(t.root, canvas, ColumnId(1))
+            val path = SyncPaths.columnPath(t.root, canvas, ColumnId("1"))
             val entry = t.model.readSyncState().entries[path]
             assertNotNull(entry, "the edit is still RECORDED while blocked")
             assertNull(entry.rev, "recorded as pending so the post-reconnect reconcile pushes it")
@@ -133,8 +133,8 @@ class SyncReconnectTest {
         t.model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))
         // Local column carries the offline edit (a checked task); the remote still has the stale,
         // causally-OLDER content from before auth lapsed ({self:2} on the remote vs {self:3} local).
-        t.model.updateColumn(canvas, ColumnId(1), "# T\n* /checked offline\n")
-        val colPath = SyncPaths.columnPath(t.root, canvas, ColumnId(1))
+        t.model.updateColumn(canvas, ColumnId("1"), "# T\n* /checked offline\n")
+        val colPath = SyncPaths.columnPath(t.root, canvas, ColumnId("1"))
         t.storage.files[colPath] = RemoteFile(colPath, "rStale", 100.0) to "# T\n* checked offline\n"
         t.storage.remoteVv[colPath] = mapOf(self to 2L)
         t.model.writeSyncState(SyncStateDoc.EMPTY.with(colPath,
@@ -147,7 +147,7 @@ class SyncReconnectTest {
             c.reconnect()
             delay(100)
 
-            assertTrue(t.model.getCanvasColumnRaw(canvas, ColumnId(1))!!.contains("* /checked offline"),
+            assertTrue(t.model.getCanvasColumnRaw(canvas, ColumnId("1"))!!.contains("* /checked offline"),
                 "the edit made while auth was lapsed must SURVIVE the post-reconnect pull")
             assertTrue(colPath in t.storage.uploads, "and it is pushed up, not just kept")
             assertTrue(t.storage.files.getValue(colPath).second.contains("* /checked offline"),

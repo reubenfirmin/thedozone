@@ -15,8 +15,8 @@ class ModelWormholeTest {
         model.addCanvas(canvasFromTemplate(a, null, SINGLE_PANE))
         model.addCanvas(canvasFromTemplate(b, null, SINGLE_PANE))
         model.addCanvas(canvasFromTemplate(c, a, SINGLE_PANE))
-        model.updateColumn(a, ColumnId(1), "[${c.normalized()} (child)]\n")
-        val linkCard = model.cards(a, ColumnId(1)).first()
+        model.updateColumn(a, ColumnId("1"), "[${c.normalized()} (child)]\n")
+        val linkCard = model.cards(a, ColumnId("1")).first()
         assertTrue(linkCard.isCanvasLink(), "setup: the card parses as a canvas link")
 
         model.moveCardToCanvas(linkCard, fromCanvas = a, toCanvas = b)

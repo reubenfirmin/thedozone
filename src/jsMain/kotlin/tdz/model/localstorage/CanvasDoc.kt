@@ -20,6 +20,15 @@ internal data class CanvasWire(
     val layouts: String,
     /** Sync-owned version vectors: columnId -> (deviceId -> count). Never written by the app side. */
     val vv: Map<String, Map<String, Long>>? = null,
+    /** Sync-owned STRUCTURE version vector: deviceId -> count, bumped on every layout/column-set
+     *  change. Lets the layout be resolved by causality (newer wins) like content, instead of a
+     *  special "remote shape wins" rule. Never written by the app side. */
+    val svv: Map<String, Long>? = null,
+    /** Sync-owned tombstones: columnId -> the column's CONTENT version vector at the moment it was
+     *  deleted. Lets a concurrent delete win over a stale re-add (additive merge alone resurrects
+     *  deleted columns), while a concurrent EDIT the deleter never saw still keeps the column.
+     *  Never written by the app side. */
+    val deleted: Map<String, Map<String, Long>>? = null,
 )
 
 data class CanvasDoc (
@@ -54,7 +63,7 @@ data class CanvasDoc (
         internal fun fromWire(wire: CanvasWire) = CanvasDoc(
             CanvasName(wire.name),
             wire.parentId?.let { CanvasName(it) },
-            wire.columns.split(",").filter { it.isNotBlank() }.map { ColumnId(it.toInt()) },
+            wire.columns.split(",").filter { it.isNotBlank() }.map { ColumnId(it) },
             wire.layouts.split("||")
                 .mapNotNull { ColumnLayoutSpecDoc.decode(it) }
                 .map { ColumnLayoutSpec(it.columnId, it.split, it.contains) },
@@ -85,9 +94,9 @@ data class ColumnLayoutSpecDoc(
             }
             return runCatching {
                 ColumnLayoutSpecDoc(
-                    ColumnId(fields[0].toInt()),
+                    ColumnId(fields[0]),
                     Split.valueOf(fields[1]),
-                    fields[2].split(",").filter { it.isNotBlank() }.map { ColumnId(it.toInt()) }
+                    fields[2].split(",").filter { it.isNotBlank() }.map { ColumnId(it) }
                 )
             }.getOrElse {
                 console.error("Could not parse: $raw")

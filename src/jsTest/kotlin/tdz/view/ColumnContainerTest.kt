@@ -15,7 +15,7 @@ class ColumnContainerTest {
 
     @Test
     fun beforeRemovalRemovesColumnAccentStyle() {
-        val columnId = ColumnId(4242)
+        val columnId = ColumnId("4242")
         val styleEl = document.createElement("style")
         styleEl.id = "tdz-col-accent-$columnId"
         document.head?.appendChild(styleEl)

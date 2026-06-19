@@ -16,10 +16,10 @@ import kotlin.test.assertTrue
 class CanvasRepairTest {
 
     private fun canvas(columns: List<Int>, vararg layouts: ColumnLayoutSpec) =
-        Canvas(CanvasName("_cr"), null, columns.map { ColumnId(it) }, layouts.toList())
+        Canvas(CanvasName("_cr"), null, columns.map { ColumnId(it.toString()) }, layouts.toList())
 
     private fun spec(id: Int, vararg contains: Int) =
-        ColumnLayoutSpec(ColumnId(id), Split.VERTICAL, contains.map { ColumnId(it) })
+        ColumnLayoutSpec(ColumnId(id.toString()), Split.VERTICAL, contains.map { ColumnId(it.toString()) })
 
     private fun Canvas.content() = columns.filterNot { layoutMap.containsKey(it) }
 
@@ -52,16 +52,17 @@ class CanvasRepairTest {
         val c = canvas(listOf(0, 1, 5, 6), spec(0, 1), spec(1, 0))
         val r = c.repaired()
         assertTrue(r.isLayoutSound())
-        assertTrue(r.content().containsAll(listOf(ColumnId(5), ColumnId(6))),
+        assertTrue(r.content().containsAll(listOf(ColumnId("5"), ColumnId("6"))),
             "existing content columns (and their cards) are preserved: ${r.content()}")
     }
 
     @Test fun repairedIdsDoNotCollideWithExisting() {
         val c = canvas(listOf(0, 1), spec(0, 1), spec(1, 0))
         val r = c.repaired()
-        // The new root layout id must not be an existing column id (that's how cycles formed).
+        // The new root layout id is a fresh opaque id, NOT one of the existing column ids (an existing
+        // id reused as the new root is how the cyclic layouts formed).
         val rootId = r.columns.first()
         assertTrue(r.layouts.single().columnId == rootId)
-        assertTrue(rootId.value > listOf(0, 1).max(), "new root id is past the max existing id")
+        assertTrue(rootId !in listOf(ColumnId("0"), ColumnId("1")), "new root id is a fresh id, not an existing one")
     }
 }

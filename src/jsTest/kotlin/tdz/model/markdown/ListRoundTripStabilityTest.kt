@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 class ListRoundTripStabilityTest {
 
     private fun roundTrip(md: String): String =
-        MarkdownService.toMd(MarkdownService.fromMd(md, ColumnId(0)), withMetadata = false)
+        MarkdownService.toMd(MarkdownService.fromMd(md, ColumnId("0")), withMetadata = false)
 
     private fun assertStable(md: String) {
         val once = roundTrip(md)

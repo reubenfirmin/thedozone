@@ -53,17 +53,17 @@ class ControllerEventCycleTest {
     fun taskToggleFiresColumnsChangedAndRefresh() {
         val (bus, model, captured) = setup("_cycle-toggle")
         val canvas = CanvasName("_cycle-toggle")
-        model.updateColumn(canvas, ColumnId(1), "# Tasks\n* do it\n")
-        val card = model.cards(canvas, ColumnId(1)).first()
+        model.updateColumn(canvas, ColumnId("1"), "# Tasks\n* do it\n")
+        val card = model.cards(canvas, ColumnId("1")).first()
 
         bus.fire(TaskToggleDone(canvas, card, ordinal = 0))
 
-        assertEquals(listOf(setOf(ColumnId(1))), captured.changed.map { it.columnIds }, "toggle is a model fact sync must see")
+        assertEquals(listOf(setOf(ColumnId("1"))), captured.changed.map { it.columnIds }, "toggle is a model fact sync must see")
         assertTrue(captured.changed.none { it.remote }, "local mutations are not remote")
         // A toggle repaints ONE glyph — it re-renders one card in place, never the whole column.
         assertEquals(listOf(card.ref), captured.cardRefreshed.map { it.ref })
         assertEquals(0, captured.refreshed.size, "no column rebuild for a single-card change")
-        val toggled = (model.cards(canvas, ColumnId(1)).first().segments.first { it is ListGroup } as ListGroup)
+        val toggled = (model.cards(canvas, ColumnId("1")).first().segments.first { it is ListGroup } as ListGroup)
             .members.filterIsInstance<CardListItem>().first()
         assertTrue(toggled.done, "the model actually toggled")
     }
@@ -73,13 +73,13 @@ class ControllerEventCycleTest {
         val (bus, _, captured) = setup("_cycle-edit")
         val canvas = CanvasName("_cycle-edit")
 
-        bus.fire(ColumnEdited("# From editor\n", canvas, ColumnId(2)))
+        bus.fire(ColumnEdited("# From editor\n", canvas, ColumnId("2")))
         assertEquals(1, captured.changed.size, "editor saves must reach sync")
         assertEquals(0, captured.refreshed.size, "editor saves must NOT rebuild the editor mid-typing")
 
-        bus.fire(ColumnEdited("# From properties modal\n", canvas, ColumnId(2), refresh = true))
+        bus.fire(ColumnEdited("# From properties modal\n", canvas, ColumnId("2"), refresh = true))
         assertEquals(2, captured.changed.size)
-        assertEquals(listOf(setOf(ColumnId(2))), captured.refreshed.map { it.columnIds }, "refresh=true renders once")
+        assertEquals(listOf(setOf(ColumnId("2"))), captured.refreshed.map { it.columnIds }, "refresh=true renders once")
     }
 
     @Test
@@ -89,14 +89,14 @@ class ControllerEventCycleTest {
 
         // An empty trailing marker isn't a list item to the parser — it renders as a stray "*"
         // text line. Saving must drop it (and only it).
-        bus.fire(ColumnEdited("# T\n* real item\n* \n", canvas, ColumnId(2)))
+        bus.fire(ColumnEdited("# T\n* real item\n* \n", canvas, ColumnId("2")))
 
-        assertEquals("# T\n* real item\n", model.getCanvasColumnRaw(canvas, ColumnId(2)),
+        assertEquals("# T\n* real item\n", model.getCanvasColumnRaw(canvas, ColumnId("2")),
             "the trailing empty bullet is dropped on save")
 
         // Empty markers ABOVE content are left alone — only the trailing one is the save artifact.
-        bus.fire(ColumnEdited("# T\n* \n* real item\n", canvas, ColumnId(2)))
-        assertEquals("# T\n* \n* real item\n", model.getCanvasColumnRaw(canvas, ColumnId(2)),
+        bus.fire(ColumnEdited("# T\n* \n* real item\n", canvas, ColumnId("2")))
+        assertEquals("# T\n* \n* real item\n", model.getCanvasColumnRaw(canvas, ColumnId("2")),
             "non-trailing markers are not the editor-save artifact and stay untouched")
     }
 
@@ -104,15 +104,15 @@ class ControllerEventCycleTest {
     fun cardsReorderedPersistsViaControllerAndFiresBothEvents() {
         val (bus, model, captured) = setup("_cycle-reorder")
         val canvas = CanvasName("_cycle-reorder")
-        model.updateColumn(canvas, ColumnId(1), "# A\n\n# B\n")
-        val (a, b) = model.cards(canvas, ColumnId(1))
+        model.updateColumn(canvas, ColumnId("1"), "# A\n\n# B\n")
+        val (a, b) = model.cards(canvas, ColumnId("1"))
 
-        bus.fire(CardsReordered(canvas, toColumnId = ColumnId(1), toCards = listOf(b, a), fromColumnId = ColumnId(1), fromCards = null))
+        bus.fire(CardsReordered(canvas, toColumnId = ColumnId("1"), toCards = listOf(b, a), fromColumnId = ColumnId("1"), fromCards = null))
 
-        val after = model.cards(canvas, ColumnId(1))
+        val after = model.cards(canvas, ColumnId("1"))
         assertEquals(listOf("B", "A"), after.map { (it.segments.first() as tdz.model.card.CardHeading).text.trim() })
-        assertEquals(listOf(setOf(ColumnId(1))), captured.changed.map { it.columnIds })
-        assertEquals(listOf(setOf(ColumnId(1))), captured.refreshed.map { it.columnIds })
+        assertEquals(listOf(setOf(ColumnId("1"))), captured.changed.map { it.columnIds })
+        assertEquals(listOf(setOf(ColumnId("1"))), captured.refreshed.map { it.columnIds })
     }
 
     @Test
@@ -156,12 +156,13 @@ class ControllerEventCycleTest {
         val (bus, model, captured) = setup("_cycle-cleardone")
         val canvas = CanvasName("_cycle-cleardone")
         model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))
-        model.updateColumn(canvas, ColumnId(1), "# T\n* /finished\n* open\n")
+        val col = model.getCanvas(canvas)!!.firstNonLayout()
+        model.updateColumn(canvas, col, "# T\n* /finished\n* open\n")
 
         bus.fire(ClearDone(canvas))
 
-        assertEquals(listOf(setOf(ColumnId(1))), captured.changed.map { it.columnIds }, "clearing dones must reach sync")
-        assertEquals(listOf(setOf(ColumnId(1))), captured.refreshed.map { it.columnIds })
+        assertEquals(listOf(setOf(col)), captured.changed.map { it.columnIds }, "clearing dones must reach sync")
+        assertEquals(listOf(setOf(col)), captured.refreshed.map { it.columnIds })
 
         bus.fire(ClearDone(canvas))   // nothing left to clear
         assertEquals(1, captured.changed.size, "an all-clean canvas fires no events")

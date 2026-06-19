@@ -12,6 +12,10 @@ data class SyncEntry(
     val localUpdatedAt: Double,
     val base: String? = null,
     val vv: VersionVector = emptyMap(),
+    /** A TOMBSTONE: this column path was deleted; [vv] is its content vector at deletion. The entry is
+     *  kept (not dropped) so the deletion travels in the manifest's `deleted` set and a concurrent
+     *  stale re-add can't resurrect it. Tombstones carry no [rev]/[base] and have no local content. */
+    val tombstone: Boolean = false,
 )
 
 /**

@@ -53,7 +53,7 @@ class SyncReadinessTest {
         model.writeSyncState(SyncStateDoc.EMPTY)
         model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))
         // A locally-deleted column tracked in state (the orphan the sweep would try to delete remotely).
-        val orphan = SyncPaths.columnPath("/$name", canvas, ColumnId(99))
+        val orphan = SyncPaths.columnPath("/$name", canvas, ColumnId("99"))
         model.writeSyncState(SyncStateDoc.EMPTY.with(orphan, SyncEntry("rev1", 1.0)))
         val storage = NotReadyStorage()
         val c = SyncController(model, bus, storageOverride = storage)

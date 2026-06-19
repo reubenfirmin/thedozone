@@ -20,7 +20,7 @@ import tdz.model.markdown.MarkdownWhitespace.consumeSideBreak
  */
 internal object MarkdownReader {
 
-    val metadataLine = "[\\t ]*<!--([0-9]+):([0-9])-->".toRegex()
+    val metadataLine = "[\\t ]*<!--([A-Za-z0-9]+):([0-9])-->".toRegex()
 
     /** Column-level style header (wallpaper/color) — skipped when parsing cards; see MarkdownService. */
     val columnStyleLine = "[\\t ]*<!--tdz-col:.*-->[\\t ]*".toRegex()
@@ -50,7 +50,7 @@ internal object MarkdownReader {
       * Parse this markdown which contains all columns on the canvas
       */
     fun parseAll(content: String): List<List<Card>> {
-        return parse(content, ColumnId(0)).groupBy { it.metadata.columnId }.values.toList()
+        return parse(content, ColumnId.ROOT).groupBy { it.metadata.columnId }.values.toList()
     }
 
      /**

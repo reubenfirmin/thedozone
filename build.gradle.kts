@@ -58,6 +58,7 @@ kotlin {
         implementation(npm("leaflet", "1.9.4"))
         implementation(npm("dropbox", "10.34.0"))
         implementation(npm("node-diff3", "3.1.2"))
+        implementation(npm("vanilla-picker", "2.12.3"))
         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     }
 

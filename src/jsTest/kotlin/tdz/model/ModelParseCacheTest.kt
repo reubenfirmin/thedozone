@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
 class ModelParseCacheTest {
 
     private val canvas = CanvasName("_pc-test")
-    private val column = ColumnId(1)
+    private val column = ColumnId("1")
 
     @Test
     fun repeatedReadsReturnTheCachedParse() {
@@ -42,12 +42,12 @@ class ModelParseCacheTest {
         val model = Model(canvas)
         val other = CanvasName("_pc-other")
         model.updateColumn(canvas, column, "# A\n")
-        model.updateColumn(canvas, ColumnId(2), "# Z\n")
+        model.updateColumn(canvas, ColumnId("2"), "# Z\n")
         model.updateColumn(other, column, "# Q\n")
         fun heading(c: CanvasName, col: ColumnId) =
             (model.cards(c, col).first().segments.first() as tdz.model.card.CardHeading).text.trim()
         assertEquals("A", heading(canvas, column))
-        assertEquals("Z", heading(canvas, ColumnId(2)))
+        assertEquals("Z", heading(canvas, ColumnId("2")))
         assertEquals("Q", heading(other, column))
     }
 

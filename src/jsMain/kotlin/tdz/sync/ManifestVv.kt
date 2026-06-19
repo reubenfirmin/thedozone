@@ -19,7 +19,7 @@ object ManifestVv {
     fun read(manifestContent: String, root: String, canvas: CanvasName): Map<String, VersionVector> {
         val vv = decodeVv(manifestContent) ?: return emptyMap()
         return vv.entries.associate { (colId, vector) ->
-            SyncPaths.columnPath(root, canvas, ColumnId(colId.toInt())) to vector
+            SyncPaths.columnPath(root, canvas, ColumnId(colId)) to vector
         }
     }
 
@@ -29,9 +29,17 @@ object ManifestVv {
 
     /**
      * Returns [manifestContent] with a `vv` section built from [byPath] (only paths under this
-     * canvas are used). Throws on an unparseable manifest — the caller produced it.
+     * canvas are used) and an `svv` STRUCTURE vector. Throws on an unparseable manifest — the caller
+     * produced it.
      */
-    fun write(manifestContent: String, root: String, canvas: CanvasName, byPath: Map<String, VersionVector>): String {
+    fun write(
+        manifestContent: String,
+        root: String,
+        canvas: CanvasName,
+        byPath: Map<String, VersionVector>,
+        svv: VersionVector = emptyMap(),
+        deleted: Map<ColumnId, VersionVector> = emptyMap(),
+    ): String {
         val wire = storageJson.decodeFromString<CanvasWire>(manifestContent)
         val vv = buildMap {
             byPath.forEach { (path, vector) ->
@@ -42,8 +50,18 @@ object ManifestVv {
                 put(parsed.second.toString(), vector)
             }
         }
-        return storageJson.encodeToString(wire.copy(vv = vv))
+        val tombstones = deleted.mapKeys { it.key.toString() }.ifEmpty { null }
+        return storageJson.encodeToString(wire.copy(vv = vv, svv = svv.ifEmpty { null }, deleted = tombstones))
     }
+
+    /** The STRUCTURE version vector from [manifestContent]'s `svv` (empty if absent/corrupt). */
+    fun readSvv(manifestContent: String): VersionVector =
+        runCatching { storageJson.decodeFromString<CanvasWire>(manifestContent).svv }.getOrNull() ?: emptyMap()
+
+    /** Tombstones (columnId -> vv at deletion) from [manifestContent]'s `deleted` (empty if absent/corrupt). */
+    fun readDeleted(manifestContent: String): Map<ColumnId, VersionVector> =
+        runCatching { storageJson.decodeFromString<CanvasWire>(manifestContent).deleted }.getOrNull()
+            ?.mapKeys { ColumnId(it.key) } ?: emptyMap()
 
     private fun decodeVv(manifestContent: String): Map<String, Map<String, Long>>? =
         runCatching { storageJson.decodeFromString<CanvasWire>(manifestContent).vv }.getOrNull()

@@ -45,11 +45,11 @@ class PeriodicBackupTest {
         val bus = EventBus<Event>()
         PeriodicBackup.init(bus)
 
-        bus.fire(ColumnsChanged(CanvasName("_pb-tick"), setOf(ColumnId(1))))
+        bus.fire(ColumnsChanged(CanvasName("_pb-tick"), setOf(ColumnId("1"))))
         assertTrue(PeriodicBackup.tick(), "a change since the last beat refreshes the slot")
         assertFalse(PeriodicBackup.tick(), "an idle beat must NOT rewrite the slot")
 
-        bus.fire(ColumnsChanged(CanvasName("_pb-tick"), setOf(ColumnId(1))))
+        bus.fire(ColumnsChanged(CanvasName("_pb-tick"), setOf(ColumnId("1"))))
         assertTrue(PeriodicBackup.tick(), "the next change re-arms the beat")
         window.localStorage.removeItem("NEWCANVAStest-tick")
     }

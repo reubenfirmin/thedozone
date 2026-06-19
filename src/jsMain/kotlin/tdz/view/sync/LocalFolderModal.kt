@@ -105,6 +105,7 @@ class LocalFolderModal(
     private fun stateText(state: SyncState): String = when (state) {
         SyncState.NotConfigured -> "Not connected"
         SyncState.Connecting -> "Opening folder…"
+        SyncState.ChoosingDirection -> "Choosing sync direction…"
         SyncState.Reconciling -> "Reconciling…"
         SyncState.Synced -> "Up to date"
         SyncState.Syncing -> "Syncing…"

@@ -35,7 +35,7 @@ import kotlin.test.assertTrue
 class DragReorderRenderSkipTest {
 
     private val canvas = CanvasName("_drs-test")
-    private val column = ColumnId(1)
+    private val column = ColumnId("1")
 
     @AfterTest
     fun cleanup() {

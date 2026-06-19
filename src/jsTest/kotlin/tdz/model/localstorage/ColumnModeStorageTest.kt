@@ -15,15 +15,15 @@ class ColumnModeStorageTest {
 
     @Test
     fun modeRoundTripsTyped() {
-        fs.storeColumnMode(canvas, ColumnId(1), Mode.EDITOR)
-        assertEquals(Mode.EDITOR, fs.getColumnMode(canvas, ColumnId(1)))
-        fs.storeColumnMode(canvas, ColumnId(1), Mode.CARD)
-        assertEquals(Mode.CARD, fs.getColumnMode(canvas, ColumnId(1)))
+        fs.storeColumnMode(canvas, ColumnId("1"), Mode.EDITOR)
+        assertEquals(Mode.EDITOR, fs.getColumnMode(canvas, ColumnId("1")))
+        fs.storeColumnMode(canvas, ColumnId("1"), Mode.CARD)
+        assertEquals(Mode.CARD, fs.getColumnMode(canvas, ColumnId("1")))
     }
 
     @Test
     fun garbageStoredValueReadsAsNullNotCrash() {
         window.localStorage.setItem("COLUMN_MODE${canvas.normalized()}-2", "NOT_A_MODE")
-        assertNull(fs.getColumnMode(canvas, ColumnId(2)))
+        assertNull(fs.getColumnMode(canvas, ColumnId("2")))
     }
 }

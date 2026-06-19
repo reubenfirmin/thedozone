@@ -156,7 +156,7 @@ class SyncStructuralTest {
         delay(30)   // let the startup reconcile settle before seeding
 
         // The child's column file is a known synced artifact (present on the remote and in state).
-        val childCol = SyncPaths.columnPath(t.root, ab, ColumnId(1))
+        val childCol = SyncPaths.columnPath(t.root, ab, ColumnId("1"))
         t.storage.files[childCol] = RemoteFile(childCol, "r1", 1.0) to "# child content\n"
         t.model.writeSyncState(t.model.readSyncState().with(childCol, SyncEntry(rev = "r1", localUpdatedAt = 1.0)))
 

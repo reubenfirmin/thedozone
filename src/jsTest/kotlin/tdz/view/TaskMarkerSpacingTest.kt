@@ -34,7 +34,7 @@ class TaskMarkerSpacingTest {
     @Test
     fun taskMarkerKeepsPaddingBetweenCheckboxAndText() {
         val item = CardListItem(listOf(Text("buy milk")), level = 0, type = ListMemberType.BULLET, weight = 1, done = false)
-        val card = Card(listOf(ListGroup(listOf(item), ListMemberType.BULLET, 0)), CardMetadata(ColumnId(0)), 0)
+        val card = Card(listOf(ListGroup(listOf(item), ListMemberType.BULLET, 0)), CardMetadata(ColumnId("0")), 0)
         addToBody {
             div {
                 with(CardRenderer) {

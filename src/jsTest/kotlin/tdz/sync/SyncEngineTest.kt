@@ -1,5 +1,10 @@
 package tdz.sync
 
+import tdz.model.CanvasName
+import tdz.model.ColumnId
+import tdz.model.ColumnLayoutSpec
+import tdz.model.Split
+import tdz.model.localstorage.CanvasDoc
 import tdz.model.localstorage.SyncEntry
 import tdz.model.localstorage.SyncStateDoc
 import kotlinx.coroutines.test.runTest
@@ -367,12 +372,15 @@ class SyncEngineTest {
     }
 
     @Test
-    fun cleanPushDoesNotRecordBaseForManifest() = runTest {
+    fun manifestPushRecordsBaseAsHistoryMarker() = runTest {
+        // A synced manifest records its content as a base — not for 3-way merge (layouts aren't
+        // line-merged) but as the "this file HAS sync history" marker the no-history guard needs to
+        // tell a pending re-push (rev cleared by a restore) from a never-synced file.
         val storage = FakeStorage(emptyList())
         val local = mutableMapOf<String, String>()
         val (state, _) = engine(storage, local)
             .push("/n/_/_canvas.json", "{}", localUpdatedAt = 1.0, state = SyncStateDoc.EMPTY)
-        assertEquals(null, state.entries["/n/_/_canvas.json"]?.base, "manifests are not merged -> no base")
+        assertEquals("{}", state.entries["/n/_/_canvas.json"]?.base, "manifest records a history base")
     }
 
     @Test
@@ -392,17 +400,30 @@ class SyncEngineTest {
     }
 
     @Test
-    fun pushConflictManifestStaysLastWriteWins() = runTest {
-        val remote = RemoteFile("/n/_/_canvas.json", "rRemote", serverModified = 500.0)
-        val storage = FakeStorage(listOf(remote to """{"v":"remote"}"""))
-        val local = mutableMapOf("/n/_/_canvas.json" to """{"v":"local"}""")
-        val state = SyncStateDoc.EMPTY.with("/n/_/_canvas.json", SyncEntry("rOld", 100.0))
+    fun pushConflictManifestResolvesByStructureVectorNotTimestamp() = runTest {
+        // A push-time rev race on a manifest must resolve by the structure vector (svv), NOT raw
+        // timestamp LWW: a concurrent local structural edit whose svv dominates must force-push and
+        // win even though the remote is "newer" by serverModified — otherwise "I changed my board
+        // while connected" gets silently reverted.
+        val home = CanvasName("")
+        val mp = SyncPaths.manifestPath("/n", home)
+        fun doc(cols: List<Int>) = CanvasDoc(home, null, cols.map { ColumnId(it.toString()) },
+            listOf(ColumnLayoutSpec(ColumnId(cols.first().toString()), Split.VERTICAL, cols.drop(1).map { ColumnId(it.toString()) }))).encode()
+        // Remote layout is causally BEHIND ({me:1}) but its serverModified is far later (would win LWW).
+        val remoteManifest = ManifestVv.write(doc(listOf(0, 1)), "/n", home, emptyMap(), svv = mapOf("me" to 1L))
+        val storage = FakeStorage(listOf(RemoteFile(mp, "rRemote", serverModified = 500.0) to remoteManifest))
+        val localDoc = doc(listOf(0, 1, 2))   // local added a column (a structural edit)
+        val local = mutableMapOf(mp to localDoc)
+        val state = SyncStateDoc.EMPTY.with(mp,
+            SyncEntry("rOld", 100.0, base = doc(listOf(0, 1)), vv = mapOf("me" to 2L)))   // svv dominates {me:1}
+        val pushContent = ManifestVv.write(localDoc, "/n", home, emptyMap(), svv = mapOf("me" to 2L))
 
         val (_, winner) = engine(storage, local)
-            .push("/n/_/_canvas.json", """{"v":"local"}""", localUpdatedAt = 100.0, state = state)
+            .push(mp, pushContent, localUpdatedAt = 100.0, state = state, self = "me")
 
-        assertEquals(Winner.REMOTE, winner)
-        assertEquals("""{"v":"remote"}""", local.getValue("/n/_/_canvas.json"))
+        assertNull(winner, "structure merges aren't surfaced as user conflicts")
+        assertEquals(listOf(0, 1, 2).map { ColumnId(it.toString()) }, CanvasDoc.decode(storage.files.getValue(mp).second).columns,
+            "local structural edit force-pushed despite the remote being newer by timestamp")
     }
 
     @Test

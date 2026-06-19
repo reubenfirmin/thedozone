@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
  */
 class MarkdownIntegrityTest {
 
-    private val col = ColumnId(1)
+    private val col = ColumnId("1")
     private fun roundTrip(md: String) = MarkdownService.toMd(MarkdownService.fromMd(md, col), false)
 
     @Test

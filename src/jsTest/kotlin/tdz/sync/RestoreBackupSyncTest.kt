@@ -63,20 +63,22 @@ class RestoreBackupSyncTest {
         model.writeSyncState(SyncStateDoc.EMPTY)
         model.addCanvas(canvasFromTemplate(current, null, SINGLE_PANE))
         model.addCanvas(canvasFromTemplate(other, current, SINGLE_PANE))
-        model.updateColumn(current, ColumnId(1), "# Mine\n* old\n")
-        model.updateColumn(other, ColumnId(1), "# Other\n* old\n")
+        val curCol = model.getCanvas(current)!!.firstNonLayout()
+        val otherCol = model.getCanvas(other)!!.firstNonLayout()
+        model.updateColumn(current, curCol, "# Mine\n* old\n")
+        model.updateColumn(other, otherCol, "# Other\n* old\n")
         assertTrue(LocalBackup.autoSnapshot())
 
-        model.updateColumn(current, ColumnId(1), "# Mine\n* new\n")
-        model.updateColumn(other, ColumnId(1), "# Other\n* new\n")
+        model.updateColumn(current, curCol, "# Mine\n* new\n")
+        model.updateColumn(other, otherCol, "# Other\n* new\n")
         val c = SyncController(model, bus, storageOverride = RecordingStorage())
         try {
             assertTrue(c.restoreAutoBackup())
             delay(50)
 
-            assertTrue(model.getCanvasColumnRaw(current, ColumnId(1))!!.contains("* old"),
+            assertTrue(model.getCanvasColumnRaw(current, curCol)!!.contains("* old"),
                 "the current board rolled back")
-            assertTrue(model.getCanvasColumnRaw(other, ColumnId(1))!!.contains("* new"),
+            assertTrue(model.getCanvasColumnRaw(other, otherCol)!!.contains("* new"),
                 "OTHER boards keep their latest content — restore must be per-canvas")
         } finally {
             SyncStateStore.set(SyncState.NotConfigured, bus)
@@ -98,17 +100,17 @@ class RestoreBackupSyncTest {
         ))
         model.writeSyncState(SyncStateDoc.EMPTY)
         model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))
-        model.updateColumn(canvas, ColumnId(1), "# T\n* original\n")
+        model.updateColumn(canvas, ColumnId("1"), "# T\n* original\n")
         val c = SyncController(model, bus, storageOverride = storage).also { it.pushDebounceMs = 5 }
         c.start()
         delay(30)
-        bus.fire(ColumnsChanged(canvas, setOf(ColumnId(1))))
+        bus.fire(ColumnsChanged(canvas, setOf(ColumnId("1"))))
         delay(60)
         assertTrue(LocalBackup.autoSnapshot(), "setup: backup taken BEFORE the new column")
 
         // A new column arrives after the backup and syncs up.
         val spec = model.getCanvas(canvas)!!
-        val newCol = spec.columns.last().next()
+        val newCol = ColumnId.random(spec.columns.toSet())
         model.addCanvas(spec.copy(columns = spec.columns + newCol))
         model.updateColumn(canvas, newCol, "# New\n* post-backup\n")
         bus.fire(ColumnsChanged(canvas, setOf(newCol)))
@@ -147,21 +149,22 @@ class RestoreBackupSyncTest {
         ))
         model.writeSyncState(SyncStateDoc.EMPTY)
         model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))
-        model.updateColumn(canvas, ColumnId(1), "# T\n* keep me\n* second item\n")
-        val colPath = SyncPaths.columnPath(root, canvas, ColumnId(1))
+        val col = model.getCanvas(canvas)!!.firstNonLayout()
+        model.updateColumn(canvas, col, "# T\n* keep me\n* second item\n")
+        val colPath = SyncPaths.columnPath(root, canvas, col)
         val c = SyncController(model, bus, storageOverride = storage).also { it.pushDebounceMs = 5 }
         c.start()
         delay(30)
 
         // Good state reaches the remote, then the backup captures it.
-        bus.fire(ColumnsChanged(canvas, setOf(ColumnId(1))))
+        bus.fire(ColumnsChanged(canvas, setOf(col)))
         delay(60)
         assertTrue(colPath in storage.uploads, "setup: good content pushed")
         assertTrue(LocalBackup.autoSnapshot(), "setup: periodic backup taken")
 
         // The destructive edit (e.g. a bad Clear Done) lands locally AND pushes to the remote.
-        model.updateColumn(canvas, ColumnId(1), "# T\n")
-        bus.fire(ColumnsChanged(canvas, setOf(ColumnId(1))))
+        model.updateColumn(canvas, col, "# T\n")
+        bus.fire(ColumnsChanged(canvas, setOf(col)))
         delay(60)
         assertTrue(!storage.files.getValue(colPath).second.contains("keep me"),
             "setup: the remote now holds the destroyed content")
@@ -172,7 +175,7 @@ class RestoreBackupSyncTest {
             assertTrue(c.restoreAutoBackup(), "restore applies")
             delay(120)
 
-            val local = model.getCanvasColumnRaw(canvas, ColumnId(1))
+            val local = model.getCanvasColumnRaw(canvas, col)
             assertNotNull(local)
             assertTrue(local.contains("keep me"), "local data rolled back to the backup")
             assertTrue(colPath in storage.uploads, "restored content pushed UP to the remote")
@@ -183,7 +186,7 @@ class RestoreBackupSyncTest {
             // The acid test: ANOTHER reconcile must not 'correct' the rollback away.
             c.reconcile()
             delay(100)
-            assertTrue(model.getCanvasColumnRaw(canvas, ColumnId(1))!!.contains("keep me"),
+            assertTrue(model.getCanvasColumnRaw(canvas, col)!!.contains("keep me"),
                 "the rollback STICKS across subsequent syncs")
         } finally {
             SyncStateStore.set(SyncState.NotConfigured, bus)

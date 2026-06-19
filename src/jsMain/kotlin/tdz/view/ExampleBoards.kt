@@ -18,8 +18,8 @@ object ExampleBoards {
 
     /** A weekday across five side-by-side columns: a column heading plus a few draggable cards. */
     private val WEEK = run {
-        val root = ColumnId(0)
-        val days = (1..5).map(::ColumnId)
+        val root = ColumnId("0")
+        val days = (1..5).map { ColumnId(it.toString()) }
         val md = mapOf(
             days[0] to """
                 # Monday
@@ -76,9 +76,9 @@ object ExampleBoards {
 
     /** A 3×3 grid mixing photo cards, pinned maps, and itinerary cards. */
     private val VACATION = run {
-        val root = ColumnId(0)
-        val rows = listOf(ColumnId(10), ColumnId(11), ColumnId(12))
-        val cells = (1..9).map(::ColumnId)
+        val root = ColumnId("0")
+        val rows = listOf(ColumnId("10"), ColumnId("11"), ColumnId("12"))
+        val cells = (1..9).map { ColumnId(it.toString()) }
         fun image(id: Long, caption: String) =
             "[https://images.pexels.com/photos/$id/pexels-photo-$id.jpeg ($caption)]"
         val md = mapOf(
@@ -118,9 +118,9 @@ object ExampleBoards {
 
     /** Two columns of notes: headings, callouts, a blockquote, and a flow diagram. */
     private val MEETING = run {
-        val root = ColumnId(0)
-        val left = ColumnId(1)
-        val right = ColumnId(2)
+        val root = ColumnId("0")
+        val left = ColumnId("1")
+        val right = ColumnId("2")
         val md = mapOf(
             left to """
                 # Product sync
@@ -169,8 +169,8 @@ object ExampleBoards {
 
     /** A focused project board: lots of task cards across three columns, plus one full-bleed image. */
     val PROJECT = run {
-        val root = ColumnId(0)
-        val cols = listOf(ColumnId(1), ColumnId(2), ColumnId(3))
+        val root = ColumnId("0")
+        val cols = listOf(ColumnId("1"), ColumnId("2"), ColumnId("3"))
         val md = mapOf(
             cols[0] to """
                 # Backlog
@@ -222,8 +222,8 @@ object ExampleBoards {
     private fun singleColumn(
         title: String, tagline: String, name: CanvasName, parent: CanvasName?, markdown: String,
     ): ExampleBoard {
-        val root = ColumnId(0)
-        val col = ColumnId(1)
+        val root = ColumnId("0")
+        val col = ColumnId("1")
         return ExampleBoard(
             title = title,
             tagline = tagline,
@@ -244,10 +244,10 @@ object ExampleBoards {
         val home = "[~ (← Home Board)]"
         // The root is a 3-column board: the board links on the left, a stack of cards to sort in the
         // middle (drag each over the matching link — the wormhole sends it to that board), spare right.
-        val root = ColumnId(0)
-        val linksCol = ColumnId(1)
-        val sortCol = ColumnId(2)
-        val spareCol = ColumnId(3)
+        val root = ColumnId("0")
+        val linksCol = ColumnId("1")
+        val sortCol = ColumnId("2")
+        val spareCol = ColumnId("3")
         val rootBoard = ExampleBoard(
             title = "Multiple boards",
             tagline = "One board links to the next.",
@@ -357,10 +357,10 @@ object ExampleBoards {
      * since they can set any image under any theme.
      */
     val SPANISH_EXAM_PREP = run {
-        val root = ColumnId(0)
-        val banner = ColumnId(1)
-        val gridRow = ColumnId(2)
-        val cats = listOf(ColumnId(10), ColumnId(11), ColumnId(12), ColumnId(13))
+        val root = ColumnId("0")
+        val banner = ColumnId("1")
+        val gridRow = ColumnId("2")
+        val cats = listOf(ColumnId("10"), ColumnId("11"), ColumnId("12"), ColumnId("13"))
 
         // A light, airy Mediterranean photo — dark Long Form text reads over it.
         fun wallpaper(url: String) = "<!--tdz-col:{\"wallpaper\":\"$url\"}-->"
@@ -424,8 +424,8 @@ object ExampleBoards {
      * click → Edit and poke at the raw markdown behind each.
      */
     val MARKDOWN_SHOWCASE = run {
-        val root = ColumnId(0)
-        val cols = listOf(ColumnId(1), ColumnId(2), ColumnId(3))
+        val root = ColumnId("0")
+        val cols = listOf(ColumnId("1"), ColumnId("2"), ColumnId("3"))
         val md = mapOf(
             cols[0] to """
                 # Markdown playground
