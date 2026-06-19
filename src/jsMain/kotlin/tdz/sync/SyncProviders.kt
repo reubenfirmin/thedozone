@@ -18,7 +18,7 @@ object SyncProviders {
      */
     fun defaultRoot(provider: SyncProvider): String = when (provider) {
         SyncProvider.DROPBOX -> ""
-        SyncProvider.GOOGLE_DRIVE -> "thedozone2"
+        SyncProvider.GOOGLE_DRIVE -> "thedozone"
         SyncProvider.LOCAL_FOLDER -> ""   // the granted directory IS the root
     }
 

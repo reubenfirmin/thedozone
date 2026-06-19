@@ -320,8 +320,8 @@ class SyncModal(
     }
 
     private fun folderHint(): String = when (selectedProvider) {
-        SyncProvider.DROPBOX -> "Sync folder (required — e.g. thedozone2)"
-        SyncProvider.GOOGLE_DRIVE -> "Sync folder (blank = \"thedozone2\")"
+        SyncProvider.DROPBOX -> "Sync folder (required — e.g. thedozone)"
+        SyncProvider.GOOGLE_DRIVE -> "Sync folder (blank = \"thedozone\")"
         SyncProvider.LOCAL_FOLDER -> ""   // never shown: local is excluded from this modal's chooser
     }
 

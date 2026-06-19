@@ -30,7 +30,7 @@ import tdz.view.theme.themes
 import web.mouse.MouseEvent
 
 /** Issue tracker opened by "Report a Bug". */
-private const val BUG_REPORT_URL = "https://github.com/reubenfirmin/thedozone2"
+private const val BUG_REPORT_URL = "https://github.com/reubenfirmin/thedozone"
 
 /** Dynamic actions the canvas menu invokes; kept as an interface so sections are unit-testable. */
 interface CanvasMenuActions {
