@@ -35,7 +35,7 @@ import kotlin.test.assertTrue
 class ToggleSingleCardRenderTest {
 
     private val canvas = CanvasName("_tsc-test")
-    private val column = ColumnId(1)
+    private var column = ColumnId("1")   // reassigned to the board's opaque leaf after creation
 
     @AfterTest
     fun cleanup() {
@@ -48,6 +48,7 @@ class ToggleSingleCardRenderTest {
         val model = Model(canvas)
         Controller(bus, model)
         model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))
+        column = model.getCanvas(canvas)!!.firstNonLayout()
         model.updateColumn(canvas, column, "# Tasks\n* do it\n\n# Other\ncontent\n")
 
         val spec = model.getCanvas(canvas) ?: error("setup: canvas")
@@ -89,6 +90,7 @@ class ToggleSingleCardRenderTest {
         val bus = EventBus<Event>()
         val model = Model(canvas)
         model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))
+        column = model.getCanvas(canvas)!!.firstNonLayout()
         model.updateColumn(canvas, column, "# A\n")
         val spec = model.getCanvas(canvas) ?: error("setup: canvas")
         val columns = CanvasColumns(spec, bus, model) { id -> model.cards(canvas, id) }

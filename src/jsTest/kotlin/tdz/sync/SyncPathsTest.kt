@@ -14,23 +14,23 @@ class SyncPathsTest {
     @Test
     fun columnPathWithRoot() {
         // Case is preserved (normalized() does not lowercase) so paths round-trip to the model key.
-        assertEquals("/notes/Groceries/col-2.md", SyncPaths.columnPath("/notes", canvas, ColumnId(2)))
+        assertEquals("/notes/Groceries/col-2.md", SyncPaths.columnPath("/notes", canvas, ColumnId("2")))
     }
 
     @Test
     fun columnPathEmptyRoot() {
-        assertEquals("/Groceries/col-0.md", SyncPaths.columnPath("", canvas, ColumnId(0)))
+        assertEquals("/Groceries/col-0.md", SyncPaths.columnPath("", canvas, ColumnId("0")))
     }
 
     @Test
     fun rootIsNormalizedWithLeadingSlashNoTrailing() {
-        assertEquals("/notes/Groceries/col-0.md", SyncPaths.columnPath("notes/", canvas, ColumnId(0)))
+        assertEquals("/notes/Groceries/col-0.md", SyncPaths.columnPath("notes/", canvas, ColumnId("0")))
     }
 
     @Test
     fun normalizesUnsafeCharsInCanvasName() {
         // spaces -> dashes, parens stripped (CanvasName.normalized()), case preserved
-        assertEquals("/My-List/col-0.md", SyncPaths.columnPath("", CanvasName("My (List)"), ColumnId(0)))
+        assertEquals("/My-List/col-0.md", SyncPaths.columnPath("", CanvasName("My (List)"), ColumnId("0")))
     }
 
     @Test
@@ -40,17 +40,17 @@ class SyncPathsTest {
 
     @Test
     fun parseColumnRoundTrips() {
-        val path = SyncPaths.columnPath("/notes", canvas, ColumnId(7))
+        val path = SyncPaths.columnPath("/notes", canvas, ColumnId("7"))
         val parsed = SyncPaths.parseColumn(path)
         assertEquals(CanvasName("Groceries"), parsed?.first)
-        assertEquals(ColumnId(7), parsed?.second)
+        assertEquals(ColumnId("7"), parsed?.second)
     }
 
     @Test
     fun parseColumnYieldsSameModelKeyAsOriginal() {
         // The invariant the SyncController relies on: parsed canvas normalizes to the same key.
         val original = CanvasName("My Trips")
-        val path = SyncPaths.columnPath("/n", original, ColumnId(3))
+        val path = SyncPaths.columnPath("/n", original, ColumnId("3"))
         val parsed = SyncPaths.parseColumn(path)!!.first
         assertEquals(original.normalized(), parsed.normalized())
     }
@@ -97,11 +97,11 @@ class SyncPathsTest {
         // Board "a/b/c" under root "notes" → path "/notes/a/b/c/col-5.md"
         // parseColumn MUST return full canvas path "a/b/c", not just "c"
         val nested = CanvasName("a/b/c")
-        val path = SyncPaths.columnPath("notes", nested, ColumnId(5))
+        val path = SyncPaths.columnPath("notes", nested, ColumnId("5"))
         assertEquals("/notes/a/b/c/col-5.md", path)
         val parsed = SyncPaths.parseColumn(path, "notes")
         assertEquals("a/b/c", parsed?.first?.normalized())
-        assertEquals(ColumnId(5), parsed?.second)
+        assertEquals(ColumnId("5"), parsed?.second)
     }
 
     @Test
@@ -109,29 +109,29 @@ class SyncPathsTest {
         // Board "a/b/c" under empty root → path "/a/b/c/col-0.md"
         // parseColumn MUST return full canvas path "a/b/c", not just "c"
         val nested = CanvasName("a/b/c")
-        val path = SyncPaths.columnPath("", nested, ColumnId(0))
+        val path = SyncPaths.columnPath("", nested, ColumnId("0"))
         assertEquals("/a/b/c/col-0.md", path)
         val parsed = SyncPaths.parseColumn(path, "")
         assertEquals("a/b/c", parsed?.first?.normalized())
-        assertEquals(ColumnId(0), parsed?.second)
+        assertEquals(ColumnId("0"), parsed?.second)
     }
 
     @Test
     fun parseColumnRootLevelBoardWithRoot() {
         // Root-level board "Groceries" under root "notes" still round-trips correctly
-        val path = SyncPaths.columnPath("notes", canvas, ColumnId(7))
+        val path = SyncPaths.columnPath("notes", canvas, ColumnId("7"))
         val parsed = SyncPaths.parseColumn(path, "notes")
         assertEquals(canvas.normalized(), parsed?.first?.normalized())
-        assertEquals(ColumnId(7), parsed?.second)
+        assertEquals(ColumnId("7"), parsed?.second)
     }
 
     @Test
     fun parseColumnRootLevelBoardEmptyRoot() {
         // Root-level board "Groceries" under empty root still round-trips correctly
-        val path = SyncPaths.columnPath("", canvas, ColumnId(3))
+        val path = SyncPaths.columnPath("", canvas, ColumnId("3"))
         val parsed = SyncPaths.parseColumn(path, "")
         assertEquals(canvas.normalized(), parsed?.first?.normalized())
-        assertEquals(ColumnId(3), parsed?.second)
+        assertEquals(ColumnId("3"), parsed?.second)
     }
 
     @Test
@@ -167,14 +167,14 @@ class SyncPathsTest {
 
     @Test
     fun rootCanvasColumnPathEmptyRootHasNoDoubleSlash() {
-        val p = SyncPaths.columnPath("", CanvasName(""), ColumnId(0))
+        val p = SyncPaths.columnPath("", CanvasName(""), ColumnId("0"))
         assertTrue(!p.contains("//"), "root column path must be a valid Dropbox path, got: $p")
         assertEquals("/col-0.md", p)
     }
 
     @Test
     fun rootCanvasColumnPathWithRootHasNoDoubleSlash() {
-        val p = SyncPaths.columnPath("notes", CanvasName(""), ColumnId(0))
+        val p = SyncPaths.columnPath("notes", CanvasName(""), ColumnId("0"))
         assertTrue(!p.contains("//"), "root column path must be a valid Dropbox path, got: $p")
         assertEquals("/notes/col-0.md", p)
     }
@@ -187,11 +187,11 @@ class SyncPathsTest {
 
     @Test
     fun rootCanvasColumnRoundTrips() {
-        val path = SyncPaths.columnPath("notes", CanvasName(""), ColumnId(2))
+        val path = SyncPaths.columnPath("notes", CanvasName(""), ColumnId("2"))
         val parsed = SyncPaths.parseColumn(path, "notes")
         assertEquals("", parsed?.first?.normalized(), "root-level column parses back to the root canvas")
-        assertEquals(ColumnId(2), parsed?.second)
-        assertEquals("", SyncPaths.parseColumn(SyncPaths.columnPath("", CanvasName(""), ColumnId(3)), "")?.first?.normalized())
+        assertEquals(ColumnId("2"), parsed?.second)
+        assertEquals("", SyncPaths.parseColumn(SyncPaths.columnPath("", CanvasName(""), ColumnId("3")), "")?.first?.normalized())
     }
 
     @Test

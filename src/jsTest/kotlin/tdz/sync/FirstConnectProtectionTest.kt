@@ -94,17 +94,17 @@ class FirstConnectProtectionTest {
     fun remoteManifestMustNotOrphanLocalOnlyColumnsAtFirstConnect() = runTest {
         val canvas = CanvasName("_fc-manifest")
         val manifestPath = "/n/${canvas.normalized()}/${SyncPaths.MANIFEST}"
-        val localManifest = CanvasDoc(canvas, null, listOf(ColumnId(1), ColumnId(2)), emptyList()).encode()
-        val remoteManifest = CanvasDoc(canvas, null, listOf(ColumnId(1)), emptyList()).encode()
+        val localManifest = CanvasDoc(canvas, null, listOf(ColumnId("1"), ColumnId("2")), emptyList()).encode()
+        val remoteManifest = CanvasDoc(canvas, null, listOf(ColumnId("1")), emptyList()).encode()
         val storage = FakeStorage(listOf(RemoteFile(manifestPath, "rM", 100.0) to remoteManifest))
         val local = mutableMapOf(manifestPath to localManifest)
 
         val result = engine(storage, local).pull(root = "/n", state = SyncStateDoc.EMPTY)
 
         val merged = CanvasDoc.decode(local.getValue(manifestPath))
-        assertTrue(ColumnId(2) in merged.columns,
+        assertTrue(ColumnId("2") in merged.columns,
             "the local-only column stays in the manifest — never orphaned: ${merged.columns}")
-        assertTrue(ColumnId(1) in merged.columns, "shared column kept")
+        assertTrue(ColumnId("1") in merged.columns, "shared column kept")
         assertTrue(result.keptLocalPaths.contains(manifestPath), "union manifest pushes back up")
     }
 
@@ -126,9 +126,10 @@ class FirstConnectProtectionTest {
         model.writeSyncState(SyncStateDoc.EMPTY)
         val template = tdz.model.LayoutTemplates.canvasFromTemplate(canvas, null, tdz.model.LayoutTemplate.SINGLE_PANE)
         model.addCanvas(template)
-        model.updateColumn(canvas, ColumnId(1), "# My board\n* fresh work\n")
+        val col = template.firstNonLayout()
+        model.updateColumn(canvas, col, "# My board\n* fresh work\n")
 
-        val colPath = SyncPaths.columnPath(root, canvas, ColumnId(1))
+        val colPath = SyncPaths.columnPath(root, canvas, col)
         val manifestPath = SyncPaths.manifestPath(root, canvas)
         val storage = FakeStorage(
             listOf(
@@ -141,16 +142,115 @@ class FirstConnectProtectionTest {
         val c = SyncController(model, bus, storageOverride = storage)
         c.connectOverride = { ConnectResult(accountEmail = null, refreshToken = "test-token") }
         try {
-            c.connect()
+            c.connect(SyncController.InitialSyncMode.FROM)
             delay(200)
 
-            val content = model.getCanvasColumnRaw(canvas, ColumnId(1)) ?: ""
+            val content = model.getCanvasColumnRaw(canvas, col) ?: ""
             assertTrue(content.contains("fresh work"),
                 "the board built before connecting MUST survive the first sync: <<$content>>")
             assertTrue(content.contains("stale"), "the remote's content is kept too")
             val remoteAfter = storage.files.getValue(colPath).second
             assertTrue(remoteAfter.contains("fresh work") && remoteAfter.contains("stale"),
                 "the remote converges on the union: <<$remoteAfter>>")
+        } finally {
+            SyncStateStore.set(SyncState.NotConfigured, bus)
+        }
+    }
+
+    /** The PRODUCTION scenario: the home board is the ROOT canvas (empty name). Connecting to a
+     *  Dropbox folder that already holds a stale prior sync must NOT overwrite the local home board. */
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun connectingTheRootHomeBoardToAStaleRemoteFolderPreservesIt(): dynamic = GlobalScope.promise {
+        val root = ""                       // default Dropbox root — the production home-board case
+        val rootCanvas = CanvasName("")
+        val model = tdz.model.Model(rootCanvas)
+        val bus = zoned.framework.events.EventBus<tdz.controller.events.Event>()
+        val self = DeviceId.get()
+        model.writeSyncConfig(tdz.model.localstorage.SyncConfigDoc(
+            provider = SyncProvider.DROPBOX, enabled = false, rootFolder = root,
+            refreshToken = null, accountEmail = null,
+        ))
+        model.writeSyncState(SyncStateDoc.EMPTY)
+        val template = tdz.model.LayoutTemplates.canvasFromTemplate(rootCanvas, null, tdz.model.LayoutTemplate.SINGLE_PANE)
+        model.addCanvas(template)
+        model.updateColumn(rootCanvas, ColumnId("1"), "# My home\n* fresh work\n")
+
+        val colPath = SyncPaths.columnPath(root, rootCanvas, ColumnId("1"))      // "/col-1.md"
+        val manifestPath = SyncPaths.manifestPath(root, rootCanvas)            // "/_canvas.json"
+        val storage = FakeStorage(
+            listOf(
+                RemoteFile(manifestPath, "rM", 100.0) to
+                    CanvasDoc(rootCanvas, null, template.columns, template.layouts).encode(),
+                RemoteFile(colPath, "rC", 100.0) to "# Old remote\n* stale\n",
+            ),
+            remoteVv = mapOf(colPath to mapOf(self to 5L)),   // our clock from a previous sync life
+        )
+        val c = SyncController(model, bus, storageOverride = storage)
+        c.connectOverride = { ConnectResult(accountEmail = null, refreshToken = "test-token") }
+        try {
+            c.connect(SyncController.InitialSyncMode.FROM)
+            delay(200)
+
+            val content = model.getCanvasColumnRaw(rootCanvas, ColumnId("1")) ?: ""
+            assertTrue(content.contains("fresh work"),
+                "the ROOT home board built before connecting MUST survive the first sync: <<$content>>")
+        } finally {
+            SyncStateStore.set(SyncState.NotConfigured, bus)
+        }
+    }
+
+    /** Connecting a MULTI-column home board to a remote folder that holds a smaller/older board:
+     *  every local column must survive — the stale shared column merges, local-only columns stay. */
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun connectingMultiColumnHomeToASmallerStaleRemotePreservesEveryColumn(): dynamic = GlobalScope.promise {
+        val root = ""
+        val rootCanvas = CanvasName("")
+        val model = tdz.model.Model(rootCanvas)
+        val bus = zoned.framework.events.EventBus<tdz.controller.events.Event>()
+        val self = DeviceId.get()
+        model.writeSyncConfig(tdz.model.localstorage.SyncConfigDoc(
+            provider = SyncProvider.DROPBOX, enabled = false, rootFolder = root,
+            refreshToken = null, accountEmail = null,
+        ))
+        model.writeSyncState(SyncStateDoc.EMPTY)
+        // Local home board: three content columns 1,2,3 (a real multi-pane board).
+        val cols = listOf(ColumnId("0"), ColumnId("1"), ColumnId("2"), ColumnId("3"))
+        val layouts = listOf(tdz.model.ColumnLayoutSpec(ColumnId("0"), tdz.model.Split.VERTICAL, listOf(ColumnId("1"), ColumnId("2"), ColumnId("3"))))
+        model.addCanvas(tdz.model.Canvas(rootCanvas, null, cols, layouts))
+        model.updateColumn(rootCanvas, ColumnId("1"), "# One\n* local one\n")
+        model.updateColumn(rootCanvas, ColumnId("2"), "# Two\n* local two\n")
+        model.updateColumn(rootCanvas, ColumnId("3"), "# Three\n* local three\n")
+
+        // Remote folder already holds a SMALLER, older board: manifest lists only [0,1], col-1 stale,
+        // carrying THIS device's old clock.
+        val col1Path = SyncPaths.columnPath(root, rootCanvas, ColumnId("1"))
+        val manifestPath = SyncPaths.manifestPath(root, rootCanvas)
+        val storage = FakeStorage(
+            listOf(
+                RemoteFile(manifestPath, "rM", 100.0) to
+                    CanvasDoc(rootCanvas, null, listOf(ColumnId("0"), ColumnId("1")),
+                        listOf(tdz.model.ColumnLayoutSpec(ColumnId("0"), tdz.model.Split.VERTICAL, listOf(ColumnId("1"))))).encode(),
+                RemoteFile(col1Path, "rC", 100.0) to "# One\n* stale remote one\n",
+            ),
+            remoteVv = mapOf(col1Path to mapOf(self to 5L)),
+        )
+        val c = SyncController(model, bus, storageOverride = storage)
+        c.connectOverride = { ConnectResult(accountEmail = null, refreshToken = "test-token") }
+        try {
+            c.connect(SyncController.InitialSyncMode.FROM)
+            delay(250)
+
+            assertTrue((model.getCanvasColumnRaw(rootCanvas, ColumnId("1")) ?: "").contains("local one"),
+                "shared column 1 keeps local content")
+            assertTrue((model.getCanvasColumnRaw(rootCanvas, ColumnId("2")) ?: "").contains("local two"),
+                "local-only column 2 MUST survive connect")
+            assertTrue((model.getCanvasColumnRaw(rootCanvas, ColumnId("3")) ?: "").contains("local three"),
+                "local-only column 3 MUST survive connect")
+            assertTrue(ColumnId("2") in (model.getCanvas(rootCanvas)?.columns ?: emptyList()) &&
+                ColumnId("3") in (model.getCanvas(rootCanvas)?.columns ?: emptyList()),
+                "manifest keeps local-only columns (not orphaned by the smaller remote)")
         } finally {
             SyncStateStore.set(SyncState.NotConfigured, bus)
         }

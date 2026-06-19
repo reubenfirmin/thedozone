@@ -51,7 +51,7 @@ class WormholeDropRoutingTest {
 
     private val source = CanvasName("_whd-src")
     private val target = CanvasName("_whd-target")
-    private val column = ColumnId(1)
+    private val column = ColumnId("1")
 
     @AfterTest
     fun cleanup() {
@@ -327,7 +327,7 @@ class WormholeDropRoutingTest {
         model.addCanvas(canvasFromTemplate(parentBoard, null, SINGLE_PANE))
         model.addCanvas(canvasFromTemplate(absoluteChildBoard, CanvasName("_whd-parent"), SINGLE_PANE))
 
-        val col = ColumnId(1)
+        val col = ColumnId("1")
         model.updateColumn(parentBoard, col, "# Card A\n[child (link)]\n\n# Card B\n")
 
         val cards = model.cards(parentBoard, col)
@@ -393,7 +393,7 @@ class WormholeDropRoutingTest {
         val model = Model(childBoard)
         model.addCanvas(canvasFromTemplate(root, null, SINGLE_PANE))
         model.addCanvas(canvasFromTemplate(childBoard, root, SINGLE_PANE))
-        val col = ColumnId(1)
+        val col = ColumnId("1")
         model.updateColumn(childBoard, col, "# Card A\n[.. (Home)]\n\n# Card B\n")
 
         val cards = model.cards(childBoard, col)

@@ -25,7 +25,7 @@ class ExampleBoardsTest {
         val spanish = ExampleBoards.COLUMNS_AND_CARDS.first { it.title.contains("Spanish") }
         // The decks are flip cards: parse a category column and confirm it has CardSideBreak faces.
         val greetings = spanish.content.entries.first { it.value.contains("Greetings") }.value
-        val cards = MarkdownService.fromMd(greetings, ColumnId(0))
+        val cards = MarkdownService.fromMd(greetings, ColumnId("0"))
         val flipCards = cards.count { c -> c.segments.any { it is tdz.model.card.CardSideBreak } }
         assertTrue(flipCards >= 4, "the greetings deck is mostly flip cards; got $flipCards")
         // Exactly one column carries a wallpaper background image (the banner).
@@ -41,7 +41,7 @@ class ExampleBoardsTest {
         val tasks = project.content.values.joinToString("\n").lines().count { it.trimStart().startsWith("* ") }
         assertTrue(tasks >= 8, "lots of task cards; got $tasks")
         val images = project.content.values
-            .flatMap { MarkdownService.fromMd(it, ColumnId(0)) }
+            .flatMap { MarkdownService.fromMd(it, ColumnId("0")) }
             .count { it.isImageLink() }
         assertEquals(1, images, "exactly one image card")
     }
@@ -56,7 +56,7 @@ class ExampleBoardsTest {
         // Count canvas links wherever they sit — embedded in a card with a heading/description, not
         // only as a link-only card.
         fun links(b: ExampleBoard) = b.content.values
-            .flatMap { MarkdownService.fromMd(it, ColumnId(0)) }
+            .flatMap { MarkdownService.fromMd(it, ColumnId("0")) }
             .flatMap { it.segments }
             .flatMap { it.links() }
             .count { it.isCanvasLink() }
@@ -72,7 +72,7 @@ class ExampleBoardsTest {
     @Test
     fun markdownShowcaseHasAVarietyOfCardTypes() {
         val showcase = ExampleBoards.MARKDOWN_SHOWCASE
-        val cards = showcase.content.values.flatMap { MarkdownService.fromMd(it, ColumnId(0)) }
+        val cards = showcase.content.values.flatMap { MarkdownService.fromMd(it, ColumnId("0")) }
         val segs = cards.flatMap { it.segments }
         assertTrue(segs.any { it is tdz.model.card.CardHeading }, "has a heading")
         assertTrue(segs.any { it is tdz.model.card.ListGroup }, "has a list/task group")
@@ -124,7 +124,7 @@ class ExampleBoardsTest {
     fun vacationImageMarkdownActuallyParsesToImageCards() {
         val vac = ExampleBoards.ALL.first { it.title.contains("Vacation") }
         val anyImage = vac.content.values
-            .flatMap { MarkdownService.fromMd(it, ColumnId(0)) }
+            .flatMap { MarkdownService.fromMd(it, ColumnId("0")) }
             .any { it.isImageLink() }
         assertTrue(anyImage, "the pexels URLs must parse as image cards (extension at the end, no query string)")
     }

@@ -21,7 +21,7 @@ import kotlin.test.assertTrue
 class WriteBehindPersistenceTest {
 
     private val canvas = CanvasName("_wb-test")
-    private val column = ColumnId(1)
+    private val column = ColumnId("1")
 
     private fun rawStored(): String? {
         // The raw key format is LocalStorageModel-internal; find our column by scanning.

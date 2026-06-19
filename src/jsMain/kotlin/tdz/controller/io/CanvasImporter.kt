@@ -74,12 +74,21 @@ class CanvasImporter(private val store: CanvasStore) {
         if (doc.prototype != null) {
             Canvas(name, parent, doc.prototype.columns, doc.prototype.layouts)
         } else {
-            val columnCount = doc.cards.map { it.metadata.columnId }.distinct().size
-            Canvas(name, parent, (0..columnCount).map(::ColumnId),
-                listOf(ColumnLayoutSpec(ColumnId(0), Split.VERTICAL, (1..columnCount).map(::ColumnId))))
+            // No prototype: lay the cards' own source columns out under the root. Using their actual
+            // ids (not a synthesized 0..N range) means saveCardsInto places each card in its column;
+            // cards seeded to the root are remapped onto the first leaf there.
+            val leaves = doc.cards.map { it.metadata.columnId }.distinct()
+                .filter { it != ColumnId.ROOT }
+                .ifEmpty { listOf(ColumnId.random()) }
+            Canvas(name, parent, listOf(ColumnId.ROOT) + leaves,
+                listOf(ColumnLayoutSpec(ColumnId.ROOT, Split.VERTICAL, leaves)))
         }
 
-    /** Save cards grouped by their source column, remapping any non-leaf target onto the first leaf. */
+    /** Save cards grouped by their source column, remapping any non-leaf target onto the first leaf.
+     *  Cards whose CONTENT already lives in the target column are skipped, so re-uploading a board's
+     *  own cards (merge HERE) doesn't stack duplicates — compared by [Card.segments], since index and
+     *  column metadata differ for the same card across positions. A column with nothing new to add is
+     *  not reported changed, so a no-op merge triggers no needless sync push. */
     private fun saveCardsInto(canvasName: CanvasName, cards: List<Card>): List<ColumnId> {
         val canvas = store.getCanvas(canvasName)
             ?: error("Import target canvas '${canvasName.normalized()}' not found")
@@ -87,7 +96,11 @@ class CanvasImporter(private val store: CanvasStore) {
         val changed = mutableListOf<ColumnId>()
         for ((columnId, group) in cards.groupBy { it.metadata.columnId }) {
             val target = if (columnId in leaves) columnId else canvas.firstNonLayout()
-            store.saveCards(canvasName, target, store.cards(canvasName, target) + group)
+            val existing = store.cards(canvasName, target)
+            val seen = existing.mapTo(HashSet()) { it.segments }
+            val incoming = group.filter { seen.add(it.segments) }   // skip dupes vs existing AND within the batch
+            if (incoming.isEmpty()) continue
+            store.saveCards(canvasName, target, existing + incoming)
             changed.add(target)
         }
         return changed.distinct()

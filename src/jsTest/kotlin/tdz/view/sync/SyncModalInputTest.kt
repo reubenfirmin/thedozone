@@ -16,6 +16,40 @@ import kotlin.test.assertEquals
 
 class SyncModalInputTest {
 
+    private class NoopStorage : tdz.sync.RemoteStorage {
+        override suspend fun list(folder: String) = tdz.sync.RemoteListing(emptyList(), rootExists = true)
+        override suspend fun download(path: String) = "" to tdz.sync.RemoteFile(path, "r", 0.0)
+        override suspend fun upload(path: String, content: String, ifMatchRev: String?) = tdz.sync.RemoteFile(path, "r", 0.0)
+        override suspend fun delete(path: String) {}
+        override suspend fun revoke() {}
+        override suspend fun columnVv(path: String): tdz.sync.VersionVector = emptyMap()
+    }
+
+    @Test
+    fun connectPersistsTheTypedFolderSoSyncDoesNotWriteToTheAppRoot() {
+        val model = Model(CanvasName("_syncmodal-persist"))
+        model.writeSyncConfig(
+            SyncConfigDoc(SyncProvider.DROPBOX, enabled = false, rootFolder = "", refreshToken = null, accountEmail = null),
+        )
+        val bus = EventBus<Event>()
+        val controller = SyncController(model, bus, storageOverride = NoopStorage())
+        controller.connectOverride = { tdz.sync.ConnectResult(accountEmail = "x", refreshToken = "t") }
+        val modal = SyncModal(model, bus, controller)
+        try {
+            modal.show()
+            (document.getElementById("tdz-sync-root") as HTMLInputElement).value = "thedozone2"
+            val connect = document.body!!.querySelectorAll("div").asList()
+                .filterIsInstance<HTMLElement>().last { it.textContent == "Connect" }
+            connect.click()
+
+            assertEquals("thedozone2", model.readSyncConfig().rootFolder,
+                "the typed folder MUST persist on Connect — a blank folder makes sync write to the app root")
+        } finally {
+            modal.hide()
+            tdz.sync.SyncStateStore.set(tdz.sync.SyncState.NotConfigured, bus)
+        }
+    }
+
     @Test
     fun typedFolderSurvivesProviderSwitchRerender() {
         val model = Model(CanvasName("_syncmodal-test"))

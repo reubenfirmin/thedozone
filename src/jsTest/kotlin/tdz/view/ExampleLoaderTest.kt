@@ -87,9 +87,9 @@ class ExampleLoaderTest {
         ExampleLoader.load(model, EventBus(), meeting)
 
         assertEquals(meeting.contentColumns().toSet(), contentColumnsOf(model))
-        assertNull(model.getCanvasColumnRaw(rootCanvas, ColumnId(3)),
+        assertNull(model.getCanvasColumnRaw(rootCanvas, ColumnId("3")),
             "a column the new example doesn't reuse must be cleared, not orphaned")
-        assertTrue(model.getCanvasColumnRaw(rootCanvas, ColumnId(1))!!.contains("Product sync"),
+        assertTrue(model.getCanvasColumnRaw(rootCanvas, ColumnId("1"))!!.contains("Product sync"),
             "the new example's content replaced the old")
     }
 }

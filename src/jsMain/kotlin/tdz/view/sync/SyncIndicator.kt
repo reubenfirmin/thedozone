@@ -32,6 +32,7 @@ class SyncIndicator(
     private fun label(state: SyncState): String = when (state) {
         SyncState.NotConfigured -> ""
         SyncState.Connecting -> "Connecting…"
+        SyncState.ChoosingDirection -> "Choose sync direction"
         SyncState.Reconciling -> "Syncing…"
         SyncState.Synced -> "Synced ✓"
         SyncState.Syncing -> "Syncing…"

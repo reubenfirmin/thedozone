@@ -11,15 +11,16 @@ import tdz.model.Split
  * - [splitColumn] ("even"): divide a column into two equal panes in the given direction.
  * - [addColumn] ("distribute"): add a pane to the containing layout in the given direction.
  *
- * Column ids are allocated past the MAX existing id (not `last()+1`): the column list is NOT kept
- * sorted — a sync manifest LWW/union or a wormhole import can leave a lower id last — so `last()+1`
- * could collide with an existing id and fold the layout tree into a cycle. max+1 can never collide.
+ * Column ids are OPAQUE and random ([ColumnId.random]), not `max+1`: two devices adding a column
+ * concurrently must never mint the same id for different columns (sync keys by `col-<id>.md`, so a
+ * shared id would merge two unrelated columns). Random ids also can't collide with an existing id
+ * and fold the layout tree into a cycle — allocation excludes the current column set.
  */
 object ColumnSplit {
 
-    /** Lowest id strictly greater than every existing column/layout id — collision-proof. */
-    private fun nextId(canvas: Canvas): ColumnId =
-        ColumnId((canvas.columns.maxOfOrNull { it.value } ?: -1) + 1)
+    /** A fresh opaque id not already used in [canvas] (plus any [extra] just allocated in the same op). */
+    private fun nextId(canvas: Canvas, extra: Set<ColumnId> = emptySet()): ColumnId =
+        ColumnId.random(canvas.columns.toSet() + extra)
 
     /** Split [columnId] into two equal panes in direction [split]. */
     fun splitColumn(canvas: Canvas, columnId: ColumnId, split: Split): Canvas {
@@ -30,7 +31,7 @@ object ColumnSplit {
             return addColumn(canvas, columnId, split)
         }
         val newSplitLayoutIdx = nextId(canvas)
-        val newColumnId = newSplitLayoutIdx.next()
+        val newColumnId = nextId(canvas, setOf(newSplitLayoutIdx))
 
         val updatedColumns = canvas.columns + listOf(newSplitLayoutIdx, newColumnId)
 

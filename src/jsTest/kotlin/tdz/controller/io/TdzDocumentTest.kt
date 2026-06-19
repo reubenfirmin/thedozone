@@ -16,20 +16,20 @@ class TdzDocumentTest {
     private val canvas = Canvas(
         CanvasName("test"),
         CanvasName("_"),
-        listOf(ColumnId(0), ColumnId(1)),
-        listOf(ColumnLayoutSpec(ColumnId(0), Split.VERTICAL, listOf(ColumnId(1)))),
+        listOf(ColumnId("0"), ColumnId("1")),
+        listOf(ColumnLayoutSpec(ColumnId("0"), Split.VERTICAL, listOf(ColumnId("1")))),
     )
 
     @Test
     fun roundTripPreservesCanvasStructure() {
-        val cards = MarkdownService.fromMd("# Hello\n", ColumnId(1))
+        val cards = MarkdownService.fromMd("# Hello\n", ColumnId("1"))
         val decoded = TdzDocument.decode(TdzDocument.encode(canvas, cards))
         assertEquals(canvas, decoded.prototype, "prototype should survive an encode/decode round-trip")
     }
 
     @Test
     fun roundTripPreservesCards() {
-        val cards = MarkdownService.fromMd("# Hello\n\n* one\n* two\n", ColumnId(1))
+        val cards = MarkdownService.fromMd("# Hello\n\n* one\n* two\n", ColumnId("1"))
         val decoded = TdzDocument.decode(TdzDocument.encode(canvas, cards))
         assertEquals(
             MarkdownService.toMd(cards),

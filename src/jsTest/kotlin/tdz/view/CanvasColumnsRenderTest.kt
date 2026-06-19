@@ -26,6 +26,8 @@ class CanvasColumnsRenderTest {
         val canvas = canvasFromTemplate(CanvasName("_rr-test"), null, TWO_COLUMNS_VERTICAL)
         // Multi-column layout assertions are a desktop concern; pin desktop so the test is
         // independent of the (narrow) headless test viewport.
+        val leaves = canvas.columns.filterNot { canvas.layoutMap.containsKey(it) }
+        val expectedOrder = leaves.map { DomIds.column(it) }
         val columns = CanvasColumns(canvas, bus, model, isMobile = { false }) { emptyList() }
         addToBody {
             div {
@@ -34,17 +36,17 @@ class CanvasColumnsRenderTest {
             }
         }
         try {
-            val grid = getHtmlElement("column-0")
+            val grid = getHtmlElement(DomIds.column(ColumnId.ROOT))
             assertNotNull(grid, "layout grid is rendered")
             val orderBefore = (0 until grid.childElementCount).map { grid.children[it].id.toString() }
-            assertEquals(listOf("column-1", "column-2"), orderBefore)
+            assertEquals(expectedOrder, orderBefore)
 
-            columns.refreshColumns(setOf(ColumnId(1)))   // (the RefreshColumns subscription is CanvasView's job)
+            columns.refreshColumns(setOf(leaves[0]))   // (the RefreshColumns subscription is CanvasView's job)
 
             val orderAfter = (0 until grid.childElementCount).map { grid.children[it].id.toString() }
-            assertEquals(listOf("column-1", "column-2"), orderAfter, "re-rendered column keeps its slot")
+            assertEquals(expectedOrder, orderAfter, "re-rendered column keeps its slot")
 
-            val col1 = getHtmlElement("column-1")
+            val col1 = getHtmlElement(DomIds.column(leaves[0]))
             assertNotNull(col1)
             // CARD columns scroll by wheel/touchpad but never SHOW a scrollbar — the to-date look
             // (no visible overflow chrome) with long columns still reachable.

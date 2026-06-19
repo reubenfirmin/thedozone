@@ -19,7 +19,7 @@ import tdz.model.ColumnId
 object SyncPaths {
 
     const val MANIFEST = "_canvas.json"
-    private val COLUMN_RE = Regex("""/col-(\d+)\.md$""")
+    private val COLUMN_RE = Regex("""/col-([A-Za-z0-9]+)\.md$""")
 
     /**
      * Normalize a user-entered root folder into a path prefix: `"/a/b/"`, `"a/b"`, `"/"`, `""`
@@ -64,7 +64,7 @@ object SyncPaths {
      */
     fun parseColumn(path: String): Pair<CanvasName, ColumnId>? {
         val m = COLUMN_RE.find(path) ?: return null
-        val col = ColumnId(m.groupValues[1].toInt())
+        val col = ColumnId(m.groupValues[1])
         val beforeFile = path.substring(0, m.range.first)   // ".../<canvas>" or "" for a root column
         val canvas = beforeFile.substringAfterLast('/')     // "" = root canvas
         return CanvasName(canvas) to col
@@ -81,7 +81,7 @@ object SyncPaths {
      */
     fun parseColumn(path: String, root: String): Pair<CanvasName, ColumnId>? {
         val m = COLUMN_RE.find(path) ?: return null
-        val col = ColumnId(m.groupValues[1].toInt())
+        val col = ColumnId(m.groupValues[1])
         val prefix = rootPrefix(root)
         val beforeFile = path.substring(0, m.range.first)   // "<prefix>", "<prefix>/a/b/c", or ""
         val canvasPath = when {

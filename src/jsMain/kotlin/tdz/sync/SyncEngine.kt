@@ -3,6 +3,9 @@ package tdz.sync
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import tdz.model.CanvasName
+import tdz.model.ColumnId
+import tdz.model.localstorage.CanvasDoc
 import tdz.model.localstorage.SyncEntry
 import tdz.model.localstorage.SyncStateDoc
 
@@ -103,8 +106,10 @@ class SyncEngine(
         return try {
             val meta = storage.upload(path, content, ifMatchRev = knownRev)
             // For COLUMNS, carry the known vector forward, seeding an empty one with this device so two
-            // independently-created columns are CONCURRENT (not spuriously EQUAL); for manifests, empty.
-            val vv = if (SyncPaths.parseColumn(path) != null) knownVv.ifEmpty { mapOf(self to 1L) } else emptyMap()
+            // independently-created columns are CONCURRENT (not spuriously EQUAL). For MANIFESTS, carry
+            // the STRUCTURE vector forward too (it must survive every push so layout stays causally
+            // tracked); only never-seeded layout-only files end up empty.
+            val vv = if (SyncPaths.parseColumn(path) != null) knownVv.ifEmpty { mapOf(self to 1L) } else knownVv
             SyncEntry(meta.rev, localUpdatedAt, base = baseFor(path, content), vv = vv) to null
         } catch (e: RevConflictException) {
             val (remoteContent, remoteMeta) = storage.download(path)
@@ -116,10 +121,8 @@ class SyncEngine(
                     return SyncEntry(remoteMeta.rev, localUpdatedAt, base = content, vv = knownVv) to null
                 }
                 val remoteVv = storage.columnVv(path)
-                // Same no-history rule as pull (see there): a fabricated/absent local clock cannot
-                // prove either side has seen the other's content — merge, never silently adopt.
-                val causal = if (knownRev == null && knownBase == null) Causal.CONCURRENT
-                             else compareVv(knownVv, remoteVv)
+                // No-history merges rather than letting a fabricated/absent clock pick a winner.
+                val causal = causalWithHistory(knownRev != null || knownBase != null, knownVv, remoteVv)
                 when (causal) {
                     Causal.REMOTE_DOMINATES -> {
                         // remote is causally ahead (has seen all local edits): adopt remote, nothing lost.
@@ -153,19 +156,34 @@ class SyncEngine(
                     }
                 }
             }
-            // Manifests / non-columns: existing last-write-wins (unchanged).
-            when (resolveConflict(localUpdatedAt, remoteMeta.serverModified)) {
-                Winner.LOCAL -> {
-                    val meta = storage.upload(path, content, ifMatchRev = null)
-                    SyncEntry(meta.rev, localUpdatedAt, base = baseFor(path, content)) to Winner.LOCAL
-                }
-                Winner.REMOTE -> {
+            // Manifests: resolve a push-time rev race by the SAME causal svv rules as the pull side,
+            // not raw timestamp LWW. LWW here could silently drop a concurrent local structural edit
+            // (e.g. "I cleared my board") whenever the remote's serverModified happened to be later.
+            val localSvv = knownVv
+            val remoteSvv = ManifestVv.readSvv(remoteContent)
+            val join = pointwiseMax(localSvv, remoteSvv)
+            when (causalWithHistory(knownRev != null || knownBase != null, localSvv, remoteSvv)) {
+                Causal.REMOTE_DOMINATES -> {                     // remote layout newer -> adopt, nothing lost
                     writeLocal(path, remoteContent)
-                    SyncEntry(remoteMeta.rev, remoteMeta.serverModified, base = baseFor(path, remoteContent)) to Winner.REMOTE
+                    SyncEntry(remoteMeta.rev, remoteMeta.serverModified, base = baseFor(path, remoteContent), vv = remoteSvv) to null
+                }
+                Causal.LOCAL_DOMINATES -> {                      // local layout newer -> force-upload local
+                    val meta = storage.upload(path, content, ifMatchRev = null)
+                    SyncEntry(meta.rev, localUpdatedAt, base = baseFor(path, content), vv = join) to null
+                }
+                Causal.CONCURRENT, Causal.EQUAL -> {             // neither newer -> merge layouts, keep both
+                    val merged = ManifestMerge.mergeLayouts(local = content, remote = remoteContent)
+                    writeLocal(path, merged)
+                    val meta = storage.upload(path, merged, ifMatchRev = null)
+                    SyncEntry(meta.rev, localUpdatedAt, base = baseFor(path, merged), vv = join) to null
                 }
             }
         }
     }
+
+    /** Every remote file path under [root] — used by the destructive "sync TO" mirror to find files
+     *  that exist remotely but not locally (and must be deleted). Empty when the folder doesn't exist. */
+    suspend fun remotePaths(root: String): Set<String> = storage.list(root).files.map { it.path }.toSet()
 
     /** Delete a remote file and drop its bookkeeping. */
     suspend fun deleteRemote(path: String, state: SyncStateDoc): SyncStateDoc {
@@ -179,6 +197,13 @@ class SyncEngine(
         var s = state
         paths.forEach { s = s.without(it) }
         s
+    }
+
+    /** Delete many remote files concurrently WITHOUT touching local bookkeeping — for column deletions
+     *  the caller records as tombstones (which must survive, unlike the dropped entries above). */
+    suspend fun deleteRemoteFiles(paths: List<String>): Unit = coroutineScope {
+        paths.map { async { storage.delete(it) } }.awaitAll()
+        Unit
     }
 
     /**
@@ -220,9 +245,17 @@ class SyncEngine(
                 localContent == null -> {                                   // we don't have it -> import
                     val f = fetched.getValue(meta.path)
                     val m = f.meta
-                    writeLocal(m.path, f.content)
-                    next = next.with(m.path, SyncEntry(m.rev, m.serverModified, base = baseFor(m.path, f.content), vv = f.vv))
-                    changed += m.path
+                    // Don't resurrect a column we tombstoned: if its remote file lingers (the delete
+                    // didn't reach this device's remote yet) and the remote carries no edit our delete
+                    // never saw, honor the deletion — skip the import and remove the stale remote file.
+                    val tomb = if (SyncPaths.parseColumn(meta.path) != null) known?.takeIf { it.tombstone }?.vv else null
+                    if (tomb != null && !hasEditBeyond(f.vv, tomb)) {
+                        runCatching { storage.delete(m.path) }
+                    } else {
+                        writeLocal(m.path, f.content)
+                        next = next.with(m.path, SyncEntry(m.rev, m.serverModified, base = baseFor(m.path, f.content), vv = f.vv))
+                        changed += m.path
+                    }
                 }
                 known != null && known.rev == meta.rev -> { /* up to date */ }
                 else -> {                                                   // divergence (incl. first connect)
@@ -241,14 +274,9 @@ class SyncEngine(
                             next = next.with(m.path, SyncEntry(m.rev, known?.localUpdatedAt ?: m.serverModified,
                                 base = remoteContent, vv = pointwiseMax(localVv, remoteVv)))
                         } else {
-                        // With NO local sync history for this file (no rev, no merge base — fresh
-                        // connect, or content created while sync was off) the vv comparison proves
-                        // nothing about the local CONTENT: the remote may carry THIS device's clock
-                        // from a previous sync life (DeviceId survives disconnect) and look
-                        // "causally ahead" of a brand-new board. No history -> nothing silently
-                        // wins -> CONCURRENT (a null-base merge unions both sides).
-                        val causal = if (known?.rev == null && known?.base == null) Causal.CONCURRENT
-                                     else compareVv(localVv, remoteVv)
+                        // No-history (fresh connect / content created while sync was off) unions both
+                        // sides; otherwise compare clocks. See [causalWithHistory].
+                        val causal = causalWithHistory(known?.rev != null || known?.base != null, localVv, remoteVv)
                         when (causal) {
                             Causal.REMOTE_DOMINATES -> {                     // remote causally ahead -> adopt
                                 writeLocal(m.path, remoteContent)
@@ -280,24 +308,52 @@ class SyncEngine(
                             }
                         }
                         }
-                    } else if (SyncPaths.isManifest(meta.path) && known == null) {
-                        // A manifest with NO sync history (first connect): LWW would default local
-                        // to 0.0, so a stale remote always won and silently orphaned every
-                        // local-only column. Union instead — remote shape, local-only content
-                        // columns appended — and push the union back up.
-                        val merged = ManifestMerge.union(local = localContent, remote = remoteContent)
-                        writeLocal(m.path, merged)
-                        next = next.with(m.path, SyncEntry(m.rev, m.serverModified))
-                        changed += m.path
-                        if (merged != remoteContent) keptLocal += m.path
-                    } else {
-                        // Manifests / non-columns: existing last-write-wins (they carry vectors but aren't merged).
-                        when (resolveConflict(known?.localUpdatedAt ?: 0.0, m.serverModified)) {
-                            Winner.LOCAL -> keptLocal += m.path
-                            Winner.REMOTE -> {
-                                writeLocal(m.path, remoteContent)
-                                next = next.with(m.path, SyncEntry(m.rev, m.serverModified, base = baseFor(m.path, remoteContent)))
-                                changed += m.path
+                    } else if (SyncPaths.isManifest(meta.path)) {
+                        // Layout IS content: resolve the manifest by the SAME causal rules as a column,
+                        // using the STRUCTURE version vector (svv). Newer layout wins; concurrent (or
+                        // no-history, where a stale remote may carry this device's old clock) merges so
+                        // neither side's columns are dropped or left unplaced.
+                        val localSvv = known?.vv ?: emptyMap()
+                        val remoteSvv = ManifestVv.readSvv(remoteContent)
+                        val join = pointwiseMax(localSvv, remoteSvv)
+                        // Every branch learns the other side's tombstones (the `deleted` set rides in the
+                        // manifest) so an adopted/kept deletion keeps propagating and the import gate can
+                        // suppress a lingering remote file — not just the concurrent-merge case.
+                        val canvas = SyncPaths.parseManifest(m.path, root)
+                        if (sameStructure(localContent, remoteContent)) {
+                            // Only the rev/svv moved — converge without rewriting (avoids churn).
+                            if (canvas != null) next = learnRemoteTombstones(remoteContent, canvas, root, columnsOf(localContent), next)
+                            next = next.with(m.path, SyncEntry(m.rev, known?.localUpdatedAt ?: m.serverModified, base = remoteContent, vv = join))
+                        } else {
+                            // No-history means the svv can't be trusted -> merge. See [causalWithHistory].
+                            val causal = causalWithHistory(known?.rev != null || known?.base != null, localSvv, remoteSvv)
+                            when (causal) {
+                                Causal.REMOTE_DOMINATES -> {                    // remote layout newer -> adopt
+                                    writeLocal(m.path, remoteContent)
+                                    if (canvas != null) next = learnRemoteTombstones(remoteContent, canvas, root, columnsOf(remoteContent), next)
+                                    next = next.with(m.path, SyncEntry(m.rev, m.serverModified, base = remoteContent, vv = remoteSvv))
+                                    changed += m.path
+                                }
+                                Causal.LOCAL_DOMINATES -> {                     // local layout newer -> keep + push
+                                    // Adopt the remote rev so the follow-up push overwrites cleanly.
+                                    if (canvas != null) next = learnRemoteTombstones(remoteContent, canvas, root, columnsOf(localContent), next)
+                                    next = next.with(m.path, known!!.copy(rev = m.rev, vv = join))
+                                    keptLocal += m.path
+                                }
+                                Causal.CONCURRENT, Causal.EQUAL -> {            // neither newer -> merge, keep both
+                                    val union = ManifestMerge.mergeLayouts(local = localContent, remote = remoteContent)
+                                    // Fold in tombstones: an additive union alone resurrects a column
+                                    // deleted on the other side. Keep-edit-else-delete decides membership.
+                                    val tr = if (canvas != null) applyTombstones(union, canvas, root, next, remoteContent)
+                                             else TombstoneResult(union, next, emptySet(), emptySet())
+                                    next = tr.next
+                                    tr.dropPaths.forEach { if (readLocal(it) != null) deleteLocal(it) }   // drop deleted columns' local content
+                                    writeLocal(m.path, tr.merged)
+                                    next = next.with(m.path, SyncEntry(m.rev, m.serverModified, base = tr.merged, vv = join))
+                                    changed += m.path
+                                    if (!sameStructure(tr.merged, remoteContent)) keptLocal += m.path
+                                    keptLocal += tr.keptPending   // re-push columns that survived a tombstone via a concurrent edit
+                                }
                             }
                         }
                     }
@@ -324,7 +380,110 @@ class SyncEngine(
         PullResult(next, changed, keptLocal)
     }
 
-    /** Base (merge ancestor) is only meaningful for mergeable column files, never for JSON manifests. */
+    /** Records the last-synced content as a base. For columns it's the 3-way merge ancestor; for
+     *  manifests it's only a "this file HAS sync history" marker — so a pending re-push (rev cleared
+     *  by a restore) is distinguished from a never-synced file (the no-history guard needs both
+     *  rev AND base absent). Layout-only files that never sync stay base-less. */
     private fun baseFor(path: String, content: String): String? =
-        if (SyncPaths.parseColumn(path) != null) content else null
+        if (SyncPaths.parseColumn(path) != null || SyncPaths.isManifest(path)) content else null
+
+    /**
+     * Causal class of local vs remote vectors, with the no-history override: a file we've never
+     * synced (no rev AND no base) can't trust its vv — a stale remote may carry THIS device's old
+     * clock from a previous sync life (DeviceId survives disconnect) and look "causally ahead" of
+     * brand-new local content — so it is treated as CONCURRENT (merge; nothing silently wins) rather
+     * than compared. Shared by the column push, the column pull, and the manifest (svv) pull so the
+     * rule can never drift between them.
+     */
+    private fun causalWithHistory(hasHistory: Boolean, local: VersionVector, remote: VersionVector): Causal =
+        if (hasHistory) compareVv(local, remote) else Causal.CONCURRENT
+
+    /** True when [v] carries an edit the deletion-clock [t] never saw (a component where v > t) —
+     *  i.e. the column was edited concurrently with (or after) the delete, so the delete must NOT win. */
+    private fun hasEditBeyond(v: VersionVector, t: VersionVector): Boolean =
+        (v.keys + t.keys).any { (v[it] ?: 0L) > (t[it] ?: 0L) }
+
+    /** Outcome of folding tombstones into a merged manifest: the corrected structure, the updated
+     *  state (tombstones learned/kept, survivors marked pending), the column files to delete locally,
+     *  and the columns kept despite a tombstone (a concurrent edit) that must be re-pushed. */
+    private class TombstoneResult(
+        val merged: String, val next: SyncStateDoc,
+        val dropPaths: Set<String>, val keptPending: Set<String>,
+    )
+
+    /**
+     * Keep-edit-else-delete. Fold union(local, remote) tombstones into [merged] (the additive layout
+     * union): a tombstoned column is DROPPED unless its content vv carries an edit the deletion never
+     * saw, in which case it's KEPT (and its tombstone cleared). Learns remote tombstones into state so
+     * they propagate; survivors are marked pending so the deletion sweep spares them and they re-push.
+     */
+    private fun applyTombstones(merged: String, canvas: CanvasName, root: String, state: SyncStateDoc, remoteContent: String): TombstoneResult {
+        val doc = runCatching { CanvasDoc.decode(merged) }.getOrNull()
+            ?: return TombstoneResult(merged, state, emptySet(), emptySet())
+        val localTomb = state.entries.mapNotNull { (p, e) ->
+            if (!e.tombstone) return@mapNotNull null
+            SyncPaths.parseColumn(p, root)?.takeIf { it.first.normalized() == canvas.normalized() }?.let { it.second to e.vv }
+        }.toMap()
+        val remoteTomb = ManifestVv.readDeleted(remoteContent)
+        val union = (localTomb.keys + remoteTomb.keys)
+            .associateWith { pointwiseMax(localTomb[it] ?: emptyMap(), remoteTomb[it] ?: emptyMap()) }
+        if (union.isEmpty()) return TombstoneResult(merged, state, emptySet(), emptySet())
+        val remoteColVvs = ManifestVv.read(remoteContent, root, canvas)
+        var s = state
+        val drop = mutableSetOf<ColumnId>()
+        val dropPaths = mutableSetOf<String>()
+        val keptPending = mutableSetOf<String>()
+        for ((id, t) in union) {
+            val cp = SyncPaths.columnPath(root, canvas, id)
+            val v = pointwiseMax(s.entries[cp]?.takeIf { !it.tombstone }?.vv ?: emptyMap(), remoteColVvs[cp] ?: emptyMap())
+            if (id in doc.columns && hasEditBeyond(v, t)) {
+                // Concurrent edit wins: keep the column, clear its tombstone, mark it pending so the
+                // remote-deletion sweep spares it and the two-way push re-uploads it.
+                keptPending += cp
+                s = s.with(cp, (s.entries[cp] ?: SyncEntry(rev = null, localUpdatedAt = 0.0)).copy(rev = null, tombstone = false, vv = v))
+            } else {
+                // Deletion stands: learn/keep the tombstone (so it propagates), drop the column.
+                if (id in doc.columns) { drop += id; dropPaths += cp }
+                s = s.with(cp, SyncEntry(rev = null, localUpdatedAt = s.entries[cp]?.localUpdatedAt ?: 0.0, vv = t, tombstone = true))
+            }
+        }
+        if (drop.isEmpty()) return TombstoneResult(merged, s, emptySet(), keptPending)
+        val keptColumns = doc.columns.filterNot { it in drop }
+        val keptLayouts = doc.layouts.filter { it.columnId !in drop }
+            .map { spec -> spec.copy(contains = spec.contains.filterNot { it in drop }) }
+        val newDoc = CanvasDoc(doc.name, doc.parentName, keptColumns, keptLayouts).encode()
+        return TombstoneResult(newDoc, s, dropPaths, keptPending)
+    }
+
+    /** The column ids of [content], or empty if it can't be decoded. */
+    private fun columnsOf(content: String): Set<ColumnId> =
+        runCatching { CanvasDoc.decode(content).columns.toSet() }.getOrNull() ?: emptySet()
+
+    /**
+     * Record [remoteContent]'s tombstones into [state] for columns the resolved structure does NOT keep
+     * ([liveColumns]) — so a deletion this device adopts/keeps from the manifest keeps propagating and
+     * the import gate can suppress a lingering remote file. A column the resolved structure KEEPS is
+     * never tombstoned (the dominant side deliberately kept it). Pointwise-max with any existing local
+     * tombstone. Used by the non-concurrent branches; the concurrent branch learns via [applyTombstones].
+     */
+    private fun learnRemoteTombstones(remoteContent: String, canvas: CanvasName, root: String, liveColumns: Set<ColumnId>, state: SyncStateDoc): SyncStateDoc {
+        val remoteTomb = ManifestVv.readDeleted(remoteContent)
+        if (remoteTomb.isEmpty()) return state
+        var s = state
+        for ((id, t) in remoteTomb) {
+            if (id in liveColumns) continue
+            val cp = SyncPaths.columnPath(root, canvas, id)
+            val prior = s.entries[cp]?.takeIf { it.tombstone }?.vv ?: emptyMap()
+            s = s.with(cp, SyncEntry(rev = null, localUpdatedAt = s.entries[cp]?.localUpdatedAt ?: 0.0,
+                vv = pointwiseMax(prior, t), tombstone = true))
+        }
+        return s
+    }
+
+    /** Two manifests describe the same board STRUCTURE (columns + layout), ignoring sync vectors. */
+    private fun sameStructure(a: String, b: String): Boolean {
+        val da = runCatching { CanvasDoc.decode(a) }.getOrNull() ?: return false
+        val db = runCatching { CanvasDoc.decode(b) }.getOrNull() ?: return false
+        return da.columns == db.columns && da.layouts == db.layouts
+    }
 }

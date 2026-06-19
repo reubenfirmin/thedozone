@@ -33,7 +33,7 @@ class CardStyleHoistTest {
     }
 
     private fun renderColumn(markdown: String) {
-        val cards = MarkdownService.fromMd(markdown, ColumnId(1))
+        val cards = MarkdownService.fromMd(markdown, ColumnId("1"))
         addToBody {
             div {
                 with(CardRenderer) {

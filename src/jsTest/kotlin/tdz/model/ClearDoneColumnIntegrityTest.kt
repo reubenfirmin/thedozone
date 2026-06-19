@@ -20,7 +20,7 @@ class ClearDoneColumnIntegrityTest {
         val canvas = CanvasName(name)
         val model = Model(canvas)
         model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))
-        model.updateColumn(canvas, ColumnId(1), md)
+        model.updateColumn(canvas, model.getCanvas(canvas)!!.firstNonLayout(), md)
         return model to canvas
     }
 
@@ -33,7 +33,7 @@ class ClearDoneColumnIntegrityTest {
 
         model.clearDone(canvas)
 
-        val raw = model.getCanvasColumnRaw(canvas, ColumnId(1)) ?: ""
+        val raw = model.getCanvasColumnRaw(canvas, model.getCanvas(canvas)!!.firstNonLayout()) ?: ""
         listOf("keep 1", "keep 2", "keep 3", "keep 4").forEach {
             assertTrue(raw.contains(it), "unchecked '$it' must survive Clear Done; column now: <<$raw>>")
         }
@@ -50,7 +50,7 @@ class ClearDoneColumnIntegrityTest {
         model.clearDone(canvas)
         model.clearDone(canvas)   // second pass must be a clean no-op
 
-        val raw = model.getCanvasColumnRaw(canvas, ColumnId(1)) ?: ""
+        val raw = model.getCanvasColumnRaw(canvas, model.getCanvas(canvas)!!.firstNonLayout()) ?: ""
         assertTrue(raw.contains("keep a"), "column now: <<$raw>>")
         assertTrue(raw.contains("keep b"), "column now: <<$raw>>")
         assertFalse(raw.contains("done"))

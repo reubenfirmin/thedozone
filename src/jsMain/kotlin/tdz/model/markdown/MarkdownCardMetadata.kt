@@ -20,10 +20,11 @@ object MarkdownCardMetadata {
     }
 
     // The width group (second) is vestigial; kept because stored files carry it (see MarkdownWriter).
-    private fun metadataMarker(line: String): Pair<Int, Int>? {
+    // The column id (first) is an opaque string; the width stays numeric.
+    private fun metadataMarker(line: String): Pair<String, Int>? {
         val metadataMatch = metadataLine.matchEntire(line)
         return if (metadataMatch != null) {
-            metadataMatch.groupValues[1].toInt() to metadataMatch.groupValues[2].toInt()
+            metadataMatch.groupValues[1] to metadataMatch.groupValues[2].toInt()
         } else {
             null
         }

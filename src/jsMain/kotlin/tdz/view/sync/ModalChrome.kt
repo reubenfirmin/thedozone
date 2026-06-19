@@ -1,6 +1,7 @@
 package tdz.view.sync
 
 import kotlinx.css.*
+import kotlinx.css.properties.*
 import kotlinx.html.FlowContent
 import kotlinx.html.TagConsumer
 import kotlinx.html.div
@@ -24,6 +25,9 @@ import zoned.framework.interop.css
 internal fun TagConsumer<HTMLElement>.syncModalChrome(
     scrimRef: Ref<HTMLElement>,
     onBackdropClick: () -> Unit,
+    minWidth: LinearDimension = 360.px,
+    maxWidth: LinearDimension? = null,
+    pad: LinearDimension = 20.px,
     content: FlowContent.() -> Unit,
 ) {
     div {   // scrim
@@ -40,12 +44,14 @@ internal fun TagConsumer<HTMLElement>.syncModalChrome(
         onClick { e -> if (e.target == scrimRef.element) onBackdropClick() }
         div {   // dialog
             css {
-                minWidth = 360.px
-                padding = Padding(20.px)
+                this.minWidth = minWidth
+                maxWidth?.let { this.maxWidth = it }
+                padding = Padding(pad)
                 backgroundColor = ThemeManager.current.menuBg
                 color = ThemeManager.current.menuFg
                 border = Border(1.px, BorderStyle.solid, ThemeManager.current.menuBorder)
-                borderRadius = 6.px
+                borderRadius = 8.px
+                boxShadow = BoxShadows().apply { this += BoxShadow(Color("rgba(0,0,0,0.35)"), 0.px, 12.px, 36.px) }
             }
             content()
         }

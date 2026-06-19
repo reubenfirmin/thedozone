@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
 class ClearDoneTest {
 
     private fun clearedMd(md: String): String =
-        MarkdownService.toMd(MarkdownService.fromMd(md, ColumnId(0)).map { it.withoutDoneItems() }, withMetadata = false)
+        MarkdownService.toMd(MarkdownService.fromMd(md, ColumnId("0")).map { it.withoutDoneItems() }, withMetadata = false)
 
     @Test
     fun removesCompletedItemsAndKeepsUnfinishedOnes() {
@@ -36,7 +36,7 @@ class ClearDoneTest {
     @Test
     fun isStructurallyUnchangedWhenNothingIsDone() {
         // Model.clearDone relies on equality to decide whether a column changed.
-        val card = MarkdownService.fromMd("* a\n* b\n", ColumnId(0)).first()
+        val card = MarkdownService.fromMd("* a\n* b\n", ColumnId("0")).first()
         assertEquals(card, card.withoutDoneItems(), "no done items must yield an equal card")
     }
 }

@@ -28,7 +28,7 @@ object DomIds {
 
     /** The columnId encoded in a column element id, or null if [elementId] isn't one. */
     fun columnId(elementId: String): ColumnId? =
-        elementId.takeIf { it.startsWith(COLUMN) }?.removePrefix(COLUMN)?.toIntOrNull()?.let(::ColumnId)
+        elementId.takeIf { it.startsWith(COLUMN) }?.removePrefix(COLUMN)?.takeIf { it.isNotEmpty() }?.let(::ColumnId)
 
     /** Positional card id: the card's column and its index within it (pre-render order). */
     fun card(ref: CardRef) = "$CARD${ref.columnId}-${ref.index}"
@@ -37,8 +37,9 @@ object DomIds {
     fun cardId(elementId: String): CardRef? {
         if (!isCard(elementId)) return null
         val parts = elementId.removePrefix(CARD).split("-")
+        // Column ids are `[A-Za-z0-9]` (no `-`), so a card id splits cleanly into exactly [id, index].
         if (parts.size != 2) return null
-        val column = parts[0].toIntOrNull() ?: return null
+        val column = parts[0].takeIf { it.isNotEmpty() } ?: return null
         val index = parts[1].toIntOrNull() ?: return null
         return CardRef(ColumnId(column), index)
     }

@@ -26,8 +26,8 @@ class CanvasColumnsMobileTest {
         val bus = EventBus<Event>()
         val canvas = twoColumnCanvas()
         val columns = CanvasColumns(canvas, bus, Model(CanvasName("_mobile-test"))) { emptyList() }
-        // column-0 is the root layout; column-1 is its first content child.
-        assertEquals(ColumnId(1), columns.firstLeafColumn())
+        // The root layout (ColumnId.ROOT) is skipped; its first content child is the first leaf.
+        assertEquals(canvas.firstNonLayout(), columns.firstLeafColumn())
     }
 
     @Test
@@ -35,6 +35,7 @@ class CanvasColumnsMobileTest {
         val bus = EventBus<Event>()
         val model = Model(CanvasName("_mobile-test"))
         val canvas = twoColumnCanvas()
+        val leaves = canvas.columns.filterNot { canvas.layoutMap.containsKey(it) }
         // Force mobile via the injected breakpoint seam — no dependency on the real viewport width.
         val columns = CanvasColumns(canvas, bus, model, isMobile = { true }) { emptyList() }
         addToBody {
@@ -44,9 +45,9 @@ class CanvasColumnsMobileTest {
             }
         }
         try {
-            assertNotNull(getHtmlElement("column-1"), "the first content column is rendered")
-            assertNull(getHtmlElement("column-0"), "the layout grid is skipped on mobile")
-            assertNull(getHtmlElement("column-2"), "other columns are not in the DOM on mobile")
+            assertNotNull(getHtmlElement(DomIds.column(leaves[0])), "the first content column is rendered")
+            assertNull(getHtmlElement(DomIds.column(ColumnId.ROOT)), "the layout grid is skipped on mobile")
+            assertNull(getHtmlElement(DomIds.column(leaves[1])), "other columns are not in the DOM on mobile")
         } finally {
             getHtmlElement("mobile-host")?.remove()
         }
@@ -57,6 +58,7 @@ class CanvasColumnsMobileTest {
         val bus = EventBus<Event>()
         val model = Model(CanvasName("_mobile-test"))
         val canvas = twoColumnCanvas()
+        val leaves = canvas.columns.filterNot { canvas.layoutMap.containsKey(it) }
         val columns = CanvasColumns(canvas, bus, model, isMobile = { false }) { emptyList() }
         addToBody {
             div {
@@ -65,9 +67,9 @@ class CanvasColumnsMobileTest {
             }
         }
         try {
-            assertNotNull(getHtmlElement("column-0"), "layout grid present on desktop")
-            assertNotNull(getHtmlElement("column-1"))
-            assertNotNull(getHtmlElement("column-2"), "all columns present on desktop")
+            assertNotNull(getHtmlElement(DomIds.column(ColumnId.ROOT)), "layout grid present on desktop")
+            assertNotNull(getHtmlElement(DomIds.column(leaves[0])))
+            assertNotNull(getHtmlElement(DomIds.column(leaves[1])), "all columns present on desktop")
         } finally {
             getHtmlElement("desktop-host")?.remove()
         }

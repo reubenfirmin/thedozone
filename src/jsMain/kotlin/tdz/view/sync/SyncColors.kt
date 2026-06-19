@@ -31,4 +31,15 @@ object SyncColors {
     val inputBorder get() = ThemeManager.current.menuBorder
     val badgeBg get() = ThemeManager.current.menuBg
     val badgeFg get() = ThemeManager.current.menuFg
+
+    // Recessed panel for grouping secondary info (status banner, account/folder block).
+    val panelBg get() = ThemeManager.current.appBg
+
+    // Status dot colors. ok/busy reuse theme tokens (semantic: done = success, accent = in-flight);
+    // attention/error have no theme token, so warm amber / red literals read correctly on every theme.
+    val statusOk get() = ThemeManager.current.checkDone
+    val statusBusy get() = ThemeManager.current.link
+    val statusAttention get() = Color("#d9a441")
+    val statusError get() = Color("#e5704b")
+    val statusIdle get() = ThemeManager.current.iconFaint
 }

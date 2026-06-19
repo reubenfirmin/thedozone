@@ -28,6 +28,9 @@ import web.events.EventType
 import web.events.addEventListener
 import web.window.window
 
+private const val DROPBOX_ROOT_MSG =
+    "Set a sync folder — Dropbox can't sync to its app-folder root."
+
 /**
  * Wires the Dropbox sync subsystem to the [EventBus] in parallel with [tdz.controller.Controller].
  * Owns the [SyncEngine] lifecycle (rebuilt on connect/disconnect), debounced pushes, and the
@@ -84,6 +87,7 @@ class SyncController(
             return
         }
         if (cfg.provider == SyncProvider.LOCAL_FOLDER) { startLocalFolder(); return }
+        if (dropboxRootForbidden(cfg.provider, cfg.rootFolder)) { failRootFolder(); return }
         val storage = storageOverride ?: SyncProviders.storage(cfg)
         if (storage == null) {
             SyncStateStore.set(SyncState.NotConfigured, eventBus)
@@ -176,7 +180,42 @@ class SyncController(
     private fun manifestContent(name: CanvasName, s: SyncStateDoc): String? {
         val canvas = model.getCanvas(name) ?: return null
         val doc = CanvasDoc(canvas.name, canvas.parent, canvas.columns, canvas.layouts).encode()
-        return ManifestVv.write(doc, root(), name, s.entries.mapValues { it.value.vv })
+        // The manifest's OWN sync entry carries the STRUCTURE version vector (svv); columns carry theirs.
+        val svv = s.entries[SyncPaths.manifestPath(root(), name)]?.vv ?: emptyMap()
+        // Live column vectors go in `vv`; tombstoned columns go in `deleted` (vv at deletion). Both are
+        // scoped to THIS canvas inside ManifestVv.write via the root-aware path parse.
+        val byPath = s.entries.filterValues { !it.tombstone }.mapValues { it.value.vv }
+        val deleted = s.entries.mapNotNull { (p, e) ->
+            if (!e.tombstone) return@mapNotNull null
+            val parsed = SyncPaths.parseColumn(p, root()) ?: return@mapNotNull null
+            if (parsed.first.normalized() != name.normalized()) return@mapNotNull null
+            parsed.second to e.vv
+        }.toMap()
+        return ManifestVv.write(doc, root(), name, byPath, svv, deleted)
+    }
+
+    /** Max tombstones kept per canvas. Tombstones are tiny and opaque ids are NEVER reused, so a
+     *  dropped tombstone can only resurrect a column if a device was offline across more than this many
+     *  deletions on one board — negligible. This is a growth bound, not a causal GC (a fully causal GC
+     *  needs per-device delete-acknowledgement we don't yet track). */
+    private val tombstoneCap = 500
+
+    /**
+     * Prune the oldest tombstones (by [SyncEntry.localUpdatedAt]) beyond [tombstoneCap] PER CANVAS, so
+     * the manifest's `deleted` set and the local state can't grow without bound. Live entries are never
+     * touched.
+     */
+    private fun prunedTombstones(s: SyncStateDoc): SyncStateDoc {
+        val tombstones = s.entries.filter { it.value.tombstone }
+        if (tombstones.size <= tombstoneCap) return s
+        val byCanvas = tombstones.entries.groupBy { SyncPaths.parseColumn(it.key, root())?.first?.normalized() }
+        val drop = byCanvas.values.flatMap { group ->
+            group.sortedByDescending { it.value.localUpdatedAt }.drop(tombstoneCap)
+        }.map { it.key }
+        if (drop.isEmpty()) return s
+        var out = s
+        drop.forEach { out = out.without(it) }
+        return out
     }
 
     // ---- push side ----
@@ -223,7 +262,9 @@ class SyncController(
             val manifestPath = SyncPaths.manifestPath(root(), canvasName)
             runCatching {
                 manifestContent(canvasName, state())?.let { mc ->
-                    saveState(eng.push(manifestPath, mc, now, state()).first)
+                    // Fresh timestamp: the captured `now` is up to pushDebounceMs+ stale by the time
+                    // this runs, which would understate recency in any timestamp-based comparison.
+                    saveState(eng.push(manifestPath, mc, Date.now(), state()).first)
                 }
             }.onFailure { t ->
                 console.warn("[sync] manifest vv push failed; marking pending for retry: ${t.message}")
@@ -243,9 +284,14 @@ class SyncController(
         // never runs (tab close, crash, offline), the next reconcile's pending sweep retries it —
         // a structural change can be delayed but never silently lost.
         val now = Date.now()
+        val self = DeviceId.get()
         val prev = state().entries[manifestPath]
+        // Bump the STRUCTURE version vector: a layout/column-set change is a real edit, so it must be
+        // causally newer than the remote — that's how "I cleared/changed my board while connected"
+        // propagates and wins, instead of being treated like a never-edited board.
         saveState(state().with(manifestPath,
-            (prev ?: SyncEntry(rev = null, localUpdatedAt = now)).copy(rev = null, localUpdatedAt = now)))
+            (prev ?: SyncEntry(rev = null, localUpdatedAt = now))
+                .copy(rev = null, localUpdatedAt = now, vv = bump(prev?.vv ?: emptyMap(), self))))
         // Already marked pending above — the post-reconnect/online reconcile retries it.
         if (pushesBlocked()) return
         // Debounced per canvas: a burst of structural events (split + delete + import) coalesces
@@ -254,18 +300,25 @@ class SyncController(
             val canvas = model.getCanvas(canvasName) ?: return@debouncePush
             SyncStateStore.set(SyncState.Syncing, eventBus)
             var s = state()
-            val manifest = manifestContent(canvasName, s) ?: return@debouncePush
-            s = eng.push(manifestPath, manifest, Date.now(), s).first
-            // reconcile column files: delete THIS canvas's orphan columns (not in canvas.columns).
-            // Scope by parsing each key back to its board and matching canvasName — a prefix match
-            // (startsWith folder/) would ALSO sweep DESCENDANT boards' columns, since a nested board
-            // a/b stores at <folder-of-a>/b/col-*.md, deleting children's remote content.
+            // Orphan columns (tracked under THIS canvas, no longer live, not already tombstoned) are
+            // DELETIONS. Scope by parsing each key back to its board and matching canvasName — a prefix
+            // match (startsWith folder/) would ALSO sweep DESCENDANT boards' columns (a nested board
+            // a/b stores at <folder-of-a>/b/col-*.md). Tombstone them (keeping their content vv at
+            // death) BEFORE building the manifest, so the manifest carries the `deleted` set and other
+            // devices honor the deletion instead of resurrecting the column.
             val live = canvas.columns.map { SyncPaths.columnPath(root(), canvasName, it) }.toSet()
-            val orphans = s.entries.keys.filter { key ->
-                val parsed = SyncPaths.parseColumn(key, root())
-                parsed != null && parsed.first.normalized() == canvasName.normalized() && key !in live
+            val orphans = s.entries.filter { (key, e) ->
+                !e.tombstone && SyncPaths.parseColumn(key, root())
+                    ?.let { it.first.normalized() == canvasName.normalized() && key !in live } == true
+            }.keys.toList()
+            val now2 = Date.now()
+            orphans.forEach { p ->
+                s = s.with(p, SyncEntry(rev = null, localUpdatedAt = now2, vv = s.entries[p]?.vv ?: emptyMap(), tombstone = true))
             }
-            if (orphans.isNotEmpty()) s = eng.deleteRemoteBatch(orphans, s)
+            val manifest = manifestContent(canvasName, s) ?: return@debouncePush
+            s = eng.push(manifestPath, manifest, now2, s).first
+            // Delete the remote files but KEEP the tombstone entries (deleteRemoteBatch would drop them).
+            if (orphans.isNotEmpty()) eng.deleteRemoteFiles(orphans)
             saveState(s)
             SyncStateStore.set(SyncState.Synced, eventBus)
         }
@@ -316,6 +369,7 @@ class SyncController(
             SyncStateStore.set(SyncState.Reconciling, eventBus)
             runCatching {
                 tdz.model.localstorage.flushPendingWrites()   // buffered edits must be on disk before the pull reads local
+                saveState(prunedTombstones(state()))   // bound tombstone growth (see [prunedTombstones])
                 // Local deletions must STICK: anything still tracked in state but gone locally was
                 // deleted here, and the pull below would otherwise RE-IMPORT it. This covers THREE
                 // cases — a column dropped from its canvas, AND (for a deleted board) both its
@@ -325,17 +379,44 @@ class SyncController(
                 // only in OUR state if we synced it, so a now-missing canvas is a real local
                 // deletion to propagate, not a remote-only board we never pulled. Sweep before the
                 // pull; a failure aborts the reconcile (better no sync than a resurrection).
-                val orphans = state().entries.keys.filter { p ->
+                val s0 = state()
+                val orphans = s0.entries.filter { (p, e) ->
+                    if (e.tombstone) return@filter false   // already a tombstone — nothing more to do
                     val col = SyncPaths.parseColumn(p, root())
                     when {
                         col != null -> model.getCanvas(col.first)?.let { col.second !in it.columns } ?: true
                         SyncPaths.isManifest(p) -> manifestCanvas(p)?.let { model.getCanvas(it) == null } ?: false
                         else -> false
                     }
-                }
+                }.keys.toList()
                 if (orphans.isNotEmpty()) {
-                    SyncLog.log("propagating ${orphans.size} locally-deleted file(s) (columns + manifests) to the remote")
-                    saveState(eng.deleteRemoteBatch(orphans, state()))
+                    // A column deleted from a SURVIVING board is tombstoned (its content vv kept) so the
+                    // deletion travels in that board's manifest `deleted` set and a concurrent stale
+                    // re-add can't resurrect it. A whole-board deletion (the board is gone) just drops
+                    // its columns + manifest — there's no surviving manifest to carry tombstones.
+                    val tombstones = orphans.filter {
+                        SyncPaths.parseColumn(it, root())?.let { c -> model.getCanvas(c.first) != null } == true
+                    }
+                    val drops = orphans.filterNot { it in tombstones.toSet() }
+                    SyncLog.log("propagating ${tombstones.size} column tombstone(s) + ${drops.size} drop(s) to the remote")
+                    var s = s0
+                    if (tombstones.isNotEmpty()) {
+                        val t = Date.now(); val self = DeviceId.get()
+                        tombstones.forEach { p ->
+                            s = s.with(p, SyncEntry(rev = null, localUpdatedAt = t, vv = s.entries[p]?.vv ?: emptyMap(), tombstone = true))
+                        }
+                        // Mark each affected board's manifest pending so the two-way push below re-uploads
+                        // it WITH the new tombstones (svv bumped so the deletion wins causally).
+                        tombstones.mapNotNull { SyncPaths.parseColumn(it, root())?.first }.distinct().forEach { cn ->
+                            val mp = SyncPaths.manifestPath(root(), cn)
+                            val prev = s.entries[mp]
+                            s = s.with(mp, (prev ?: SyncEntry(rev = null, localUpdatedAt = t))
+                                .copy(rev = null, localUpdatedAt = t, vv = bump(prev?.vv ?: emptyMap(), self)))
+                        }
+                        eng.deleteRemoteFiles(tombstones)
+                    }
+                    if (drops.isNotEmpty()) s = eng.deleteRemoteBatch(drops, s)
+                    saveState(s)
                 }
                 val tPull = Date.now()
                 val result = eng.pull(root(), state())
@@ -382,6 +463,23 @@ class SyncController(
         SyncStateStore.set(state, eventBus)
     }
 
+    /**
+     * SAFEGUARD: Dropbox's app folder treats a blank sync folder as its ROOT, so syncing there
+     * scatters every board into one shared namespace and lets independent instances/devices collide
+     * (the reported app-root litter + cross-board clobbering). Dropbox therefore MUST have a concrete
+     * folder. Drive is exempt — it always resolves to a concrete OAuth-scoped folder, never a shared
+     * root. [rootFolder] is the raw config value; [SyncPaths.rootPrefix] is empty only when it's blank.
+     */
+    private fun dropboxRootForbidden(provider: SyncProvider, rootFolder: String): Boolean =
+        provider == SyncProvider.DROPBOX && SyncPaths.rootPrefix(rootFolder).isEmpty()
+
+    /** Refuse to sync (no engine, surface the fix) when a cloud root resolves to a forbidden root. */
+    private fun failRootFolder() {
+        engine = null
+        console.error("[sync] $DROPBOX_ROOT_MSG")
+        SyncStateStore.set(SyncState.Error(DROPBOX_ROOT_MSG), eventBus)
+    }
+
     // ---- modal-facing API ----
 
     fun setEnabled(enabled: Boolean) {
@@ -389,10 +487,23 @@ class SyncController(
         start()
     }
 
+    /**
+     * True when this device holds real board content (more than a blank default board) — so the modal
+     * offers the FROM/TO choice. When false, FROM is the obvious default (there's nothing local to
+     * assert), and a single "Connect" suffices.
+     */
+    fun hasLocalContent(): Boolean = allLocalCanvases().any { name ->
+        val canvas = model.getCanvas(name) ?: return@any false
+        canvas.columns.any { col -> !model.getCanvasColumnRaw(name, col).isNullOrBlank() }
+    }
+
     /** Persist the chosen provider before connecting (the modal calls this on selection). */
     fun setProvider(provider: SyncProvider) {
         if (provider == config().provider) return
         model.writeSyncConfig(config().copy(provider = provider))
+        // A different provider's remote shares no history — drop the bookkeeping so connect() treats
+        // it as a genuinely fresh target (no false "has synced before").
+        saveState(SyncStateDoc.EMPTY)
     }
 
     /** Test seam: bypasses the provider's interactive consent popup in suites. */
@@ -401,11 +512,28 @@ class SyncController(
     private suspend fun providerConnect(provider: SyncProvider): ConnectResult =
         connectOverride?.invoke(provider) ?: SyncProviders.connect(provider)
 
-    fun connect() {
+    /**
+     * First-sync direction the user picks when connecting to a folder that already has content:
+     * - [FROM] "the folder is the source of truth": pull + MERGE (causal union; nothing lost). The
+     *   sensible default when this device has nothing (or very little) of its own.
+     * - [TO] "this device is correct": make the remote MIRROR local — force-push every local file and
+     *   delete any remote file not present locally. NO merge.
+     * When the remote is empty the two converge (both just push local up), so the choice is moot.
+     */
+    enum class InitialSyncMode { FROM, TO }
+
+    /**
+     * Connect and run the first sync. [mode] forces a direction (used by tests / an explicit
+     * re-choice); when null, [decideInitialSync] picks: remote empty → TO; a brand-new device (no
+     * content AND no history) → FROM; otherwise it parks in [SyncState.ChoosingDirection] and the
+     * modal asks the user.
+     */
+    fun connect(mode: InitialSyncMode? = null) {
         SyncStateStore.set(SyncState.Connecting, eventBus)
-        // Fresh connect: drop any stale per-path bookkeeping from a prior provider/session so the first
-        // pull cannot mistake previously-tracked paths for remote deletions. initialSync re-establishes
-        // revs by pulling then pushing all local content.
+        // "History" = has this device synced this folder before? The bookkeeping survives a disconnect,
+        // so a non-empty state means yes. Capture it BEFORE wiping (the chosen direction re-establishes
+        // revs from a clean slate).
+        val hadHistory = state().entries.isNotEmpty()
         saveState(SyncStateDoc.EMPTY)
         val provider = config().provider
         scope.launch {
@@ -420,13 +548,51 @@ class SyncController(
                         accountEmail = creds.accountEmail,
                         localFolderName = null,
                     )
+                    // Refuse to connect Dropbox to its app-folder ROOT (blank folder): it scatters
+                    // every board into one shared namespace and collides across instances/devices.
+                    if (dropboxRootForbidden(newCfg.provider, newCfg.rootFolder)) { failRootFolder(); return@onSuccess }
                     model.writeSyncConfig(newCfg)
                     val storage = storageOverride ?: SyncProviders.storage(newCfg)
                     if (storage == null) { fail(Exception("Connect produced no storage")); return@onSuccess }
                     engine = buildEngine(storage)
-                    initialSync()
+                    when (mode) {
+                        InitialSyncMode.FROM -> initialSync()
+                        InitialSyncMode.TO -> initialSyncTo()
+                        null -> decideInitialSync(hadHistory)
+                    }
                 }
                 .onFailure { fail(it) }
+        }
+    }
+
+    /**
+     * After auth: check the remote, then the local device, to pick the first-sync direction.
+     * - remote EMPTY → this is genuinely a first connect; just push local up (TO).
+     * - local has NO content AND NO history → a brand-new device; merge FROM the folder (FROM).
+     * - otherwise both sides have something → park in [SyncState.ChoosingDirection] for the user.
+     */
+    private suspend fun decideInitialSync(hadHistory: Boolean) {
+        val eng = engine ?: return
+        // Buffered edits must be on disk before hasLocalContent()/allLocalCanvases() scan localStorage,
+        // or a board the user just made looks empty and we'd wrongly auto-merge FROM the folder.
+        tdz.model.localstorage.flushPendingWrites()
+        val remotePaths = runCatching { eng.remotePaths(root()) }.getOrElse { fail(it); return }
+        when {
+            // Reuse the listing (and flush) just done — no second remote round-trip on this path.
+            remotePaths.isEmpty() -> initialSyncTo(remotePaths)  // nothing in the folder → push local
+            !hasLocalContent() && !hadHistory -> initialSync()   // brand-new device → merge from folder
+            else -> SyncStateStore.set(SyncState.ChoosingDirection, eventBus)   // conflict → ask
+        }
+    }
+
+    /** The user's answer to [SyncState.ChoosingDirection] (the modal calls this). */
+    fun chooseInitialSync(mode: InitialSyncMode) {
+        if (engine == null) return
+        scope.launch {
+            when (mode) {
+                InitialSyncMode.FROM -> initialSync()
+                InitialSyncMode.TO -> initialSyncTo()
+            }
         }
     }
 
@@ -441,6 +607,7 @@ class SyncController(
         val cfg = config()
         if (cfg.provider == SyncProvider.LOCAL_FOLDER) { reconnectLocalFolder(); return }
         if (!cfg.cloudConnected) { connect(); return }   // never finished a first connect
+        if (dropboxRootForbidden(cfg.provider, cfg.rootFolder)) { failRootFolder(); return }
         SyncStateStore.set(SyncState.Connecting, eventBus)
         scope.launch {
             runCatching { providerConnect(cfg.provider) }
@@ -556,6 +723,53 @@ class SyncController(
     }
 
     /**
+     * "Sync TO": assert the local board is correct and make the remote MIRROR it. Force-push every
+     * local file (overwrite — empty bookkeeping means each upload has no rev to match) and DELETE any
+     * remote file not present locally. NO pull, NO merge — the destructive "my device wins" direction
+     * the user explicitly chooses. With an empty remote it just pushes local (converges with FROM).
+     */
+    private suspend fun initialSyncTo(knownRemotePaths: Set<String>? = null) {
+        val eng = engine ?: return
+        SyncStateStore.set(SyncState.Reconciling, eventBus)
+        reconciling = true
+        val t0 = Date.now()
+        SyncLog.resetCounters()
+        SyncLog.log("initial sync TO started")
+        // [decideInitialSync] already flushed + listed and hands the paths down; only do it ourselves
+        // when called fresh (an explicit re-choice via the modal, or connect(mode = TO)).
+        if (knownRemotePaths == null) tdz.model.localstorage.flushPendingWrites()
+        try {
+            runCatching {
+                saveState(SyncStateDoc.EMPTY)   // no known revs -> every push force-overwrites
+                // The exact set of files the local board should occupy on the remote.
+                val localPaths = buildSet {
+                    for (name in allLocalCanvases()) {
+                        val canvas = model.getCanvas(name) ?: continue
+                        add(SyncPaths.manifestPath(root(), name))
+                        for (col in canvas.columns) if (model.getCanvasColumnRaw(name, col) != null) {
+                            add(SyncPaths.columnPath(root(), name, col))
+                        }
+                    }
+                }
+                // Delete every remote file that isn't part of the local board — the remote must MIRROR.
+                val extras = (knownRemotePaths ?: eng.remotePaths(root())).filter { it !in localPaths }
+                if (extras.isNotEmpty()) {
+                    SyncLog.log("TO: deleting ${extras.size} remote file(s) not present locally")
+                    saveState(eng.deleteRemoteBatch(extras, state()))
+                }
+                saveState(pushAllLocal(eng, state()))   // force-push all local (overwrite)
+                SyncStateStore.set(SyncState.Synced, eventBus)
+                SyncLog.log("initial sync TO finished in ${SyncLog.since(t0)} — ${SyncLog.summary()}")
+            }.onFailure {
+                SyncLog.log("initial sync TO FAILED after ${SyncLog.since(t0)} — ${SyncLog.summary()}: ${it.message}")
+                fail(it)
+            }
+        } finally {
+            reconciling = false
+        }
+    }
+
+    /**
      * Seed every local column that has no version vector yet with this device's component (`{self:1}`).
      * MUST run BEFORE the first pull on connect: an unseeded local column (empty vv) compared against a
      * remote another device already seeded would classify as REMOTE_DOMINATES and silently overwrite the
@@ -568,6 +782,14 @@ class SyncController(
         var seeded = start
         for (name in allLocalCanvases()) {
             val canvas = model.getCanvas(name) ?: continue
+            // Seed the manifest's STRUCTURE vector too, so an already-shaped local board is resolved
+            // by causality on first connect (and a never-edited remote can't silently win).
+            val manifestPath = SyncPaths.manifestPath(root(), name)
+            val me = seeded.entries[manifestPath]
+            if ((me?.vv ?: emptyMap()).isEmpty()) {
+                seeded = seeded.with(manifestPath, (me ?: SyncEntry(rev = null, localUpdatedAt = now))
+                    .copy(vv = mapOf(self to 1L)))
+            }
             for (col in canvas.columns) {
                 if (model.getCanvasColumnRaw(name, col) == null) continue
                 val colPath = SyncPaths.columnPath(root(), name, col)
@@ -637,13 +859,13 @@ class SyncController(
         // Cancel any pending debounced pushes.
         pushTimers.values.forEach { browserWindow.clearTimeout(it) }
         pushTimers.clear()
-        // Drop credentials AND the local sync bookkeeping (revs/timestamps), keeping the folder setting.
-        // Clearing sync state means the next connect re-imports cleanly instead of treating remote files
-        // as deletions.
+        // Drop credentials but KEEP the sync bookkeeping (revs/vectors): disconnect is a PAUSE. The
+        // kept state is this device's "has synced before" HISTORY — connect() reads it to decide
+        // whether a content-less device may auto-merge FROM the folder or must be asked. (connect()
+        // wipes it before the chosen direction runs; switching provider/folder wipes it too.)
         model.writeSyncConfig(cfg.copy(
             enabled = false, refreshToken = null, accountEmail = null, localFolderName = null,
         ))
-        saveState(SyncStateDoc.EMPTY)
         engine = null
         SyncStateStore.set(SyncState.NotConfigured, eventBus)
     }
@@ -730,8 +952,9 @@ class SyncController(
         val self = DeviceId.get()
         var s = state()
         val manifestPath = SyncPaths.manifestPath(root(), name)
-        s = s.with(manifestPath, (s.entries[manifestPath] ?: SyncEntry(rev = null, localUpdatedAt = now))
-            .copy(rev = null, localUpdatedAt = now))
+        val prevManifest = s.entries[manifestPath]
+        s = s.with(manifestPath, (prevManifest ?: SyncEntry(rev = null, localUpdatedAt = now))
+            .copy(rev = null, localUpdatedAt = now, vv = bump(prevManifest?.vv ?: emptyMap(), self)))
         for (col in canvas.columns) {
             if (model.getCanvasColumnRaw(name, col) == null) continue   // layout cols have no content
             val colPath = SyncPaths.columnPath(root(), name, col)

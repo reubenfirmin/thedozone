@@ -34,10 +34,10 @@ class CyclicLayoutRenderTest {
         // Layout 0 contains 1; layout 1 contains 0 → 0→1→0→… an infinite render loop.
         val canvas = Canvas(
             name, null,
-            columns = listOf(ColumnId(0), ColumnId(1)),
+            columns = listOf(ColumnId("0"), ColumnId("1")),
             layouts = listOf(
-                ColumnLayoutSpec(ColumnId(0), Split.VERTICAL, listOf(ColumnId(1))),
-                ColumnLayoutSpec(ColumnId(1), Split.VERTICAL, listOf(ColumnId(0))),
+                ColumnLayoutSpec(ColumnId("0"), Split.VERTICAL, listOf(ColumnId("1"))),
+                ColumnLayoutSpec(ColumnId("1"), Split.VERTICAL, listOf(ColumnId("0"))),
             ),
         )
         model.addCanvas(canvas)

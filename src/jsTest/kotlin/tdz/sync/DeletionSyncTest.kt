@@ -83,7 +83,8 @@ class DeletionSyncTest {
                 "the deleted column must NOT be re-imported from the remote")
             assertTrue(colPath !in storage.files,
                 "the deletion propagates: the remote file is gone, so other devices converge")
-            assertEquals(null, model.readSyncState().entries[colPath], "bookkeeping dropped")
+            assertTrue(model.readSyncState().entries[colPath]?.tombstone == true,
+                "the deletion is recorded as a tombstone (kept, not dropped) so a concurrent re-add can't resurrect it")
         } finally {
             SyncStateStore.set(SyncState.NotConfigured, bus)
         }

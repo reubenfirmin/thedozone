@@ -23,6 +23,23 @@ class DropboxRetryTest {
     }
 
     @Test
+    fun ignorableDeleteErrorsSelfHeal() {
+        // A delete must not wedge the whole reconcile over a path that cannot refer to a real
+        // remote file: not_found (already gone) and malformed_path (a poisoned "//"-prefixed key
+        // left by the root-canvas path bug) are both safe to swallow so deleteRemoteBatch can drop
+        // the bookkeeping and the stale key self-heals.
+        assertTrue(isIgnorableDeleteError("path_lookup/not_found/."), "already gone")
+        assertTrue(isIgnorableDeleteError("path_lookup/malformed_path/."), "poisoned // key")
+        // Real failures (write conflict, auth) MUST still propagate and fail the reconcile.
+        assertFalse(isIgnorableDeleteError("path/conflict/file/."))
+        assertFalse(isIgnorableDeleteError("invalid_access_token/."))
+        // Tightened: a tag must be a WHOLE slash-delimited segment, not a substring of a larger
+        // token — otherwise an unrelated error that merely embeds "not_found" gets swallowed.
+        assertFalse(isIgnorableDeleteError("path_lookup/not_found_in_some_index/."), "substring is not a tag")
+        assertFalse(isIgnorableDeleteError("a_malformed_path_handler_failed/."), "substring is not a tag")
+    }
+
+    @Test
     fun honorsRetryAfterWhenGiven() {
         assertEquals(3000L, writeRetryDelayMs(0, 3.0), "retry_after seconds win over backoff")
         assertEquals(500L, writeRetryDelayMs(99, 0.5))

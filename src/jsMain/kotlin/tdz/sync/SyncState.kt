@@ -8,6 +8,9 @@ import tdz.controller.events.SyncStatusChanged
 sealed interface SyncState {
     object NotConfigured : SyncState
     object Connecting : SyncState
+    /** Authenticated, but BOTH this device and the folder already have content — the user must pick
+     *  the first-sync direction (Sync FROM = merge, Sync TO = replace) before any data moves. */
+    object ChoosingDirection : SyncState
     object Reconciling : SyncState
     object Synced : SyncState
     object Syncing : SyncState

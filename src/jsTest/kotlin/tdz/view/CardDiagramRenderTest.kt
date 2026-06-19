@@ -49,7 +49,7 @@ class CardDiagramRenderTest {
 
     @Test
     fun diagramIsDrawnOntoCanvas(): Promise<Unit> {
-        val card = Card(listOf(CardDiagram("[A] -> [B]")), CardMetadata(ColumnId(0)), 0)
+        val card = Card(listOf(CardDiagram("[A] -> [B]")), CardMetadata(ColumnId("0")), 0)
         addToBody {
             div {
                 with(CardRenderer) {
@@ -70,7 +70,7 @@ class CardDiagramRenderTest {
      */
     @Test
     fun diagramCanvasIsNotMistakenForACard() {
-        val card = Card(listOf(CardDiagram("[A] -> [B]")), CardMetadata(ColumnId(0)), 0)
+        val card = Card(listOf(CardDiagram("[A] -> [B]")), CardMetadata(ColumnId("0")), 0)
         addToBody {
             div {
                 with(CardRenderer) {

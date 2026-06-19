@@ -63,7 +63,7 @@ class CanvasColumns(val canvas: Canvas,
     private val boundaries = mutableMapOf<ColumnId, Boundary>()
     private val columnModes = mutableMapOf<ColumnId, Mode>()
     private val columnContainers = mutableMapOf<ColumnId, ColumnContainer>()
-    private var focusedColumn: ColumnId = canvas.columns.firstOrNull { !canvas.layoutMap.containsKey(it) } ?: canvas.columns.firstOrNull() ?: ColumnId(0)
+    private var focusedColumn: ColumnId = canvas.columns.firstOrNull { !canvas.layoutMap.containsKey(it) } ?: canvas.columns.firstOrNull() ?: ColumnId.ROOT
 
     init {
         // Load persisted modes from localStorage.
@@ -207,7 +207,15 @@ class CanvasColumns(val canvas: Canvas,
                     gridTemplateRows = GridTemplateRows("1fr")
                 }
                 gap = lt.columnGap
+                // minWidth:0 lets a content-heavy cell shrink below its min-content WIDTH (so it
+                // doesn't overlap its neighbour horizontally); minHeight:0 is the block-axis twin —
+                // without it a stacked cell's min-content HEIGHT can shove its sibling row off-screen.
                 minWidth = 0.px
+                minHeight = 0.px
+                // border-box: this div's own border must NOT add to its height:100% (content-box
+                // would push it past the parent track, and the overflow accumulates down a nesting
+                // chain until the bottom row is clipped/displaced out of the viewport).
+                boxSizing = BoxSizing.borderBox
                 border = Border(lt.borderWidth, BorderStyle.valueOf(lt.borderStyle), lt.layoutBorder)   // themed (DOS double-line)
             }
 
@@ -418,6 +426,10 @@ class CanvasColumns(val canvas: Canvas,
             Mode.EDITOR -> overflow = Overflow.hidden
         }
         minWidth = 0.px
+        minHeight = 0.px
+        // border-box: the column's border stays INSIDE its height:100% so it doesn't overflow its
+        // grid track (the same accumulation that would push a stacked sibling row out of view).
+        boxSizing = BoxSizing.borderBox
         border = Border(t.borderWidth, BorderStyle.valueOf(t.borderStyle), t.columnBorder)
         backgroundColor = paletteBg(columnId)
         borderRadius = t.columnRadius

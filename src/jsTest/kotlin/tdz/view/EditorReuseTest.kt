@@ -31,7 +31,7 @@ import kotlin.test.assertTrue
 class EditorReuseTest {
 
     private val canvas = CanvasName("_er-test")
-    private val column = ColumnId(1)
+    private var column = ColumnId("1")   // reassigned to the board's opaque leaf after creation
 
     @AfterTest
     fun cleanup() {
@@ -43,6 +43,7 @@ class EditorReuseTest {
         val bus = EventBus<Event>()
         val model = Model(canvas)
         model.addCanvas(canvasFromTemplate(canvas, null, SINGLE_PANE))
+        column = model.getCanvas(canvas)!!.firstNonLayout()
         model.updateColumn(canvas, column, "# Original\n")
         val spec = model.getCanvas(canvas) ?: error("setup")
         val columns = CanvasColumns(spec, bus, model) { id -> model.cards(canvas, id) }

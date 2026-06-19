@@ -25,7 +25,7 @@ class CardImageBleedTest {
     @AfterTest fun cleanup() { document.body.asDynamic()?.innerHTML = "" }
 
     private fun renderColumn(markdown: String) {
-        val cards = MarkdownService.fromMd(markdown, ColumnId(1))
+        val cards = MarkdownService.fromMd(markdown, ColumnId("1"))
         addToBody { div { with(CardRenderer) { render(CanvasName("test"), cards, EventBus<Event>()) } } }
     }
 
