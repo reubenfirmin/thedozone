@@ -113,6 +113,9 @@ fun main() {
         .removePrefix("?").split("&").any { it == "debug" || it.startsWith("debug=") }
     if (debugEnabled) zoned.framework.Debugger.debugOn()
     tdz.sync.SyncLog.enabled = debugEnabled
+    // ALWAYS printed, debug flag or not: it identifies the bundle actually running in a browser, so
+    // "is the fix deployed?" is answered by looking rather than by guessing at caches and deploys.
+    console.info("[tdz] build ${tdz.sync.SyncLog.BUILD} (add ?debug to the URL for sync logs)")
     App.model.purgeOrphans().let { (purged, orphanContent) ->
         zoned.framework.Debugger.debug("[storage] purged $purged orphaned mode/legacy key(s); " +
             "${orphanContent.size} orphaned content column(s) left for review: $orphanContent")

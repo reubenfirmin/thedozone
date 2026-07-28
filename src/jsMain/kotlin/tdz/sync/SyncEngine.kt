@@ -404,6 +404,11 @@ class SyncEngine(
                         // manifest) so an adopted/kept deletion keeps propagating and the import gate can
                         // suppress a lingering remote file — not just the concurrent-merge case.
                         val canvas = SyncPaths.parseManifest(m.path, root)
+                        SyncLog.log("manifest ${m.path}: canvas=${canvas?.normalized()?.ifEmpty { "<root>" } ?: "UNPARSED"} " +
+                            "history=${known?.rev != null || known?.base != null} placeholder=${m.path in placeholders} " +
+                            "localSvv=$localSvv remoteSvv=$remoteSvv")
+                        SyncLog.log("  local  ${describe(localContent)}")
+                        SyncLog.log("  remote ${describe(remoteContent)}")
                         if (sameStructure(localContent, remoteContent)) {
                             // Only the rev/svv moved — converge without rewriting (avoids churn).
                             if (canvas != null) next = learnRemoteTombstones(remoteContent, canvas, root, columnsOf(localContent), next)
@@ -432,6 +437,7 @@ class SyncEngine(
                                 // an extra pane, so a restored board came back with one column too
                                 // many, laid out the wrong way.
                                 Causal.CONCURRENT, Causal.EQUAL -> if (m.path in placeholders) {
+                                    SyncLog.log("  -> ADOPT REMOTE (local board is an untouched default)")
                                     writeLocal(m.path, remoteContent)
                                     if (canvas != null) next = learnRemoteTombstones(remoteContent, canvas, root, columnsOf(remoteContent), next)
                                     next = next.with(m.path, SyncEntry(m.rev, m.serverModified, base = remoteContent, vv = remoteSvv))
@@ -581,10 +587,28 @@ class SyncEngine(
      * caller's no-history check, this identifies "a brand-new device that has never synced".
      */
     private fun isDefaultPlaceholder(manifest: String, canvas: CanvasName, root: String): Boolean {
-        val doc = runCatching { CanvasDoc.decode(manifest) }.getOrNull() ?: return false
+        val doc = runCatching { CanvasDoc.decode(manifest) }.getOrNull() ?: run {
+            SyncLog.log("placeholder check: local manifest did not decode")
+            return false
+        }
         val layoutIds = doc.layouts.map { it.columnId }.toSet()
         val content = doc.columns.filterNot { it in layoutIds }
-        return content.size <= 1 && content.all { readLocal(SyncPaths.columnPath(root, canvas, it)).isNullOrBlank() }
+        val verdict = content.size <= 1 &&
+            content.all { readLocal(SyncPaths.columnPath(root, canvas, it)).isNullOrBlank() }
+        val sizes = content.joinToString(",") { id ->
+            "$id=" + (readLocal(SyncPaths.columnPath(root, canvas, id))?.let { "${it.length}b" } ?: "absent")
+        }
+        SyncLog.log("placeholder check ${canvas.normalized().ifEmpty { "<root>" }}: " +
+            "contentCols=${content.size} [$sizes] -> $verdict")
+        return verdict
+    }
+
+    /** One-line shape of a manifest for the diagnostic log: its columns and each layout's split. */
+    private fun describe(content: String): String {
+        val d = runCatching { CanvasDoc.decode(content) }.getOrNull() ?: return "<undecodable>"
+        val layoutIds = d.layouts.map { it.columnId }.toSet()
+        return "cols=${d.columns} content=${d.columns.filterNot { it in layoutIds }} " +
+            "layouts=${d.layouts.map { "${it.columnId}:${it.split}:${it.contains}" }}"
     }
 
     /** The column ids of [content], or empty if it can't be decoded. */

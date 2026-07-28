@@ -55,10 +55,17 @@ internal class InitialSync(
         // or a board the user just made looks empty and we'd wrongly auto-merge FROM the folder.
         tdz.model.localstorage.flushPendingWrites()
         val remotePaths = runCatching { eng.remotePaths(root()) }.getOrElse { fail(it); return }
+        val localContent = hasLocalContent()
+        SyncLog.log("connect decision: remoteFiles=${remotePaths.size} hasLocalContent=$localContent " +
+            "hadHistory=$hadHistory -> ${when {
+                remotePaths.isEmpty() -> "TO (remote empty)"
+                !localContent && !hadHistory -> "FROM (brand-new device)"
+                else -> "ASK (both sides have content)"
+            }}")
         when {
             // Reuse the listing (and flush) just done — no second remote round-trip on this path.
             remotePaths.isEmpty() -> runTo(remotePaths)              // nothing in the folder → push local
-            !hasLocalContent() && !hadHistory -> run()               // brand-new device → merge from folder
+            !localContent && !hadHistory -> run()                    // brand-new device → merge from folder
             else -> SyncStateStore.set(SyncState.ChoosingDirection, eventBus)   // conflict → ask
         }
     }
@@ -75,7 +82,7 @@ internal class InitialSync(
         SyncStateStore.set(SyncState.Reconciling, eventBus)
         val t0 = Date.now()
         SyncLog.resetCounters()
-        SyncLog.log("initial sync started")
+        SyncLog.log("initial sync FROM started (build ${SyncLog.BUILD})")
         tdz.model.localstorage.flushPendingWrites()   // buffered edits must be on disk before the sync reads local
         try {
             runCatching {
@@ -114,7 +121,7 @@ internal class InitialSync(
         SyncStateStore.set(SyncState.Reconciling, eventBus)
         val t0 = Date.now()
         SyncLog.resetCounters()
-        SyncLog.log("initial sync TO started")
+        SyncLog.log("initial sync TO started (build ${SyncLog.BUILD})")
         // [decide] already flushed + listed and hands the paths down; only do it ourselves when called
         // fresh (an explicit re-choice via the modal, or connect(mode = TO)).
         if (knownRemotePaths == null) tdz.model.localstorage.flushPendingWrites()
