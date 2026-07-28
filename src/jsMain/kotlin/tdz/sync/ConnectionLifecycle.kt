@@ -52,8 +52,11 @@ internal class ConnectionLifecycle(
     /** Map a thrown sync failure to a UI state and surface it. */
     fun fail(t: Throwable) {
         val state = syncFailureState(t)
-        if (state is SyncState.Error) console.error("[sync] error: ${t.message}")
-        else console.warn("[sync] needs reconnect: ${t.message}")
+        when (state) {
+            is SyncState.Error -> console.error("[sync] error: ${t.message}")
+            SyncState.Offline -> console.warn("[sync] offline, will retry: ${t.message}")
+            else -> console.warn("[sync] needs reconnect: ${t.message}")
+        }
         SyncStateStore.set(state, eventBus)
     }
 

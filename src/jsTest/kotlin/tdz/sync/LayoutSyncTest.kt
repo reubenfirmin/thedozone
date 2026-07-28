@@ -12,6 +12,8 @@ import tdz.model.Canvas
 import tdz.model.CanvasName
 import tdz.model.ColumnId
 import tdz.model.ColumnLayoutSpec
+import tdz.model.LayoutTemplate
+import tdz.model.LayoutTemplates
 import tdz.model.Model
 import tdz.model.Split
 import tdz.model.localstorage.CanvasDoc
@@ -134,6 +136,34 @@ class LayoutSyncTest {
             "the adopted deletion is learned as a tombstone so it keeps propagating")
     }
 
+    /** 1e. A BRAND-NEW device: its board is the untouched default placeholder (SINGLE_PANE, i.e. root
+     *  split HORIZONTAL over one EMPTY column). That is not a layout the user built, so there is
+     *  nothing to protect: the remote board must be adopted WHOLE. Merging it instead imposed the
+     *  placeholder's split direction and left its empty column as an extra pane (the reported bug:
+     *  "one extra column, and they're horizontal, not vertical"). */
+    @Test
+    fun brandNewDeviceAdoptsRemoteLayoutInsteadOfMergingItsEmptyPlaceholder() = runTest {
+        val mp = manifestPath()
+        val placeholder = ColumnId("ph")
+        val remoteCols = listOf(ColumnId("a"), ColumnId("b"), ColumnId("c"))
+        val remoteDoc = CanvasDoc(home, null, listOf(ColumnId.ROOT) + remoteCols,
+            listOf(ColumnLayoutSpec(ColumnId.ROOT, Split.VERTICAL, remoteCols))).encode()
+        val storage = FakeStorage(listOf(RemoteFile(mp, "rR", 100.0) to
+            ManifestVv.write(remoteDoc, root, home, emptyMap(), svv = mapOf("other" to 3L))))
+        // The fresh install's board: root HORIZONTAL over ONE column that has no local content at all.
+        val local = mutableMapOf(mp to CanvasDoc(home, null, listOf(ColumnId.ROOT, placeholder),
+            listOf(ColumnLayoutSpec(ColumnId.ROOT, Split.HORIZONTAL, listOf(placeholder)))).encode())
+
+        engine(storage, local).pull(root, SyncStateDoc.EMPTY)   // no history -> CONCURRENT
+
+        val merged = CanvasDoc.decode(local.getValue(mp))
+        val layoutIds = merged.layouts.map { it.columnId }.toSet()
+        assertEquals(remoteCols, merged.columns.filterNot { it in layoutIds },
+            "the empty placeholder column is NOT carried in as an extra pane")
+        assertEquals(Split.VERTICAL, merged.layouts.first { it.columnId == merged.columns.first() }.split,
+            "the remote board's split direction survives (not the placeholder's HORIZONTAL)")
+    }
+
     /** 2. Remote layout causally newer (the other device changed it) → adopt it. */
     @Test
     fun remoteLayoutNewerWins() = runTest {
@@ -155,6 +185,50 @@ class LayoutSyncTest {
         val result = engine(storage, local).pull(root, state)
         assertEquals(listOf(0, 1, 2).map { ColumnId(it.toString()) }, CanvasDoc.decode(local.getValue(mp)).columns, "kept the local layout")
         assertTrue(result.keptLocalPaths.contains(mp), "local layout pushes up so the remote converges")
+    }
+
+    /** 3b. END-TO-END, the reported bug: a BRAND-NEW computer (untouched default board, never synced)
+     *  connects FROM a folder holding a real board. The board must come back EXACTLY as it was, not
+     *  the placeholder's shape with the remote's columns bolted on. */
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
+    fun brandNewDeviceRestoresTheRemoteBoardExactly(): dynamic = GlobalScope.promise {
+        val name = "_new-device"
+        val canvas = CanvasName(name)
+        val model = Model(canvas)
+        val bus = EventBus<Event>()
+        val r = "/$name"
+        model.writeSyncConfig(SyncConfigDoc(SyncProvider.DROPBOX, enabled = false, rootFolder = r,
+            refreshToken = null, accountEmail = null))
+        model.writeSyncState(SyncStateDoc.EMPTY)
+        // The fresh install's untouched board: SINGLE_PANE, its one column still blank.
+        model.addCanvas(LayoutTemplates.canvasFromTemplate(canvas, null, LayoutTemplate.SINGLE_PANE))
+        // The remote holds the user's real board: three columns, side by side (VERTICAL).
+        val cols = listOf(ColumnId("a"), ColumnId("b"), ColumnId("c"))
+        val remoteDoc = CanvasDoc(canvas, null, listOf(ColumnId.ROOT) + cols,
+            listOf(ColumnLayoutSpec(ColumnId.ROOT, Split.VERTICAL, cols))).encode()
+        val storage = FakeStorage(listOf(
+            RemoteFile(SyncPaths.manifestPath(r, canvas), "rM", 100.0) to
+                ManifestVv.write(remoteDoc, r, canvas, emptyMap(), svv = mapOf("other" to 2L)),
+            RemoteFile(SyncPaths.columnPath(r, canvas, cols[0]), "rA", 100.0) to "# A\n* a\n",
+            RemoteFile(SyncPaths.columnPath(r, canvas, cols[1]), "rB", 100.0) to "# B\n* b\n",
+            RemoteFile(SyncPaths.columnPath(r, canvas, cols[2]), "rC", 100.0) to "# C\n* c\n",
+        ))
+        val c = SyncController(model, bus, storageOverride = storage)
+        c.connectOverride = { ConnectResult(accountEmail = null, refreshToken = "test-token") }
+        try {
+            c.connect(SyncController.InitialSyncMode.FROM)
+            delay(250)
+
+            val restored = model.getCanvas(canvas) ?: error("the board vanished")
+            assertEquals(cols, restored.leafColumns(),
+                "exactly the remote's columns, no extra empty pane from the default board")
+            assertEquals(Split.VERTICAL, restored.root().split,
+                "the board's split direction is restored (not the default board's HORIZONTAL)")
+            assertTrue((model.getCanvasColumnRaw(canvas, cols[1]) ?: "").contains("* b"), "cards restored")
+        } finally {
+            SyncStateStore.set(SyncState.NotConfigured, bus)
+        }
     }
 
     /** 4. Clear a column while CONNECTED → the structural edit bumps the svv and propagates to remote. */

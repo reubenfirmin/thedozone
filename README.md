@@ -22,8 +22,33 @@ Prerequisites: JDK 21, plus Chrome/Chromium for the headless tests.
 
 The app builds on the [Zoned](https://github.com/reubenfirmin/zoned) framework, consumed as a local `1.0-SNAPSHOT`. Publish it to your Maven local first (see Zoned's README), then:
 
-    ./gradlew build                    # compile and run the test suite
-    ./gradlew jsBrowserDevelopmentRun  # serve at http://localhost:3000
+    ./gradlew build   # compile and run the test suite
+
+That build also generates two helper scripts (they're generated rather than checked in, so you won't see them until the first build):
+
+    ./watch.sh        # recompile on change, serve at http://localhost:3000
+    ./test.sh         # run the test suite; add --tests "*FooTest*" to filter
+
+They use separate Kotlin compile daemons, so you can leave the watcher running while you run tests. Calling `./gradlew jsBrowserTest` by hand while the watcher is up makes the two compete for memory, so prefer `./test.sh`.
+
+CI builds Zoned from `reubenfirmin/zoned@master`. If a change here depends on a change there, push that one first or CI won't reproduce your local build.
+
+## Deploying
+
+The site is a Cloudflare Worker serving static assets, configured in `wrangler.jsonc`, with two environments:
+
+    ./gradlew build-production            # tests, plus the optimized hashed bundle
+    npx wrangler deploy --env beta        # beta.do.zone
+    npx wrangler deploy --env production  # the.do.zone
+
+Two things worth knowing:
+
+* Wrangler only uploads `build/dist/js/productionExecutable`. It never builds anything, so run the Gradle build first or you'll quietly ship whatever bundle was there before.
+* Deploying without an `--env` targets a worker that has no routes attached, so neither site changes. Always pass one.
+
+Pushing to `main` runs the same build in CI ([ci.yml](.github/workflows/ci.yml)) and deploys beta automatically, so production is usually the only one deployed by hand. CI authenticates via the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets; locally, `npx wrangler login` is enough.
+
+The app is a PWA, so a client that's already open may keep serving its cached bundle after a deploy until it's reloaded.
 
 ## License
 

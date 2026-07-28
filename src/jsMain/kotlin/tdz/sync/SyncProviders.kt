@@ -12,12 +12,14 @@ data class ConnectResult(val accountEmail: String?, val refreshToken: String?)
 object SyncProviders {
 
     /**
-     * The default root folder when the user leaves it blank. Dropbox has an implicit app folder (blank
-     * = its root). Drive has none, so a blank Drive root becomes a concrete base folder in the user's
-     * Drive — without it, canvases would be created loose at the Drive root.
+     * The default root folder when the user leaves it blank. Both cloud providers default to a concrete
+     * subfolder so a blank field still syncs into a clean namespace instead of the provider root: for
+     * Dropbox a blank folder is the shared app-folder ROOT (which litters/collides — and the safeguard
+     * refuses it), and a blank Drive root would scatter canvases loose at the Drive root. A local folder
+     * needs none — the granted directory IS the root.
      */
     fun defaultRoot(provider: SyncProvider): String = when (provider) {
-        SyncProvider.DROPBOX -> ""
+        SyncProvider.DROPBOX -> "thedozone"
         SyncProvider.GOOGLE_DRIVE -> "thedozone"
         SyncProvider.LOCAL_FOLDER -> ""   // the granted directory IS the root
     }

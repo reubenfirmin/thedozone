@@ -47,6 +47,17 @@ class RootFolderLeakTest {
     }
 
     @Test
+    fun cloudProvidersDefaultToAConcreteFolder() {
+        // A blank field must still land in a clean namespace, never the provider root (Dropbox's
+        // app-folder root litters/collides; a blank Drive root scatters canvases). So both cloud
+        // providers supply a default — the fix for the "Dropbox can't sync to its app-folder root"
+        // error a user hit by leaving the folder blank. (The start()-time safeguard below still
+        // refuses an explicitly-blank stored config, as defense in depth.)
+        assertTrue(SyncProviders.defaultRoot(SyncProvider.DROPBOX).isNotBlank(), "Dropbox needs a default folder")
+        assertTrue(SyncProviders.defaultRoot(SyncProvider.GOOGLE_DRIVE).isNotBlank(), "Drive needs a default folder")
+    }
+
+    @Test
     fun dropboxRefusesToSyncWhenFolderIsBlank(): dynamic = GlobalScope.promise {
         // The safeguard: a blank Dropbox folder resolves to the shared app-folder ROOT, which mixes
         // every board (and collides with other instances). Dropbox must REFUSE to sync rather than

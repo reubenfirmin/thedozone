@@ -201,9 +201,8 @@ class SyncEngine(
 
     /** Delete many remote files concurrently WITHOUT touching local bookkeeping — for column deletions
      *  the caller records as tombstones (which must survive, unlike the dropped entries above). */
-    suspend fun deleteRemoteFiles(paths: List<String>): Unit = coroutineScope {
-        paths.map { async { storage.delete(it) } }.awaitAll()
-        Unit
+    suspend fun deleteRemoteFiles(paths: List<String>) {
+        coroutineScope { paths.map { async { storage.delete(it) } }.awaitAll() }
     }
 
     /**
@@ -304,6 +303,17 @@ class SyncEngine(
         val changed = mutableSetOf<String>()
         val keptLocal = mutableSetOf<String>()
         var next = state
+
+        // Which manifests describe an untouched DEFAULT board, decided BEFORE the loop below imports
+        // any column content (import order is arbitrary, so this must not depend on it).
+        val placeholders = remote.values.map { it.path }.filter { SyncPaths.isManifest(it) }
+            .filter { p ->
+                val known = state.entries[p]
+                if (known?.rev != null || known?.base != null) return@filter false   // synced before -> real
+                val canvas = SyncPaths.parseManifest(p, root) ?: return@filter false
+                val manifest = readLocal(p) ?: return@filter false
+                isDefaultPlaceholder(manifest, canvas, root)
+            }.toSet()
 
         // Network phase: fetch every file the decision loop will need CONCURRENTLY (content + vv).
         // The loop below stays sequential for merge clarity, but its per-file round trips —
@@ -414,7 +424,19 @@ class SyncEngine(
                                     next = next.with(m.path, known!!.copy(rev = m.rev, vv = join))
                                     keptLocal += m.path
                                 }
-                                Causal.CONCURRENT, Causal.EQUAL -> {            // neither newer -> merge, keep both
+                                // A brand-new device's board is the default PLACEHOLDER (a
+                                // SINGLE_PANE the user never touched): no content, and no layout
+                                // the user built, so there is nothing for the merge to protect.
+                                // Adopt the remote board WHOLE. Merging instead kept the
+                                // placeholder's split direction and carried its empty column in as
+                                // an extra pane, so a restored board came back with one column too
+                                // many, laid out the wrong way.
+                                Causal.CONCURRENT, Causal.EQUAL -> if (m.path in placeholders) {
+                                    writeLocal(m.path, remoteContent)
+                                    if (canvas != null) next = learnRemoteTombstones(remoteContent, canvas, root, columnsOf(remoteContent), next)
+                                    next = next.with(m.path, SyncEntry(m.rev, m.serverModified, base = remoteContent, vv = remoteSvv))
+                                    changed += m.path
+                                } else {                                        // neither newer -> merge, keep both
                                     val union = ManifestMerge.mergeLayouts(local = localContent, remote = remoteContent)
                                     // Fold in tombstones: an additive union alone resurrects a column
                                     // deleted on the other side. Keep-edit-else-delete decides membership.
@@ -549,6 +571,20 @@ class SyncEngine(
             .map { spec -> spec.copy(contains = spec.contains.filterNot { it in drop }) }
         val newDoc = CanvasDoc(doc.name, doc.parentName, keptColumns, keptLayouts).encode()
         return TombstoneResult(newDoc, s, dropPaths, keptPending)
+    }
+
+    /**
+     * True when [manifest] is a fresh install's UNTOUCHED default board: the single-pane shape every
+     * device materializes on first run so there is something to draw (one content column), with that
+     * column still blank. Deliberately narrow: a board the user actually shaped (more than one pane)
+     * is a real layout and keeps merging, even while its columns are still empty. Combined with the
+     * caller's no-history check, this identifies "a brand-new device that has never synced".
+     */
+    private fun isDefaultPlaceholder(manifest: String, canvas: CanvasName, root: String): Boolean {
+        val doc = runCatching { CanvasDoc.decode(manifest) }.getOrNull() ?: return false
+        val layoutIds = doc.layouts.map { it.columnId }.toSet()
+        val content = doc.columns.filterNot { it in layoutIds }
+        return content.size <= 1 && content.all { readLocal(SyncPaths.columnPath(root, canvas, it)).isNullOrBlank() }
     }
 
     /** The column ids of [content], or empty if it can't be decoded. */
