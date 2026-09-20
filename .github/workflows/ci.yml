@@ -1,8 +1,9 @@
 name: CI
 
 on:
+  # PRs validate feature branches; pushes to main also deploy beta.
   push:
-    branches: ["**"]
+    branches: ["main"]
   pull_request:
   workflow_dispatch:
 
