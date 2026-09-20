@@ -42,8 +42,11 @@ fun List<CardListItem>.toGroup(): ListGroup {
         return ListGroup(emptyList(), ListMemberType.BULLET, 0)
     }
 
-    val baseLevel = first().level
-    val baseType = first().type
+    // Pasted prose or a blank line can split a list immediately before an indented item.
+    // A later item may return to a shallower level, so the first item need not be the root.
+    val baseItem = minBy { it.level }
+    val baseLevel = baseItem.level
+    val baseType = baseItem.type
 
     // Group items into clusters when level or type changes
     val clusters = buildList {
