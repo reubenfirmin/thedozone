@@ -35,7 +35,7 @@ class ColumnContainer(
     private val columnId: ColumnId,
     val eventBus: EventBus<TdzEvent>,
     /** Editor supplier — [CanvasColumns] hands out its CACHED instance so a mode toggle re-adopts
-     *  the live Ace editor instead of paying a full re-initialization. */
+     *  the live editor instead of paying a full re-initialization. */
     private val editorFor: (ColumnId) -> EditorColumn) {
 
     private var focused = false
@@ -119,7 +119,7 @@ class ColumnContainer(
 
     /**
      * Focus follows the mouse: entering the column focuses it. `focusin` also covers the editor
-     * (Ace focuses its textarea and `focusin` bubbles). Typed listeners, no `asDynamic`.
+     * (CodeMirror focuses its contenteditable surface and `focusin` bubbles). Typed listeners.
      */
     fun setupFocusHandler(onFocus: () -> Unit) {
         val element = getHtmlElement(DomIds.column(columnId)) ?: return

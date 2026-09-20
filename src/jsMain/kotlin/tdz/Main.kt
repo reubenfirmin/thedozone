@@ -127,5 +127,5 @@ fun main() {
     Router.start(canvasPages, helpPages, settingsPages, legalPages)
 }
 
-const val ACE_TAB_SIZE = 2
+const val EDITOR_TAB_SIZE = 2
 val mapLog = LogType("maps", Color.black, Color.white)

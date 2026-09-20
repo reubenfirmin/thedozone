@@ -187,8 +187,7 @@ class Index(val model: Model, val eventBus: EventBus<Event>, dragDrop: DragDrop?
         return false
     }
 
-    /** True when a text field or the Ace editor has focus, so a bare letter key must type, not act as a
-     *  shortcut. Ace's input target is a textarea, so this also covers in-editor typing. */
+    /** Includes CodeMirror's contenteditable surface, so letter shortcuts never hijack typing. */
     override fun isEditableFocused(): Boolean {
         val ae = document.activeElement ?: return false
         val tag = ae.tagName.uppercase()

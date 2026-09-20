@@ -81,13 +81,13 @@ class CanvasColumns(val canvas: Canvas,
         }
     }
 
-    /** Live Ace editors, kept across mode toggles (init is ~100ms; re-adopting the parked DOM is
+    /** Live editors, kept across mode toggles (re-adopting the parked DOM is
      *  ~free). Real teardown happens in [saveEditors] when this canvas render is disposed.
      *  (internal for tests) */
     internal val editorCache = mutableMapOf<ColumnId, EditorColumn>()
 
     /**
-     * Save any open editor buffers and tear down their Ace instances. [CanvasView] calls this
+     * Save any open editor buffers and tear down their editor instances. [CanvasView] calls this
      * before each swap — without it, unsaved edits would be silently discarded with the old DOM.
      */
     fun saveEditors() {
@@ -103,7 +103,7 @@ class CanvasColumns(val canvas: Canvas,
     //   1. They are per-device presentation, NOT canvas content: which columns sit open in the
     //      editor and a column's local wallpaper/accent never sync and never affect the markdown —
     //      ColumnsChanged (the sync signal) must NOT fire for them.
-    //   2. A toggle MUST re-render its column synchronously in place (re-adopting the parked Ace
+    //   2. A toggle MUST re-render its column synchronously in place (re-adopting the parked
     //      editor, keeping focus). Routing it as an event -> Controller persist -> RefreshColumns
     //      command would add round-trip render-timing complexity for no behavioral gain, and would
     //      need a Controller wired into the standalone CanvasColumns the mode tests construct.
@@ -387,7 +387,7 @@ class CanvasColumns(val canvas: Canvas,
     /**
      * A leaf column's themed chrome and mode behavior: CARD columns scroll by wheel/touchpad but
      * never SHOW a scrollbar (scrollbar-width here + the ::-webkit-scrollbar rule in [render] —
-     * the visual spec has always been "no overflow chrome"); EDITOR columns clip (Ace scrolls
+     * the visual spec has always been "no overflow chrome"); EDITOR columns clip (CodeMirror scrolls
      * itself). min-width:0 lets the column shrink to its grid track rather than its content's
      * min-content (which would overflow into the next column).
      */

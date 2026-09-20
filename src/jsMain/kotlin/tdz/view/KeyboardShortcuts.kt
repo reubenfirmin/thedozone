@@ -5,6 +5,7 @@ import tdz.model.Split
 import web.dom.document
 import web.events.EventType
 import web.events.addEventListener
+import web.events.removeEventListener
 import web.keyboard.KeyboardEvent
 
 /**
@@ -76,8 +77,7 @@ class KeyboardShortcuts(private val actions: ShortcutActions) {
 
     private val bindings: List<Pair<KeyChord, (KeyboardEvent) -> Boolean>> = listOf(
         // Ctrl+' toggles editor mode for the focused column. Plain `i` is the documented vim-style
-        // alias — guarded by editable focus so it never hijacks typing (Ace lets plain-character
-        // keydowns bubble to the document, unlike arrows which it consumes).
+        // alias — guarded by editable focus so it never hijacks typing.
         KeyChord("'", ctrl = Mod.Yes) to { _ -> actions.toggleEditorMode() },
         KeyChord("i", ctrl = Mod.No, alt = Mod.No, meta = Mod.No, requireNotEditable = true)
             to { _ -> actions.toggleEditorMode() },
@@ -89,12 +89,12 @@ class KeyboardShortcuts(private val actions: ShortcutActions) {
             to { e -> arrowSplit(e.key)?.let { actions.splitFocusedColumn(it) } ?: false },
         // Ctrl+; clears completed tasks from every card on the canvas.
         KeyChord(";", ctrl = Mod.Yes, alt = Mod.No) to { _ -> actions.clearDone() },
-        // Page Up jumps to the parent board; Page Down opens the board palette.
-        KeyChord("PageUp") to { _ -> actions.goToParentBoard() },
-        KeyChord("PageDown") to { _ -> actions.openBoardPalette() },
+        // Leave paging to editable fields, including when CodeMirror reaches a document boundary.
+        KeyChord("PageUp", requireNotEditable = true) to { _ -> actions.goToParentBoard() },
+        KeyChord("PageDown", requireNotEditable = true) to { _ -> actions.openBoardPalette() },
         // Ctrl/Cmd+L and Ctrl/Cmd+K also open the board palette — L restores URL-style addressing in
         // the installed PWA window, K is the conventional command-palette key. Guarded by editable
-        // focus so they never hijack Ace's in-editor Ctrl+L (go-to-line) / Ctrl+K (find-next).
+        // focus so they never hijack the editor's own commands.
         KeyChord(setOf("l", "k"), ctrlOrMeta = true, keyIgnoreCase = true, requireNotEditable = true)
             to { _ -> actions.openBoardPalette() },
         // F1 / F2 open the corresponding help docs as in-app overlay routes.
@@ -104,16 +104,21 @@ class KeyboardShortcuts(private val actions: ShortcutActions) {
         KeyChord("Escape") to { _ -> actions.closeOpenOverlayRoute() },
     )
 
-    /** Install the global keydown listener. Called once, on construction of the owning [Index]. */
+    /** One active app shortcut handler, including when an Index is replaced. */
     fun install() {
-        document.addEventListener(EventType<KeyboardEvent>("keydown"), { event ->
+        installedHandler?.let { document.removeEventListener(EventType<KeyboardEvent>("keydown"), it) }
+        val handler: (KeyboardEvent) -> Unit = handler@{ event ->
+            // CodeMirror handles keys on its content element; those events still bubble.
+            if (event.defaultPrevented) return@handler
             val editable = actions.isEditableFocused()
             // First matching binding wins (mirroring the old if/else-if chain): its action runs and
             // its result alone decides whether the key is consumed. Later bindings never run.
             val handled = bindings.firstOrNull { (chord, _) -> chord.matches(event, editable) }
                 ?.let { (_, action) -> action(event) } ?: false
             if (handled) event.preventDefault()
-        })
+        }
+        installedHandler = handler
+        document.addEventListener(EventType<KeyboardEvent>("keydown"), handler)
     }
 
     private fun arrowDirection(key: String) = when (key) {
@@ -131,6 +136,7 @@ class KeyboardShortcuts(private val actions: ShortcutActions) {
     }
 
     private companion object {
+        var installedHandler: ((KeyboardEvent) -> Unit)? = null
         val ARROWS = setOf("ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown")
     }
 }
