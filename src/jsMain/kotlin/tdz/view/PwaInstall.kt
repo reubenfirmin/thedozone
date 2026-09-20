@@ -1,6 +1,25 @@
 package tdz.view
 
 import kotlinx.browser.window
+import zoned.framework.Debugger
+
+/**
+ * The `beforeinstallprompt` event Chrome fires (and the inline script in index.html stashes). Its
+ * [prompt] shows the browser's install UI; it can be fired at most once. Typed as far as we use it.
+ */
+external interface BeforeInstallPromptEvent {
+    fun prompt()
+}
+
+/** Minimal typed view of the globals the install flow reads: the stashed prompt event and the
+ *  legacy iOS `navigator.standalone` flag (Safari-only, absent elsewhere — hence nullable). */
+private external interface InstallGlobals {
+    var __tdzDeferredInstall: BeforeInstallPromptEvent?
+}
+
+private external interface IosNavigator {
+    val standalone: Boolean?
+}
 
 /**
  * Bridges the browser's PWA install flow to the in-app "Install app" menu item.
@@ -13,15 +32,14 @@ import kotlinx.browser.window
  */
 object PwaInstall {
 
-    private fun deferred(): dynamic = window.asDynamic().__tdzDeferredInstall
+    private val globals: InstallGlobals get() = window.unsafeCast<InstallGlobals>()
+
+    private fun deferred(): BeforeInstallPromptEvent? = globals.__tdzDeferredInstall
 
     private fun isStandalone(): Boolean =
-        try {
-            window.matchMedia("(display-mode: standalone)").matches ||
-                window.asDynamic().navigator.standalone == true
-        } catch (e: Throwable) {
-            false
-        }
+        window.matchMedia("(display-mode: standalone)").matches ||
+            // iOS Safari's non-standard flag — absent (null) on every other browser.
+            window.navigator.unsafeCast<IosNavigator>().standalone == true
 
     /** True when the browser offered an install prompt we can still fire and we're not installed. */
     fun isAvailable(): Boolean = deferred() != null && !isStandalone()
@@ -32,8 +50,9 @@ object PwaInstall {
         try {
             event.prompt()
         } catch (e: Throwable) {
-            // already used / detached — nothing to do
+            // Already used / detached — the prompt is single-use, so this is benign; just note it.
+            Debugger.debug("PwaInstall.prompt() failed (event likely already consumed): ${e.message}")
         }
-        window.asDynamic().__tdzDeferredInstall = null
+        globals.__tdzDeferredInstall = null
     }
 }

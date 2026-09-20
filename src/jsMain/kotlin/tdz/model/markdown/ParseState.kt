@@ -5,9 +5,12 @@ import tdz.model.ColumnId
 import tdz.model.CardMetadata
 import tdz.model.card.*
 
-data class ParseState(val column: ColumnId,
-                      val cards: MutableList<Card> = mutableListOf(),
-                      private val segmentsBuffer: MutableList<CardSegment> = mutableListOf(),
+// A mutable state machine, not a value: it carries `var` flags and buffers outside the constructor,
+// so the generated equals/hashCode/copy of a data class would be meaningless (and copy() a footgun
+// that shares the live buffers). Plain class.
+class ParseState(val column: ColumnId,
+                 val cards: MutableList<Card> = mutableListOf(),
+                 private val segmentsBuffer: MutableList<CardSegment> = mutableListOf(),
 ) {
 
     private var inCodeBlock = false
@@ -104,17 +107,23 @@ data class ParseState(val column: ColumnId,
 
     fun getCurrentColumn() = currentColumn
 
-    fun createCardFromSegments() {
-        // A blockquote ends at the line that breaks it (often a blank line / card boundary);
-        // flush any pending quote into the card before closing it.
-        if (inBlockquote) {
+    /**
+     * Close any open terminator-less blocks into [segmentsBuffer], blockquote BEFORE list. Both a
+     * card boundary and end-of-input must do this identically before emitting a card: a blockquote
+     * ends at the line that breaks it, and a list has no terminator, so each must be flushed FIRST
+     * or a block-only card (whose [segmentsBuffer] is otherwise empty) would be dropped.
+     */
+    private fun flushPendingBlocks() {
+        if (inBlockquote || blockquoteBuffer.size > 0) {
             finishBlockquote()
         }
-        // Lists have no terminator: flush any pending list into the segments FIRST, so a
-        // list-only card (whose segmentsBuffer is otherwise empty) isn't dropped.
-        if (inListBlock) {
+        if (inListBlock || listBuffer.size > 0) {
             finishList()
         }
+    }
+
+    fun createCardFromSegments() {
+        flushPendingBlocks()
 
         if (segmentsBuffer.size > 0) {
             val newCard = Card(segmentsBuffer.toList(), CardMetadata(currentColumn), index++)
@@ -134,16 +143,9 @@ data class ParseState(val column: ColumnId,
 
     fun finalize(): List<Card> {
 
-        // A trailing blockquote at end-of-input has no breaking line; flush it.
-        if (inBlockquote || blockquoteBuffer.size > 0) {
-            finishBlockquote()
-        }
-
-        // A trailing list has no terminator; flush it into the current card's segments FIRST
-        // so it's included below (previously it was finished AFTER the card was created and lost).
-        if (inListBlock || listBuffer.size > 0) {
-            finishList()
-        }
+        // Trailing blocks at end-of-input have no breaking line; flush them so they're included below
+        // (previously a trailing list was finished AFTER the card was created and lost).
+        flushPendingBlocks()
 
         if (segmentsBuffer.size > 0) {
             cards.add(Card(segmentsBuffer.toList(), CardMetadata(currentColumn), index++))

@@ -18,18 +18,17 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * Real-browser (karma) check that the board-link completer actually wires up: entering editor mode
- * must load the `language_tools` extension and apply the autocompletion options + completer without
- * throwing. If the extension import or option-set silently failed, [EditorColumn.completerInstalled]
- * would never flip and this times out — turning that "does nothing" symptom into a hard failure.
+ * Enter editor mode and explicitly request completion. Check the suggestions CodeMirror actually
+ * displays, so a source being invoked without producing a visible menu cannot pass this test.
  */
 class EditorBoardLinkInstallTest {
 
     private val canvas = CanvasName("_bl-test")
     private var column = ColumnId("1")   // reassigned to the board's opaque leaf after creation
+    private var columns: CanvasColumns? = null
 
     @AfterTest
-    fun cleanup() { document.body.asDynamic()?.innerHTML = "" }
+    fun cleanup() { columns?.saveEditors(); document.body.replaceChildren() }
 
     @Test
     fun enteringEditorModeInstallsTheBoardLinkCompleter(): Promise<Unit> {
@@ -43,6 +42,7 @@ class EditorBoardLinkInstallTest {
         model.addCanvas(canvasFromTemplate(CanvasName("Home"), null, SINGLE_PANE))
         val spec = model.getCanvas(canvas) ?: error("setup")
         val columns = CanvasColumns(spec, bus, model) { id -> model.cards(canvas, id) }
+            .also { this.columns = it }
         addToBody {
             div {
                 id = "bl-host"
@@ -50,21 +50,18 @@ class EditorBoardLinkInstallTest {
             }
         }
 
-        columns.toggleMode(column)   // CARD -> EDITOR (Ace + language_tools are code-split, so async)
+        columns.toggleMode(column)   // CARD -> EDITOR (CodeMirror is code-split, so async)
         return pollUntil("the board-link completer to install") {
-            columns.editorCache[column]?.completerInstalled() == true
+            columns.editorCache[column]?.editor != null
         }.then {
-            val editor = columns.editorCache[column] ?: error("editor")
-            assertTrue(editor.completerInstalled(), "language_tools loaded and the completer was applied")
-            // Force the popup with the caret inside an open "[" and confirm Ace invokes our completer
-            // and it offers the other boards (the real end-to-end path, not just install).
-            editor.triggerCompletionForTest("[")
-            pollUntil("Ace to invoke the board-link completer") { editor.lastCompletionCount >= 0 }
+            val editor = columns.editorCache[column]!!.editor!!
+            editor.setValue("[")
+            editor.startCompletion()
+            pollUntil("CodeMirror to display board suggestions") {
+                editor.completionLabels().containsAll(listOf("Work", "Home"))
+            }
         }.then {
-            val editor = columns.editorCache[column] ?: error("editor")
-            assertTrue(editor.lastCompletionCount >= 2,
-                "completer offered the other boards (got ${editor.lastCompletionCount})")
-            columns.saveEditors()
+            assertTrue(columns.editorCache[column]!!.editor!!.completionActive())
         }
     }
 }

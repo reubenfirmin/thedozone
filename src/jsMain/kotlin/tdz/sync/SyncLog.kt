@@ -19,6 +19,13 @@ object SyncLog {
 
     var enabled = true
 
+    /**
+     * Marker for the code revision in the running bundle, logged at the start of a sync. Bump it when
+     * shipping a build you need to identify in the field, so the console says WHICH code produced the
+     * run rather than leaving "did my fix deploy?" as a guess.
+     */
+    const val BUILD = "placeholder-fix-1"
+
     /** Test seam: capture lines instead of writing to the console. */
     internal var sink: (String) -> Unit = { console.info(it) }
 

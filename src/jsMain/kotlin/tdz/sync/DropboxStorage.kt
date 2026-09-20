@@ -5,7 +5,7 @@ import kotlinx.coroutines.await
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import web.blob.Blob
+import org.w3c.fetch.RequestInit
 import kotlin.js.Date
 import kotlin.js.json
 
@@ -43,6 +43,20 @@ internal fun isIgnorableDeleteError(errorSummary: String): Boolean =
 private const val MAX_WRITE_RETRIES = 6
 
 /**
+ * Map a Dropbox FileMetadata (the untyped SDK/RPC response) to a typed [RemoteFile]. Validates each
+ * field rather than blind-casting: a missing/renamed field fails loudly here at the interop boundary
+ * instead of surfacing as a null-as-String corruption deep in sync (this is exactly the shape that
+ * broke uploads — the temp-upload-link body carries only a content-hash, so the upload path fetches
+ * the real metadata separately). Uses path_display (original case): SyncPaths preserves canvas-name
+ * case, so pulled paths must round-trip to the same model key (path_lower would break that).
+ */
+internal fun dropboxEntryToFile(e: dynamic): RemoteFile = RemoteFile(
+    path = e.path_display as? String ?: error("Dropbox entry missing path_display"),
+    rev = e.rev as? String ?: error("Dropbox entry missing rev"),
+    serverModified = Date(e.server_modified as? String ?: error("Dropbox entry missing server_modified")).getTime(),
+)
+
+/**
  * [RemoteStorage] backed by the Dropbox SDK. Constructed with the stored [refreshToken]; the public
  * app key comes from the baked-in [DropboxApp.KEY]. The SDK mints/refreshes short-lived access tokens
  * automatically. All `dynamic` SDK responses are mapped to typed [RemoteFile]s here.
@@ -58,17 +72,7 @@ class DropboxStorage(refreshToken: String) : RemoteStorage {
     // (one write in flight per client) to avoid the storm; a retry handles any residual contention.
     private val writeLock = Mutex()
 
-    private fun toMillis(serverModified: String): Double = Date(serverModified).getTime()
-
-    // Use path_display (original case), NOT path_lower — SyncPaths preserves canvas-name case so
-    // pulled paths must round-trip to the same model key. (path_lower would break that.)
-    private fun entryToFile(e: dynamic): RemoteFile = RemoteFile(
-        // Validate the untyped SDK response rather than blind-casting: a missing/renamed field
-        // should fail loudly here, not surface a null-as-String corruption deep in sync.
-        path = e.path_display as? String ?: error("Dropbox entry missing path_display"),
-        rev = e.rev as? String ?: error("Dropbox entry missing rev"),
-        serverModified = toMillis(e.server_modified as? String ?: error("Dropbox entry missing server_modified")),
-    )
+    private fun entryToFile(e: dynamic): RemoteFile = dropboxEntryToFile(e)
 
     override suspend fun list(folder: String): RemoteListing {
         // Dropbox uses "" for the root, not "/".
@@ -84,9 +88,10 @@ class DropboxStorage(refreshToken: String) : RemoteStorage {
             throw Exception("Dropbox list failed: ${describe(e)}")
         }
         while (true) {
-            val entries = resp.result.entries as Array<dynamic>
+            // Validate the untyped SDK response rather than blind-casting (see [entryToFile]).
+            val entries = resp.result.entries as? Array<dynamic> ?: error("Dropbox list missing entries")
             entries.forEach { if (it[".tag"] == "file") files += entryToFile(it) }
-            if (resp.result.has_more as Boolean) {
+            if (resp.result.has_more as? Boolean == true) {
                 resp = try {
                     dbx.filesListFolderContinue(json("cursor" to resp.result.cursor)).await()
                 } catch (e: dynamic) {
@@ -117,15 +122,41 @@ class DropboxStorage(refreshToken: String) : RemoteStorage {
         } else {
             json(".tag" to "overwrite")
         }
-        // Wrap text in a Blob: the browser SDK's documented upload form (a raw String can upload
-        // empty/malformed in some SDK versions).
-        val arg = json("path" to path, "contents" to Blob(arrayOf(content)), "mode" to mode, "mute" to true)
+        // Do NOT call dbx.filesUpload: it POSTs to content.dropboxapi.com/2/files/upload with custom
+        // headers (Authorization, Dropbox-API-Arg), and that RPC endpoint's CORS preflight fails from
+        // the browser — the same unreliability download() routes around. Instead mint a pre-authorized
+        // upload URL via the api.dropboxapi.com RPC (which works), then POST the bytes straight to the
+        // returned /apitul/ link. That temp-upload endpoint IS built for browser uploads: it answers
+        // CORS (including the octet-stream preflight) and requires Content-Type application/octet-stream
+        // (it rejects text/plain). The commit info is baked into the link, so no auth/arg headers here.
+        val commitInfo = json("path" to path, "mode" to mode, "mute" to true)
         try {
-            val resp = withWriteRetry { dbx.filesUpload(arg).await() }
-            entryToFile(resp.result)
+            withWriteRetry {
+                val link = dbx.filesGetTemporaryUploadLink(json("commit_info" to commitInfo)).await()
+                    .result.link as? String ?: error("Dropbox temporary upload link missing")
+                val resp = window.fetch(link, RequestInit(
+                    method = "POST",
+                    body = content,
+                    headers = json("Content-Type" to "application/octet-stream"),
+                )).await()
+                if (resp.ok) {
+                    // The temp-upload-link POST returns only a content-hash, not the committed
+                    // metadata (and any Dropbox-API-Result header isn't CORS-exposed to JS). Fetch the
+                    // canonical FileMetadata via the api.dropboxapi.com RPC — which works from the
+                    // browser — to get the rev (+ server_modified) the bookkeeping needs.
+                    entryToFile(dbx.filesGetMetadata(json("path" to path)).await().result)
+                } else {
+                    // Dropbox returns the error JSON in the body. A rev-mismatch in `update` mode is a
+                    // write-conflict (caller 3-way merges); rate-limit tags are retried by
+                    // withWriteRetry (it re-reads this message); anything else fails the reconcile
+                    // loudly — never a silent success that could lose data.
+                    val body = runCatching { resp.text().await() }.getOrDefault("HTTP ${resp.status}")
+                    if (ifMatchRev != null && body.contains("conflict")) throw RevConflictException(path)
+                    throw Exception(body)
+                }
+            }
         } catch (e: dynamic) {
-            // A failed `update` is a write-conflict (someone else changed the rev).
-            if (ifMatchRev != null && isConflict(e)) throw RevConflictException(path)
+            if (e is RevConflictException) throw e
             throw Exception("Dropbox upload failed: ${describe(e)}")
         }
     }

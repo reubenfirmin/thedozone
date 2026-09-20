@@ -51,7 +51,7 @@ internal fun TagConsumer<HTMLElement>.syncModalChrome(
                 color = ThemeManager.current.menuFg
                 border = Border(1.px, BorderStyle.solid, ThemeManager.current.menuBorder)
                 borderRadius = 8.px
-                boxShadow = BoxShadows().apply { this += BoxShadow(Color("rgba(0,0,0,0.35)"), 0.px, 12.px, 36.px) }
+                boxShadow = BoxShadows().apply { this += BoxShadow(ThemeManager.current.shadow, 0.px, 12.px, 36.px) }
             }
             content()
         }

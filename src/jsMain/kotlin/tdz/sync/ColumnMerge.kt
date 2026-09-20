@@ -21,8 +21,14 @@ object ColumnMerge {
         val trailingNewline = local.endsWith("\n")
         val noAncestor = base.isNullOrEmpty()
         val a = lines(local)
-        val o = lines(base ?: "")
         val b = lines(remote)
+        // With no shared ancestor, an empty origin leaves diff3 unable to anchor on content common to
+        // both sides: the whole column collapses into one conflict region and the union below would
+        // duplicate every shared line (the reported bug — a locally-appended column merged against the
+        // shorter pre-existing remote came back with its shared prefix doubled). Synthesize the
+        // ancestor as the longest common subsequence of the two sides, so the shared lines become a
+        // stable base (emitted once) and only each side's genuine additions remain to union.
+        val o = if (noAncestor) longestCommonSubsequence(a, b) else lines(base)
         val regions = diff3Merge(a, o, b)
         val out = StringBuilder()
         var conflict = false
@@ -59,6 +65,31 @@ object ColumnMerge {
 
     private fun lines(s: String): Array<String> =
         if (s.isEmpty()) emptyArray() else s.removeSuffix("\n").split("\n").toTypedArray()
+
+    /** Longest common subsequence of two line arrays, order-preserving. Used as a synthesized 3-way
+     *  base when no shared ancestor is known, so diff3 anchors on the lines common to both sides
+     *  (emitting them once) instead of collapsing the column into one conflict region that would
+     *  duplicate the shared content. O(n·m); columns are small. */
+    private fun longestCommonSubsequence(a: Array<String>, b: Array<String>): Array<String> {
+        if (a.isEmpty() || b.isEmpty()) return emptyArray()
+        val dp = Array(a.size + 1) { IntArray(b.size + 1) }
+        for (i in a.size - 1 downTo 0) {
+            for (j in b.size - 1 downTo 0) {
+                dp[i][j] = if (a[i] == b[j]) dp[i + 1][j + 1] + 1 else maxOf(dp[i + 1][j], dp[i][j + 1])
+            }
+        }
+        val out = ArrayList<String>()
+        var i = 0
+        var j = 0
+        while (i < a.size && j < b.size) {
+            when {
+                a[i] == b[j] -> { out.add(a[i]); i++; j++ }
+                dp[i + 1][j] >= dp[i][j + 1] -> i++
+                else -> j++
+            }
+        }
+        return out.toTypedArray()
+    }
 
     private fun dynLines(side: dynamic): Array<String> =
         if (side != null && side != undefined) side.unsafeCast<Array<String>>() else emptyArray()

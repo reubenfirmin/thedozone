@@ -138,7 +138,7 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
     /** True when a board has no content columns, or every content column is empty. */
     fun isCanvasEmpty(canvasName: CanvasName): Boolean {
         val canvas = getCanvas(canvasName) ?: return true
-        val content = canvas.columns.filterNot { canvas.layoutMap.containsKey(it) }
+        val content = canvas.leafColumns()
         return content.all { cards(canvasName, it).isEmpty() }
     }
 
@@ -200,6 +200,8 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
     fun size(canvasName: CanvasName, column: ColumnId) = cards(canvasName, column).size
 
     private fun replace(canvasName: CanvasName, card: Card, newCard: Card, newIdx: Int? = null) {
+        // remove+add is two serialize/parse round-trips; left as-is because a fused single-write path
+        // must preserve the exact column-style header and indexing remove/add already get right.
         remove(canvasName, card.metadata.columnId, card.index)
         if (newIdx != null) {
             add(canvasName, newCard.metadata.columnId, newCard, newIdx)
@@ -251,9 +253,9 @@ class Model(val initialCanvasName: CanvasName): CanvasChecker, tdz.controller.io
     }
 
     /** Persisted UI theme name (global), or null if never set. */
-    fun getTheme(): String? = fs.getTheme()
+    fun getTheme(): ThemeName? = fs.getTheme()
 
-    fun setTheme(name: String) = fs.storeTheme(name)
+    fun setTheme(name: ThemeName) = fs.storeTheme(name)
 
     /** Raw stored markdown for a column (null if absent) — used by sync to push exact bytes. */
     fun getCanvasColumnRaw(canvasName: CanvasName, columnId: ColumnId): String? =

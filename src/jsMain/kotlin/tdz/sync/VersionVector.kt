@@ -1,7 +1,9 @@
 package tdz.sync
 
-/** A version vector: deviceId -> number of edits that device applied to a column. Absent == 0. */
-typealias VersionVector = Map<String, Long>
+/** A version vector: deviceId -> number of edits that device applied to a column. Absent == 0. The
+ *  type itself lives in the persistence layer (it's a pure Map alias and is what gets stored); the
+ *  sync vertical re-exports it here and owns the operations (compare/join/bump) below. */
+typealias VersionVector = tdz.model.localstorage.VersionVector
 
 enum class Causal { EQUAL, LOCAL_DOMINATES, REMOTE_DOMINATES, CONCURRENT }
 

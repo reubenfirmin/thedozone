@@ -46,6 +46,16 @@ object IntroCard {
     /** The accented instruction verb (e.g. "Right-click") — styled and live-updated by selector. */
     private const val ACCENT_CLASS = "tdz-intro-accent"
 
+    // Component-private CSS classes — each appears in BOTH the markup builders and an ensureStyles()
+    // selector, so a literal would silently desync on rename.
+    private const val CARD_CLASS = "tdz-intro-card"
+    private const val MOUSE_CLASS = "tdz-intro-mouse"
+    private const val RBTN_CLASS = "tdz-intro-rbtn"
+    private const val TEXT_CLASS = "tdz-intro-text"
+    private const val H_CLASS = "tdz-intro-h"
+    private const val P_CLASS = "tdz-intro-p"
+    private const val BTN_CLASS = "tdz-intro-btn"
+
     /**
      * Show the welcome card iff [canvas] is the ROOT board in its pristine state (a single, empty content
      * column); otherwise remove it. Child boards starting empty is normal navigation, not a first run, so
@@ -55,7 +65,7 @@ object IntroCard {
         // The wizard owns the screen once it's open; never let the welcome card sit behind it (a
         // re-render mid-tour must not pop it back).
         if (Zones.EXAMPLES_WIZARD.resolve() != null) { remove(); return }
-        val leaves = canvas.columns.filter { !canvas.layoutMap.containsKey(it) }
+        val leaves = canvas.leafColumns()
         // The card is for an untouched root: one empty column the user hasn't started editing.
         // Switching that column into the editor means they're working — get out of the way (saving
         // back to an empty card column brings it back).
@@ -75,17 +85,17 @@ object IntroCard {
         addToBody {
             div {
                 zone(Zones.INTRO)
-                div("tdz-intro-card") {
+                div(CARD_CLASS) {
                     // A right-click cue: a mouse with the right button accented + CSS-pulsed (the
-                    // .tdz-intro-rbtn class). Built with the typed SVG DSL (namespaced via
-                    // createElementNS), so there's no raw-HTML fragment anywhere in the app.
+                    // RBTN_CLASS). Built with the typed SVG DSL (namespaced via createElementNS), so
+                    // there's no raw-HTML fragment anywhere in the app.
                     val cur = ThemeManager.current.menuFg.toString()      // mouse outline / wheel
                     val accent = ThemeManager.current.link.toString()     // highlighted right button
-                    svg("tdz-intro-mouse") {
+                    svg(MOUSE_CLASS) {
                         width = "54"; height = "80"; viewBox = "0 0 60 90"; fill = "none"
                         g {
                             path {
-                                attributes["class"] = "tdz-intro-rbtn"
+                                attributes["class"] = RBTN_CLASS
                                 d = "M30 6 A24 24 0 0 1 54 30 L54 41 L30 41 Z"; fill = accent
                             }
                             rect { x = "6"; y = "6"; width = "48"; height = "78"; rx = "24"; fill = "none"; stroke = cur; strokeWidth = "3" }
@@ -94,16 +104,16 @@ object IntroCard {
                             rect { x = "27"; y = "15"; width = "6"; height = "12"; rx = "3"; fill = cur }
                         }
                     }
-                    div("tdz-intro-text") {
-                        div("tdz-intro-h") { +"Welcome to The Do Zone" }
-                        div("tdz-intro-p") {
+                    div(TEXT_CLASS) {
+                        div(H_CLASS) { +"Welcome to The Do Zone" }
+                        div(P_CLASS) {
                             span(ACCENT_CLASS) { +instruction() }
                             +" anywhere to open the menu and get started."
                         }
                         // The card itself is click-through (pointer-events: none); the button opts
                         // back in (see CSS) so it's the one clickable affordance. Opens the
                         // intro wizard.
-                        button(classes = "tdz-intro-btn", type = ButtonType.button) {
+                        button(classes = BTN_CLASS, type = ButtonType.button) {
                             +"What is this?"
                             // Hand off to the wizard and step aside so it isn't left sitting behind it.
                             onClick { remove(); ExamplesWizard.show(model, eventBus) }
@@ -167,7 +177,7 @@ object IntroCard {
                 pointerEvents = PointerEvents.none
                 zIndex = ZLayer.WELCOME_CARD
             }
-            rule("#$ID .tdz-intro-card") {
+            rule("#$ID .$CARD_CLASS") {
                 display = Display.flex
                 alignItems = Align.center
                 gap = 20.px
@@ -182,18 +192,18 @@ object IntroCard {
                 animation(enter, 360.ms, cubicBezier(0.2, 0.8, 0.3, 1.0), fillMode = FillMode.both)
                 animation(glow, 2.6.s, Timing.easeInOut, delay = 360.ms, iterationCount = IterationCount.infinite)
             }
-            rule("#$ID .tdz-intro-mouse") {
+            rule("#$ID .$MOUSE_CLASS") {
                 flexGrow = 0.0
                 flexShrink = 0.0
                 flexBasis = FlexBasis.auto
                 display = Display.block
             }
-            rule("#$ID .tdz-intro-rbtn") {
+            rule("#$ID .$RBTN_CLASS") {
                 animation(rightButtonPulse, 1.2.s, Timing.easeInOut, iterationCount = IterationCount.infinite)
                 transformOrigin("center")
             }
-            rule("#$ID .tdz-intro-text") { minWidth = 0.px }
-            rule("#$ID .tdz-intro-h") {
+            rule("#$ID .$TEXT_CLASS") { minWidth = 0.px }
+            rule("#$ID .$H_CLASS") {
                 fontSize = 20.px
                 fontWeight = FontWeight.w600
                 margin = Margin(0.px)
@@ -201,7 +211,7 @@ object IntroCard {
                 letterSpacing = 0.01.em
                 fontFamily = t.fontFamily
             }
-            rule("#$ID .tdz-intro-p") {
+            rule("#$ID .$P_CLASS") {
                 fontSize = 14.px
                 lineHeight = LineHeight("1.55")
                 margin = Margin(0.px)
@@ -215,7 +225,7 @@ object IntroCard {
             }
             // The card itself is pointer-events:none (right-clicks pass through to the canvas);
             // the button opts back in as the single clickable affordance.
-            rule("#$ID .tdz-intro-btn") {
+            rule("#$ID .$BTN_CLASS") {
                 pointerEvents = PointerEvents.auto
                 cursor = Cursor.pointer
                 marginTop = 16.px
@@ -229,7 +239,7 @@ object IntroCard {
                 borderRadius = 6.px
                 padding = Padding(vertical = 8.px, horizontal = 16.px)
             }
-            rule("#$ID .tdz-intro-btn:hover") { filter(brightness(1.08)) }
+            rule("#$ID .$BTN_CLASS:hover") { filter(brightness(1.08)) }
         }
     }
 }

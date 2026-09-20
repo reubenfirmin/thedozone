@@ -32,6 +32,8 @@ external class DropboxSdk(options: dynamic) {
     fun filesUpload(arg: dynamic): Promise<dynamic>
     fun filesDownload(arg: dynamic): Promise<dynamic>
     fun filesGetTemporaryLink(arg: dynamic): Promise<dynamic>
+    fun filesGetTemporaryUploadLink(arg: dynamic): Promise<dynamic>
+    fun filesGetMetadata(arg: dynamic): Promise<dynamic>
     fun filesListFolder(arg: dynamic): Promise<dynamic>
     fun filesListFolderContinue(arg: dynamic): Promise<dynamic>
     fun filesDeleteV2(arg: dynamic): Promise<dynamic>

@@ -183,7 +183,14 @@ class LocalStorageModel {
         window.localStorage.setItem(CanvasStorageKeys.columnMode(canvasName, columnId), mode.name)
     }
 
-    fun getTheme(): String? = window.localStorage.getItem(storageKey(Namespace.THEME, "current"))
+    fun getTheme(): ThemeName? =
+        window.localStorage.getItem(storageKey(Namespace.THEME, THEME_KEY))?.let { ThemeName(it) }
 
-    fun storeTheme(name: String) = window.localStorage.setItem(storageKey(Namespace.THEME, "current"), name)
+    fun storeTheme(name: ThemeName) =
+        window.localStorage.setItem(storageKey(Namespace.THEME, THEME_KEY), name.value)
+
+    private companion object {
+        /** The (single, global) theme is stored under this key within [Namespace.THEME]. */
+        const val THEME_KEY = "current"
+    }
 }

@@ -68,4 +68,33 @@ class ColumnMergeTest {
         assertTrue(result.merged.contains("shared line LOCAL"), "local content preserved in conflict output")
         assertFalse(result.merged.contains("shared line REMOTE"), "remote conflict side not silently included")
     }
+
+    private fun occurrences(haystack: String, needle: String): Int =
+        haystack.split(needle).size - 1
+
+    @Test
+    fun nullBaseSupersetDoesNotDuplicateSharedContent() {
+        // The reported bug: a column had cards appended locally; on a no-ancestor merge against the
+        // pre-existing (shorter) remote, the shared prefix was duplicated. With an empty origin diff3
+        // can't anchor on the common cards, so the whole column became one conflict region and the
+        // union appended local-then-remote in full — duplicating everything they share.
+        val remote = "# Card A\nbody a\n\n# Card B\nbody b\n"
+        val local  = "# Card A\nbody a\n\n# Card B\nbody b\n\n# Card C\nappended\n"
+        val result = ColumnMerge.mergeColumn(local = local, base = null, remote = remote)
+        assertEquals(local, result.merged, "local superset: keep all, never duplicate the shared cards")
+        assertEquals(1, occurrences(result.merged, "# Card A"), "shared card A not duplicated")
+        assertEquals(1, occurrences(result.merged, "# Card B"), "shared card B not duplicated")
+    }
+
+    @Test
+    fun nullBaseDivergentUnionsWithoutDuplicatingCommon() {
+        // First-connect union of two devices that share a card but each added a different one: keep
+        // BOTH unique cards, but the shared card must appear exactly once.
+        val local  = "# Shared\nbody\n\n# Local\nlocal only\n"
+        val remote = "# Shared\nbody\n\n# Remote\nremote only\n"
+        val result = ColumnMerge.mergeColumn(local = local, base = null, remote = remote)
+        assertTrue(result.merged.contains("local only"), "local-only card kept")
+        assertTrue(result.merged.contains("remote only"), "remote-only card kept (first-connect union)")
+        assertEquals(1, occurrences(result.merged, "# Shared"), "shared card not duplicated")
+    }
 }

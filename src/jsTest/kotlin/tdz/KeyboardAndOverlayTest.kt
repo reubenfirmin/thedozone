@@ -56,6 +56,27 @@ class KeyboardAndOverlayTest {
     }
 
     @Test
+    fun replacedAppListenersAndHandledEditorKeysDoNotFireGlobalActions(): Unit {
+        val oldBus = EventBus<Event>()
+        Index(Model(rootCanvas), oldBus)
+        var oldActions = 0
+        oldBus.on<ClearDone> { oldActions++ }
+        val activeBus = EventBus<Event>()
+        Index(Model(rootCanvas), activeBus)
+        var activeActions = 0
+        activeBus.on<ClearDone> { activeActions++ }
+        val handled = KeyboardEvent(EventType("keydown"), KeyboardEventInit(
+            key = ";", ctrlKey = true, cancelable = true,
+        ))
+        handled.preventDefault()
+        document.dispatchEvent(handled)
+        assertEquals(0, activeActions, "keys handled by a component stay handled")
+        keydown(";", ctrl = true)
+        assertEquals(1, activeActions)
+        assertEquals(0, oldActions, "replacing the app removes its old shortcut listener")
+    }
+
+    @Test
     fun helpShortcutOpensTheOverlayAndEscapeClosesIt() {
         Router.mount(canvasPages, helpPages, settingsPages, legalPages)
         val bus = EventBus<Event>()

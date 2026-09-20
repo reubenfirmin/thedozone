@@ -82,6 +82,12 @@ data class Canvas(
     fun firstNonLayout() = columns.first { !layoutMap.containsKey(it) }
 
     /**
+     * The CONTENT columns: those not present as a layout container. The single source of truth for
+     * `columns.filter { !layoutMap.containsKey(it) }`, formerly duplicated across view/controller.
+     */
+    fun leafColumns(): List<ColumnId> = columns.filter { !layoutMap.containsKey(it) }
+
+    /**
      * A render-safe layout: a root layout exists, the tree has no cycles and every `contains` entry
      * resolves, and at least one CONTENT (non-layout) column is reachable. A corrupt synced manifest
      * (cyclic layout) or a board deleted down to nothing fails this.
@@ -107,7 +113,7 @@ data class Canvas(
      */
     fun repaired(): Canvas {
         if (isLayoutSound()) return this
-        val content = columns.filterNot { layoutMap.containsKey(it) }
+        val content = leafColumns()
         // Fresh opaque root + (if needed) content id, guaranteed not to clash with any surviving id.
         // Repair is a rare recovery path; non-deterministic ids across devices are acceptable here.
         val existing = (columns + layouts.flatMap { it.contains + it.columnId }).toSet()

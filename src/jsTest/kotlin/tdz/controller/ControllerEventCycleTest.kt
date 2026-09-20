@@ -101,7 +101,7 @@ class ControllerEventCycleTest {
     }
 
     @Test
-    fun cardsReorderedPersistsViaControllerAndFiresBothEvents() {
+    fun cardsReorderedPersistsAndStampsColumnsChangedButDoesNotRender() {
         val (bus, model, captured) = setup("_cycle-reorder")
         val canvas = CanvasName("_cycle-reorder")
         model.updateColumn(canvas, ColumnId("1"), "# A\n\n# B\n")
@@ -112,7 +112,10 @@ class ControllerEventCycleTest {
         val after = model.cards(canvas, ColumnId("1"))
         assertEquals(listOf("B", "A"), after.map { (it.segments.first() as tdz.model.card.CardHeading).text.trim() })
         assertEquals(listOf(setOf(ColumnId("1"))), captured.changed.map { it.columnIds })
-        assertEquals(listOf(setOf(ColumnId("1"))), captured.refreshed.map { it.columnIds })
+        // CardsReordered is a model fact: the Controller persists + stamps ColumnsChanged but does
+        // NOT render. The drag producer (DragDrop) owns the re-render decision and fires
+        // RefreshColumns itself only when the drop left the DOM stale (a group/header drag).
+        assertEquals(emptyList(), captured.refreshed.map { it.columnIds })
     }
 
     @Test

@@ -26,15 +26,15 @@ sealed interface DragPreviewFill {
 enum class FlourishStyle { LINE_DIAMOND, DOTS }
 
 /**
- * A UI theme: typed [Color] tokens (the single source of truth for every UI color) plus the Ace
- * [editorTheme]. Components consume tokens directly via typed `css { }`
+ * A UI theme: typed [Color] tokens (the single source of truth for every UI color).
+ * Components, including the editor, consume tokens directly via typed `css { }`
  * (e.g. `borderColor = ThemeManager.current.cardBorder`). The few unavoidable string sinks
  * (inline `element.style`, injected `<style>` rules, the SVG-data-URI watermark, gradients)
  * interpolate `token.toString()` — the source stays typed.
  */
 data class Theme(
     val name: String,
-    val editorTheme: String,
+    val editorDark: Boolean = true,
     // Prose-editor chrome: hide the gutter/line-numbers, print margin, and active-line highlight, and
     // use the app font instead of a monospace one — for reading-oriented themes. Code themes keep the
     // "nerdy" code-editor look (gutter + fixed font), so this defaults off.
@@ -152,7 +152,6 @@ data class Theme(
 /** Default theme: "Blue Room" — dark navy, orange/gold headings, sky-blue cards. */
 val blueRoomTheme = Theme(
     name = "Blue Room",
-    editorTheme = "ace/theme/cobalt",
     fontFamily = "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
     borderStyle = "solid",
     borderWidth = 2.px,
@@ -211,7 +210,6 @@ val blueRoomTheme = Theme(
  */
 val dosTheme = Theme(
     name = "DOS",
-    editorTheme = "ace/theme/idle_fingers",
     fontFamily = "\"IBM VGA 8x16\", \"Px437 IBM VGA 8x16\", Consolas, \"Courier New\", monospace",
     borderStyle = "solid",              // single-line box; adjacent panels don't stack into 4 lines
     borderWidth = 1.px,                 // crisp 1px rule, like a TUI ─│ frame
@@ -272,7 +270,6 @@ val dosTheme = Theme(
  */
 val rainbowGapsTheme = Theme(
     name = "Rainbow Gaps",
-    editorTheme = "ace/theme/tomorrow_night_bright",
     fontFamily = "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
     borderStyle = "solid",
     borderWidth = 1.px,
@@ -339,7 +336,6 @@ val rainbowGapsTheme = Theme(
  */
 val smoothDarkTheme = Theme(
     name = "Smooth Dark",
-    editorTheme = "ace/theme/one_dark",
     fontFamily = "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
     borderStyle = "solid",
     borderWidth = 1.px,
@@ -402,7 +398,6 @@ val smoothDarkTheme = Theme(
  */
 val hackerTheme = Theme(
     name = "Hacker",
-    editorTheme = "ace/theme/gob",                 // green on black
     fontFamily = "\"JetBrains Mono\", ui-monospace, \"SFMono-Regular\", Menlo, Consolas, monospace",
     borderStyle = "solid",
     borderWidth = 1.px,
@@ -465,7 +460,7 @@ val hackerTheme = Theme(
 val poodleRocksTheme = Theme(
     name = "Poodle Rocks",
     headingDropShadow = Color.transparent,
-    editorTheme = "ace/theme/chrome",
+    editorDark = false,
     editorPlain = true,                    // Poodle Rocks: white-document cards read as prose, not code
     fontFamily = "Roboto, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Arial, sans-serif",
     borderStyle = "solid",
@@ -551,7 +546,7 @@ val poodleRocksTheme = Theme(
 val longFormTheme = Theme(
     name = "Long Form",
     headingDropShadow = Color.transparent,
-    editorTheme = "ace/theme/github",
+    editorDark = false,
     editorPlain = true,                    // Long Form: a clean prose editor, no code chrome
     fontFamily = "'Source Serif 4', Charter, 'Iowan Old Style', Georgia, 'Times New Roman', serif",
     borderStyle = "solid",
@@ -617,7 +612,6 @@ val longFormTheme = Theme(
 val metroTheme = Theme(
     name = "Metro",
     headingDropShadow = Color.transparent,
-    editorTheme = "ace/theme/clouds_midnight",
     // Segoe UI is the authentic Microsoft face (present on Windows); graceful fallback elsewhere.
     fontFamily = "\"Segoe UI\", \"Segoe UI Web (West European)\", system-ui, -apple-system, \"Helvetica Neue\", Arial, sans-serif",
     borderStyle = "solid",

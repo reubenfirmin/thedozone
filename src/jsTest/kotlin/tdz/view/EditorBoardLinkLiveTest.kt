@@ -19,16 +19,17 @@ import kotlin.test.assertTrue
 
 /**
  * Reproduces the actual user gesture: typing `[` in the editor must open the board-link menu. This
- * drives Ace's LIVE autocompletion (the afterExec path), unlike a manual Ctrl+Space trigger — so it
+ * drives CodeMirror's live autocompletion, unlike a manual Ctrl+Space trigger — so it
  * is the test that catches "I typed `[` and nothing happened".
  */
 class EditorBoardLinkLiveTest {
 
     private val canvas = CanvasName("_bll-test")
     private var column = ColumnId("1")   // reassigned to the board's opaque leaf after creation
+    private var columns: CanvasColumns? = null
 
     @AfterTest
-    fun cleanup() { document.body.asDynamic()?.innerHTML = "" }
+    fun cleanup() { columns?.saveEditors(); document.body.replaceChildren() }
 
     @Test
     fun typingOpenBracketOpensBoardCompletions(): Promise<Unit> {
@@ -40,6 +41,7 @@ class EditorBoardLinkLiveTest {
         model.addCanvas(canvasFromTemplate(CanvasName("Home"), null, SINGLE_PANE))
         val spec = model.getCanvas(canvas) ?: error("setup")
         val columns = CanvasColumns(spec, bus, model) { id -> model.cards(canvas, id) }
+            .also { this.columns = it }
         addToBody {
             div {
                 id = "bll-host"
@@ -49,17 +51,15 @@ class EditorBoardLinkLiveTest {
 
         columns.toggleMode(column)
         return pollUntil("the completer to install") {
-            columns.editorCache[column]?.completerInstalled() == true
+            columns.editorCache[column]?.editor != null
         }.then {
-            columns.editorCache[column]?.typeForTest("[")   // the real gesture
+            val editor = columns.editorCache[column]!!.editor!!
+            editor.type("[")
             pollUntil("typing '[' to open the board menu") {
-                (columns.editorCache[column]?.lastCompletionCount ?: -1) >= 0
+                editor.completionLabels().containsAll(listOf("Work", "Home"))
             }
         }.then {
-            val editor = columns.editorCache[column] ?: error("editor")
-            assertTrue(editor.lastCompletionCount >= 2,
-                "typing '[' should offer the other boards (got ${editor.lastCompletionCount})")
-            columns.saveEditors()
+            assertTrue(columns.editorCache[column]!!.editor!!.completionActive())
         }
     }
 }

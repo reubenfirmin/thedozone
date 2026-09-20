@@ -1,4 +1,4 @@
-package tdz.controller
+package tdz.view
 
 import web.dom.ElementId
 import web.dom.document

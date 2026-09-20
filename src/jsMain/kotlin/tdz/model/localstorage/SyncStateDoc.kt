@@ -2,7 +2,14 @@ package tdz.model.localstorage
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
-import tdz.sync.VersionVector
+
+/**
+ * A version vector: deviceId -> number of edits that device applied. Absent component == 0. Defined in
+ * the persistence layer (it is a pure data type — a Map alias — and is what gets stored), so the sync
+ * layer depends on it rather than the other way round. The sync vertical re-exports it as
+ * `tdz.sync.VersionVector` and owns the operations over it (compare/join/bump).
+ */
+typealias VersionVector = Map<String, Long>
 
 /** Per remote-path sync bookkeeping: last seen [rev], last local edit time, and the last-synced
  *  content ([base]) used as the common ancestor for 3-way column merges (null until first sync). */
@@ -33,7 +40,10 @@ data class SyncStateDoc(val entries: Map<String, SyncEntry>) : HasKey {
     override fun encode(): String = storageJson.encodeToString(entries)
 
     companion object {
-        fun singletonKey() = "state"
+        /** The single localStorage key under [Namespace.SYNC_STATE] (one document, not per-canvas). */
+        const val KEY = "state"
+
+        fun singletonKey() = KEY
 
         val EMPTY = SyncStateDoc(emptyMap())
 

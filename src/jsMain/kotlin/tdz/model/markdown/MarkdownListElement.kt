@@ -1,6 +1,6 @@
 package tdz.model.markdown
 
-import tdz.ACE_TAB_SIZE
+import tdz.EDITOR_TAB_SIZE
 import tdz.model.card.*
 import tdz.model.card.ListMemberType.*
 
@@ -84,7 +84,7 @@ internal object MarkdownListElement {
         val levelSpaces = numSpacesAtStart(line)
         return when {
             levelTabs > 0 -> levelTabs
-            levelSpaces > 0 -> levelSpaces / ACE_TAB_SIZE
+            levelSpaces > 0 -> levelSpaces / EDITOR_TAB_SIZE
             else -> 0
         }
     }

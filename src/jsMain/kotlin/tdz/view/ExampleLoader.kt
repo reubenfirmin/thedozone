@@ -82,9 +82,7 @@ object ExampleLoader {
 
     private fun clearRootContent(model: Model) {
         model.getCanvas(rootCanvas)?.let { current ->
-            current.columns
-                .filterNot { current.layoutMap.containsKey(it) }
-                .forEach { model.deleteColumn(rootCanvas, it) }
+            current.leafColumns().forEach { model.deleteColumn(rootCanvas, it) }
         }
     }
 }

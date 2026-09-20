@@ -1,13 +1,9 @@
-package tdz.controller
+package tdz.controller.io
 
 import tdz.controller.events.ColumnsChanged
 import tdz.controller.events.Event
 import zoned.framework.events.EventBus
 import tdz.controller.events.RefreshCanvas
-import tdz.controller.io.CanvasImporter
-import tdz.controller.io.FilePicker
-import tdz.controller.io.ImportMode
-import tdz.controller.io.TdzDocument
 import tdz.model.Model
 
 /**

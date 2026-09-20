@@ -11,6 +11,7 @@ import tdz.model.localstorage.CanvasDoc
 import tdz.model.localstorage.SyncEntry
 import tdz.model.localstorage.SyncStateDoc
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -87,6 +88,29 @@ class FirstConnectProtectionTest {
         val content = local.getValue(path)
         assertTrue(content.contains("local"), "untracked local content survives: <<$content>>")
         assertTrue(content.contains("remote"))
+    }
+
+    /** The duplication bug, end-to-end through pull: no history, and local is the pre-existing remote
+     *  PLUS locally-appended cards. The union merge must keep the appended card WITHOUT duplicating
+     *  the shared ones — an empty-base diff3 used to collapse the column into one conflict region and
+     *  emit local-then-remote in full, doubling everything they share. */
+    @Test
+    fun noHistoryPullDoesNotDuplicateSharedContentWhenLocalAppended() = runTest {
+        val path = "/n/_/col-1.md"
+        val remote = "# Card A\nbody a\n\n# Card B\nbody b\n"
+        val local  = "# Card A\nbody a\n\n# Card B\nbody b\n\n# Card C\nappended\n"
+        val storage = FakeStorage(
+            listOf(RemoteFile(path, "rRemote", 100.0) to remote),
+            remoteVv = mapOf(path to mapOf("other" to 1L)),
+        )
+        val localMap = mutableMapOf(path to local)
+
+        engine(storage, localMap).pull(root = "/n", state = SyncStateDoc.EMPTY)
+
+        val content = localMap.getValue(path)
+        assertTrue(content.contains("appended"), "locally-appended card survives: <<$content>>")
+        assertEquals(1, content.split("# Card A").size - 1, "shared card A not duplicated: <<$content>>")
+        assertEquals(1, content.split("# Card B").size - 1, "shared card B not duplicated: <<$content>>")
     }
 
     /** Manifest LWW with no history defaulted local to 0.0 — remote always won, orphaning columns. */
@@ -205,7 +229,9 @@ class FirstConnectProtectionTest {
     @OptIn(DelicateCoroutinesApi::class)
     @Test
     fun connectingMultiColumnHomeToASmallerStaleRemotePreservesEveryColumn(): dynamic = GlobalScope.promise {
-        val root = ""
+        // A concrete Dropbox folder (a blank one now auto-defaults to "thedozone" on connect, so the
+        // seeded remote paths must use the same root the engine will resolve).
+        val root = "thedozone"
         val rootCanvas = CanvasName("")
         val model = tdz.model.Model(rootCanvas)
         val bus = zoned.framework.events.EventBus<tdz.controller.events.Event>()

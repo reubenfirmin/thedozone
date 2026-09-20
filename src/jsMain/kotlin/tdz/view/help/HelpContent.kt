@@ -37,11 +37,11 @@ object HelpContent {
         - Focus the previous / next column from the editor — Alt+← / → / ⌥+← / →
         - Undo / redo — Ctrl+Z / Ctrl+Shift+Z / ⌘+Z / ⇧+⌘+Z
         - Select all — Ctrl+A / ⌘+A
-        - Find — Ctrl+F / ⌘+F
-        - Find next / previous — Ctrl+K / Ctrl+Shift+K / ⌘+G / ⇧+⌘+G
-        - Replace — Ctrl+H / ⌥+⌘+F
+        - Find / replace — Ctrl+F / ⌘+F
+        - Find next / previous — Ctrl+G / Ctrl+Shift+G / ⌘+G / ⇧+⌘+G
+        - Accept a board-link suggestion — Tab or Enter / Tab or Return
         - Move the line up / down — Alt+↑ / ↓ / ⌥+↑ / ↓
-        - Delete the line — Ctrl+D / ⌘+D
+        - Delete the line — Ctrl+Shift+K / ⇧+⌘+K
 
         ## Mouse
         - Show the context menu — Right-click
